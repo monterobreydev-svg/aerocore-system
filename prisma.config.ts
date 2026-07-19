@@ -7,8 +7,12 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    seed: "npx tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Prisma CLI commands (migrate, db push, studio, etc.) need the direct,
+    // non-pooled connection — Supabase's pgbouncer pooler doesn't support
+    // the advisory locks migrations rely on, which causes the CLI to hang.
+    url: process.env["DIRECT_URL"],
   },
 });

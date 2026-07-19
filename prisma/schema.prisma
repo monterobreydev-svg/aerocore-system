@@ -11,3 +11,40 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum Role {
+  DIRECTOR
+  ADMINISTRATOR
+  ENGINEER
+  EMPLOYEE
+}
+
+model Employee {
+  id                     String       @id @default(uuid())
+  firstName              String
+  lastName               String
+  middleName             String?
+  emergencyContactPerson String?
+  emergencyContactNo     String?
+  position               String
+  hourlyRate             Decimal
+  skills                 String[]
+  createdAt              DateTime     @default(now())
+  createdById            String?
+  createdBy              UserAccount? @relation("EmployeeCreatedBy", fields: [createdById], references: [id])
+
+  account                UserAccount? @relation("EmployeeAccount")
+}
+
+model UserAccount {
+  id           String    @id @default(uuid())
+  employeeId   String    @unique
+  employee     Employee  @relation("EmployeeAccount", fields: [employeeId], references: [id])
+  username     String    @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+
+  createdEmployees Employee[] @relation("EmployeeCreatedBy")
+}
