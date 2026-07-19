@@ -27,7 +27,30 @@ import {
   ADMIN_NAV,
   isNavCollapsible,
   type NavEntry,
+  type NavGroup,
 } from "@/components/dashboard/nav-items"
+import type { Role } from "@/app/generated/prisma/client"
+import { isAdminPathAllowedForRole } from "@/lib/roles"
+
+function filterGroupsForRole(groups: NavGroup[], role: Role): NavGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .map((entry): NavEntry | null => {
+          if (isNavCollapsible(entry)) {
+            const items = entry.items.filter((child) =>
+              isAdminPathAllowedForRole(child.url, role)
+            )
+            return items.length > 0 ? { ...entry, items } : null
+          }
+
+          return isAdminPathAllowedForRole(entry.url, role) ? entry : null
+        })
+        .filter((entry): entry is NavEntry => entry !== null),
+    }))
+    .filter((group) => group.items.length > 0)
+}
 
 const navButtonClassName =
   "rounded-lg px-2.5 py-2 text-[0.9rem] font-medium text-sidebar-foreground/80 transition-colors data-active:bg-sky-600/10 data-active:font-semibold data-active:text-sky-700 data-active:hover:bg-sky-600/10 dark:data-active:bg-sky-500/15 dark:data-active:text-sky-400 dark:data-active:hover:bg-sky-500/15 [&_svg]:size-4 [&_svg]:text-muted-foreground data-active:[&_svg]:text-sky-600 dark:data-active:[&_svg]:text-sky-400"
@@ -108,8 +131,9 @@ function NavMenuEntry({
   )
 }
 
-export function AppSidebar() {
+export function AppSidebar({ role }: { role: Role }) {
   const pathname = usePathname()
+  const groups = filterGroupsForRole(ADMIN_NAV, role)
 
   return (
     <Sidebar collapsible="icon">
@@ -141,7 +165,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="gap-1 px-1 py-2">
-        {ADMIN_NAV.map((group) => (
+        {groups.map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel className="px-2 text-[0.6875rem] font-semibold tracking-wider text-muted-foreground/70 uppercase">
               {group.label}

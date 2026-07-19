@@ -20,3 +20,16 @@ const ROLE_LABELS: Record<Role, string> = {
 export function roleLabel(role: Role) {
   return ROLE_LABELS[role]
 }
+
+// Director and Administrator can reach every /admin page. Engineer is
+// restricted to the dashboard plus these path prefixes.
+const ENGINEER_ALLOWED_ADMIN_PATHS = ["/admin/schedules", "/admin/reports"]
+
+export function isAdminPathAllowedForRole(pathname: string, role: Role) {
+  if (role !== "ENGINEER") return true
+  if (pathname === "/admin") return true
+
+  return ENGINEER_ALLOWED_ADMIN_PATHS.some((prefix) =>
+    pathname.startsWith(prefix)
+  )
+}

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { decrypt } from "@/lib/session"
-import { homeRouteForRole, isAdminSideRole } from "@/lib/roles"
+import {
+  homeRouteForRole,
+  isAdminPathAllowedForRole,
+  isAdminSideRole,
+} from "@/lib/roles"
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -24,6 +28,10 @@ export async function proxy(request: NextRequest) {
 
     if (isAdminRoute && !isAdminSideRole(session.role)) {
       return NextResponse.redirect(new URL("/employee", request.url))
+    }
+
+    if (isAdminRoute && !isAdminPathAllowedForRole(pathname, session.role)) {
+      return NextResponse.redirect(new URL("/admin", request.url))
     }
 
     if (isEmployeeRoute && isAdminSideRole(session.role)) {
