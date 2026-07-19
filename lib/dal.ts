@@ -8,7 +8,15 @@ export const getCurrentEmployee = cache(async () => {
 
   const employee = await prisma.employee.findUniqueOrThrow({
     where: { id: session.employeeId },
-    select: { firstName: true, lastName: true },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      middleName: true,
+      position: true,
+      emergencyContactPerson: true,
+      emergencyContactNo: true,
+    },
   })
 
   return { ...employee, role: session.role }
