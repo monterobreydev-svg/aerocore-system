@@ -33,8 +33,9 @@ model Employee {
   createdById            String?
   createdBy              UserAccount? @relation("EmployeeCreatedBy", fields: [createdById], references: [id])
 
-  account                UserAccount?   @relation("EmployeeAccount")
-  editLogs               StaffEditLog[] @relation("EmployeeEditLogs")
+  account             UserAccount?         @relation("EmployeeAccount")
+  editLogs            StaffEditLog[]       @relation("EmployeeEditLogs")
+  scheduleAssignments ScheduleAssignment[] @relation("EmployeeScheduleAssignments")
 }
 
 model UserAccount {
@@ -49,13 +50,14 @@ model UserAccount {
 
   createdEmployees Employee[]     @relation("EmployeeCreatedBy")
   staffEdits       StaffEditLog[] @relation("StaffEditsMade")
+  createdSchedules Schedule[]     @relation("ScheduleCreatedBy")
 }
 
 // Audit trail for edits made to a staff member's Employee/UserAccount record
 // (e.g. hourlyRate, position, isActive) — lets Directors see who changed what,
 // since an Administrator could otherwise quietly edit someone's pay rate.
 model StaffEditLog {
-  id         String   @id @default(uuid())
+  id         String      @id @default(uuid())
   employeeId String
   employee   Employee    @relation("EmployeeEditLogs", fields: [employeeId], references: [id])
   editedById String
@@ -76,6 +78,7 @@ model Client {
   createdAt DateTime @default(now())
 
   branches  Branch[]
+  schedules Schedule[]
 }
 
 model Branch {
@@ -85,4 +88,62 @@ model Branch {
   createdAt DateTime @default(now())
   clientId  String
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  schedules Schedule[]
+}
+
+enum WorkType {
+  INSTALLATION
+  REPAIR
+  MAINTENANCE
+  CLEANING
+  INSPECTION
+  SURVEY
+  TROUBLESHOOT
+}
+
+// PENDING is the only "upcoming" state — everything else is an outcome
+// recorded after the job happens (or was supposed to happen).
+enum ScheduleStatus {
+  PENDING
+  COMPLETED
+  NEED_TO_RETURN
+  RESCHEDULED
+  CANCELLED
+}
+
+// One row per job/booking. Contact person/number are captured here (not on
+// Branch) since a job's on-site contact can differ from branch to branch —
+// and Branch itself doesn't store contact info.
+model Schedule {
+  id            String         @id @default(uuid())
+  clientId      String
+  client        Client         @relation(fields: [clientId], references: [id])
+  branchId      String?
+  branch        Branch?        @relation(fields: [branchId], references: [id])
+  date          DateTime
+  startTime     DateTime
+  endTime       DateTime
+  contactPerson String?
+  contactNumber String?
+  workTypes     WorkType[]
+  status        ScheduleStatus @default(PENDING)
+  createdAt     DateTime       @default(now())
+  createdById   String?
+  createdBy     UserAccount?   @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
+
+  assignments ScheduleAssignment[]
+}
+
+// Join table: which employees are assigned to a given schedule. Drives the
+// scheduling calendar view (one calendar entry per assignment).
+model ScheduleAssignment {
+  id         String   @id @default(uuid())
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation("EmployeeScheduleAssignments", fields: [employeeId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([scheduleId, employeeId])
 }
