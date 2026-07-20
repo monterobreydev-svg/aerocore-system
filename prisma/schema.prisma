@@ -65,3 +65,24 @@ model StaffEditLog {
   newValue   String?
   createdAt  DateTime    @default(now())
 }
+
+// Clients are companies/customers AeroCoole services. They never log in —
+// no UserAccount, no role — this is purely business/contact record-keeping.
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  tin       String?
+  address   String
+  createdAt DateTime @default(now())
+
+  branches  Branch[]
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  name      String
+  address   String
+  createdAt DateTime @default(now())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
