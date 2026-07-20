@@ -33,7 +33,8 @@ model Employee {
   createdById            String?
   createdBy              UserAccount? @relation("EmployeeCreatedBy", fields: [createdById], references: [id])
 
-  account                UserAccount? @relation("EmployeeAccount")
+  account                UserAccount?   @relation("EmployeeAccount")
+  editLogs               StaffEditLog[] @relation("EmployeeEditLogs")
 }
 
 model UserAccount {
@@ -46,5 +47,21 @@ model UserAccount {
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
 
-  createdEmployees Employee[] @relation("EmployeeCreatedBy")
+  createdEmployees Employee[]     @relation("EmployeeCreatedBy")
+  staffEdits       StaffEditLog[] @relation("StaffEditsMade")
+}
+
+// Audit trail for edits made to a staff member's Employee/UserAccount record
+// (e.g. hourlyRate, position, isActive) — lets Directors see who changed what,
+// since an Administrator could otherwise quietly edit someone's pay rate.
+model StaffEditLog {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee    @relation("EmployeeEditLogs", fields: [employeeId], references: [id])
+  editedById String
+  editedBy   UserAccount @relation("StaffEditsMade", fields: [editedById], references: [id])
+  field      String
+  oldValue   String?
+  newValue   String?
+  createdAt  DateTime    @default(now())
 }

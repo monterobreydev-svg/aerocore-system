@@ -33,3 +33,12 @@ export function isAdminPathAllowedForRole(pathname: string, role: Role) {
     pathname.startsWith(prefix)
   )
 }
+
+// Only a Director may hand out elevated roles. An Administrator creating a
+// staff account can only ever create plain Employees — this is enforced here
+// (server-side) as well as reflected in the create-staff form UI.
+const ALL_ROLES: Role[] = ["DIRECTOR", "ADMINISTRATOR", "ENGINEER", "EMPLOYEE"]
+
+export function assignableRoles(currentRole: Role): Role[] {
+  return currentRole === "DIRECTOR" ? ALL_ROLES : ["EMPLOYEE"]
+}

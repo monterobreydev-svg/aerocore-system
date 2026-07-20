@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -26,6 +27,7 @@ import {
 import {
   ADMIN_NAV,
   isNavCollapsible,
+  type NavCollapsible,
   type NavEntry,
   type NavGroup,
 } from "@/components/dashboard/nav-items"
@@ -62,6 +64,67 @@ function isPathActive(url: string, pathname: string) {
   )
 }
 
+function CollapsibleNavEntry({
+  entry,
+  pathname,
+}: {
+  entry: NavCollapsible
+  pathname: string
+}) {
+  const isChildActive = entry.items.some((child) =>
+    isPathActive(child.url, pathname)
+  )
+  const [open, setOpen] = useState(isChildActive)
+
+  // Auto-expand when navigation lands on one of this section's own pages
+  // (e.g. following a link straight to /admin/accounts/staff). Doesn't
+  // force-close when navigating away — that stays under the user's control.
+  useEffect(() => {
+    if (isChildActive) setOpen(true)
+  }, [isChildActive])
+
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="group/collapsible"
+    >
+      <SidebarMenuItem>
+        <CollapsibleTrigger
+          render={
+            <SidebarMenuButton
+              isActive={isChildActive}
+              tooltip={entry.title}
+              className={navButtonClassName}
+            >
+              <entry.icon />
+              <span>{entry.title}</span>
+              <ChevronRight className="ml-auto size-4 shrink-0 transition-transform group-data-[panel-open]/collapsible:rotate-90" />
+            </SidebarMenuButton>
+          }
+        />
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {entry.items.map((child) => (
+              <SidebarMenuSubItem key={child.url}>
+                <SidebarMenuSubButton
+                  isActive={isPathActive(child.url, pathname)}
+                  render={
+                    <Link href={child.url}>
+                      <child.icon />
+                      <span>{child.title}</span>
+                    </Link>
+                  }
+                />
+              </SidebarMenuSubItem>
+            ))}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
+  )
+}
+
 function NavMenuEntry({
   entry,
   pathname,
@@ -70,46 +133,7 @@ function NavMenuEntry({
   pathname: string
 }) {
   if (isNavCollapsible(entry)) {
-    const isChildActive = entry.items.some((child) =>
-      isPathActive(child.url, pathname)
-    )
-
-    return (
-      <Collapsible defaultOpen={isChildActive} className="group/collapsible">
-        <SidebarMenuItem>
-          <CollapsibleTrigger
-            render={
-              <SidebarMenuButton
-                isActive={isChildActive}
-                tooltip={entry.title}
-                className={navButtonClassName}
-              >
-                <entry.icon />
-                <span>{entry.title}</span>
-                <ChevronRight className="ml-auto size-4 shrink-0 transition-transform group-data-[panel-open]/collapsible:rotate-90" />
-              </SidebarMenuButton>
-            }
-          />
-          <CollapsibleContent>
-            <SidebarMenuSub>
-              {entry.items.map((child) => (
-                <SidebarMenuSubItem key={child.url}>
-                  <SidebarMenuSubButton
-                    isActive={isPathActive(child.url, pathname)}
-                    render={
-                      <Link href={child.url}>
-                        <child.icon />
-                        <span>{child.title}</span>
-                      </Link>
-                    }
-                  />
-                </SidebarMenuSubItem>
-              ))}
-            </SidebarMenuSub>
-          </CollapsibleContent>
-        </SidebarMenuItem>
-      </Collapsible>
-    )
+    return <CollapsibleNavEntry entry={entry} pathname={pathname} />
   }
 
   const isActive = isPathActive(entry.url, pathname)
