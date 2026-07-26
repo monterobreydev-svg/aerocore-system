@@ -62,6 +62,12 @@ function ScheduleEditForm({
   const [clientId, setClientId] = useState(schedule.client.id)
   const [branchId, setBranchId] = useState(schedule.branch?.id ?? "")
   const [deleting, setDeleting] = useState(false)
+  // Uncontrolled inputs below read their defaultValue from this frozen
+  // snapshot, not the live `schedule` prop — a successful save triggers
+  // revalidatePath, which can push fresh data into this still-mounted form
+  // before onSaved() closes the sheet, and changing defaultValue on an
+  // already-initialized uncontrolled field is what Base UI warns about.
+  const [initial] = useState(schedule)
 
   useEffect(() => {
     if (state?.success) onSaved()
@@ -204,7 +210,7 @@ function ScheduleEditForm({
                 id={`date-${schedule.id}`}
                 name="date"
                 type="date"
-                defaultValue={toDateInputValue(schedule.date)}
+                defaultValue={toDateInputValue(initial.date)}
                 disabled={fieldsDisabled}
                 required
               />
@@ -220,7 +226,7 @@ function ScheduleEditForm({
                 id={`startTime-${schedule.id}`}
                 name="startTime"
                 type="time"
-                defaultValue={toTimeInputValue(schedule.startTime)}
+                defaultValue={toTimeInputValue(initial.startTime)}
                 disabled={fieldsDisabled}
                 required
               />
@@ -238,7 +244,7 @@ function ScheduleEditForm({
                 id={`endTime-${schedule.id}`}
                 name="endTime"
                 type="time"
-                defaultValue={toTimeInputValue(schedule.endTime)}
+                defaultValue={toTimeInputValue(initial.endTime)}
                 disabled={fieldsDisabled}
                 required
               />
@@ -267,7 +273,7 @@ function ScheduleEditForm({
             <FieldLabel htmlFor={`status-${schedule.id}`}>Status</FieldLabel>
             <Select
               name="status"
-              defaultValue={schedule.status}
+              defaultValue={initial.status}
               disabled={fieldsDisabled}
               items={Object.fromEntries(
                 SCHEDULE_STATUSES.map((status) => [
@@ -302,7 +308,7 @@ function ScheduleEditForm({
               <Input
                 id={`contactPerson-${schedule.id}`}
                 name="contactPerson"
-                defaultValue={schedule.contactPerson ?? ""}
+                defaultValue={initial.contactPerson ?? ""}
                 disabled={fieldsDisabled}
               />
               <FieldError
@@ -318,7 +324,7 @@ function ScheduleEditForm({
               <Input
                 id={`contactNumber-${schedule.id}`}
                 name="contactNumber"
-                defaultValue={schedule.contactNumber ?? ""}
+                defaultValue={initial.contactNumber ?? ""}
                 disabled={fieldsDisabled}
               />
               <FieldError
@@ -333,7 +339,7 @@ function ScheduleEditForm({
             <FieldLabel>Assign employees</FieldLabel>
             <ScheduleEmployeePicker
               employees={employees}
-              defaultSelectedIds={schedule.assignments.map(
+              defaultSelectedIds={initial.assignments.map(
                 (a) => a.employeeId
               )}
               disabled={fieldsDisabled}

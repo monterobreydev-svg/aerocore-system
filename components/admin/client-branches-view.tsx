@@ -42,6 +42,12 @@ function EditClientDialog({ client }: { client: ClientRecord }) {
     updateClient,
     undefined
   )
+  // Uncontrolled inputs below read their defaultValue from this frozen
+  // snapshot, not the live `client` prop — a successful save triggers
+  // revalidatePath, which can push fresh data into this still-mounted
+  // dialog before it finishes closing, and changing defaultValue on an
+  // already-initialized uncontrolled field is what Base UI warns about.
+  const [initial] = useState(client)
 
   useEffect(() => {
     if (state?.success) setOpen(false)
@@ -71,7 +77,7 @@ function EditClientDialog({ client }: { client: ClientRecord }) {
               <Input
                 id={`client-name-${client.id}`}
                 name="name"
-                defaultValue={client.name}
+                defaultValue={initial.name}
                 disabled={pending}
                 required
               />
@@ -84,7 +90,7 @@ function EditClientDialog({ client }: { client: ClientRecord }) {
               <Input
                 id={`client-tin-${client.id}`}
                 name="tin"
-                defaultValue={client.tin ?? ""}
+                defaultValue={initial.tin ?? ""}
                 disabled={pending}
               />
               <FieldError
@@ -98,7 +104,7 @@ function EditClientDialog({ client }: { client: ClientRecord }) {
               <Input
                 id={`client-address-${client.id}`}
                 name="address"
-                defaultValue={client.address}
+                defaultValue={initial.address}
                 disabled={pending}
                 required
               />
@@ -216,6 +222,70 @@ function AddBranchDialog({ clientId }: { clientId: string }) {
   )
 }
 
+function EditBranchFormFields({
+  branch,
+  action,
+  state,
+  pending,
+}: {
+  branch: Branch
+  action: (formData: FormData) => void
+  state: BranchState
+  pending: boolean
+}) {
+  // Frozen at mount, keyed by branch.id in the parent — so switching to a
+  // different branch remounts this with fresh defaults, while a successful
+  // save's revalidatePath (which can push updated data into this still
+  // -mounted form) doesn't change defaultValue on an already-initialized
+  // uncontrolled field, which is what Base UI warns about.
+  const [initial] = useState(branch)
+
+  return (
+    <form action={action} id={`edit-branch-form-${branch.id}`}>
+      <input type="hidden" name="branchId" value={branch.id} />
+      <FieldGroup>
+        <Field data-invalid={!!state?.errors?.name}>
+          <FieldLabel htmlFor={`edit-branch-name-${branch.id}`}>
+            Branch name
+          </FieldLabel>
+          <Input
+            id={`edit-branch-name-${branch.id}`}
+            name="name"
+            defaultValue={initial.name}
+            disabled={pending}
+            required
+          />
+          <FieldError
+            errors={state?.errors?.name?.map((message) => ({
+              message,
+            }))}
+          />
+        </Field>
+        <Field data-invalid={!!state?.errors?.address}>
+          <FieldLabel htmlFor={`edit-branch-address-${branch.id}`}>
+            Address
+          </FieldLabel>
+          <Input
+            id={`edit-branch-address-${branch.id}`}
+            name="address"
+            defaultValue={initial.address}
+            disabled={pending}
+            required
+          />
+          <FieldError
+            errors={state?.errors?.address?.map((message) => ({
+              message,
+            }))}
+          />
+        </Field>
+        {state?.message && (
+          <p className="text-sm text-destructive">{state.message}</p>
+        )}
+      </FieldGroup>
+    </form>
+  )
+}
+
 function EditBranchDialog({
   branch,
   open,
@@ -242,48 +312,13 @@ function EditBranchDialog({
           <DialogTitle>Edit branch</DialogTitle>
         </DialogHeader>
         {branch && (
-          <form action={action} id={`edit-branch-form-${branch.id}`}>
-            <input type="hidden" name="branchId" value={branch.id} />
-            <FieldGroup>
-              <Field data-invalid={!!state?.errors?.name}>
-                <FieldLabel htmlFor={`edit-branch-name-${branch.id}`}>
-                  Branch name
-                </FieldLabel>
-                <Input
-                  id={`edit-branch-name-${branch.id}`}
-                  name="name"
-                  defaultValue={branch.name}
-                  disabled={pending}
-                  required
-                />
-                <FieldError
-                  errors={state?.errors?.name?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
-              <Field data-invalid={!!state?.errors?.address}>
-                <FieldLabel htmlFor={`edit-branch-address-${branch.id}`}>
-                  Address
-                </FieldLabel>
-                <Input
-                  id={`edit-branch-address-${branch.id}`}
-                  name="address"
-                  defaultValue={branch.address}
-                  disabled={pending}
-                  required
-                />
-                <FieldError
-                  errors={state?.errors?.address?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
-              {state?.message && (
-                <p className="text-sm text-destructive">{state.message}</p>
-              )}
-            </FieldGroup>
-          </form>
+          <EditBranchFormFields
+            key={branch.id}
+            branch={branch}
+            action={action}
+            state={state}
+            pending={pending}
+          />
         )}
         <DialogFooter>
           <Button

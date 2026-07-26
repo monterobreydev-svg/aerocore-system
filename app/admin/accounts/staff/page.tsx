@@ -1,8 +1,9 @@
 import { Users, UserCheck, UserX, ShieldCheck } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/session"
+import { cn } from "@/lib/utils"
 import { CreateStaffDialog } from "@/components/admin/create-staff-dialog"
-import { StaffTable, type StaffMember } from "@/components/admin/staff-table"
+import { StaffCards, type StaffMember } from "@/components/admin/staff-cards"
 import { Card, CardContent } from "@/components/ui/card"
 
 export default async function StaffPage() {
@@ -65,13 +66,33 @@ export default async function StaffPage() {
 
   const activeCount = staff.filter((member) => member.isActive).length
   const stats = [
-    { label: "Total staff", value: staff.length, icon: Users },
-    { label: "Active", value: activeCount, icon: UserCheck },
-    { label: "Inactive", value: staff.length - activeCount, icon: UserX },
+    {
+      label: "Total staff",
+      value: staff.length,
+      icon: Users,
+      color: "text-slate-600 dark:text-slate-400",
+      bg: "bg-slate-600/10",
+    },
+    {
+      label: "Active",
+      value: activeCount,
+      icon: UserCheck,
+      color: "text-emerald-600 dark:text-emerald-400",
+      bg: "bg-emerald-600/10",
+    },
+    {
+      label: "Inactive",
+      value: staff.length - activeCount,
+      icon: UserX,
+      color: "text-rose-600 dark:text-rose-400",
+      bg: "bg-rose-600/10",
+    },
     {
       label: "Directors & admins",
       value: staff.filter((m) => m.role === "DIRECTOR" || m.role === "ADMINISTRATOR").length,
       icon: ShieldCheck,
+      color: "text-violet-600 dark:text-violet-400",
+      bg: "bg-violet-600/10",
     },
   ]
 
@@ -87,23 +108,39 @@ export default async function StaffPage() {
         <CreateStaffDialog currentRole={session.role} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="shadow-sm">
-            <CardContent className="flex items-center justify-between">
+      <Card className="shadow-sm" size="sm">
+        <CardContent className="grid grid-cols-2 divide-y divide-border sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+          {stats.map((stat, index) => (
+            <div
+              key={stat.label}
+              className={cn(
+                "flex items-center gap-3 py-3 sm:px-4 sm:py-0",
+                index === 0 && "sm:pl-0",
+                index === stats.length - 1 && "sm:pr-0"
+              )}
+            >
+              <div
+                className={cn(
+                  "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                  stat.bg
+                )}
+              >
+                <stat.icon className={cn("size-4.5", stat.color)} />
+              </div>
               <div>
-                <p className="text-2xl font-semibold">{stat.value}</p>
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className="text-xl leading-none font-semibold">
+                  {stat.value}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {stat.label}
+                </p>
               </div>
-              <div className="flex size-9 items-center justify-center rounded-lg bg-sky-600/10">
-                <stat.icon className="size-4.5 text-sky-600 dark:text-sky-400" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
-      <StaffTable
+      <StaffCards
         staff={staff}
         currentAccountId={session.accountId}
         currentRole={session.role}

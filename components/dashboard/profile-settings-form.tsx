@@ -1,6 +1,6 @@
 "use client"
 
-import { useActionState } from "react"
+import { useActionState, useState } from "react"
 import { updateProfile, type ProfileState } from "@/app/actions/profile"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,6 +38,12 @@ export function ProfileSettingsForm({
     updateProfile,
     undefined
   )
+  // Uncontrolled inputs below read their defaultValue from this frozen
+  // snapshot, not the live `employee` prop — a successful save triggers
+  // revalidatePath, which pushes fresh data into this still-mounted form,
+  // and changing defaultValue on an already-initialized uncontrolled field
+  // is what Base UI warns about.
+  const [initial] = useState(employee)
 
   return (
     <Card className="max-w-2xl">
@@ -57,7 +63,7 @@ export function ProfileSettingsForm({
                 <Input
                   id="firstName"
                   name="firstName"
-                  defaultValue={employee.firstName}
+                  defaultValue={initial.firstName}
                   aria-invalid={!!state?.errors?.firstName}
                   disabled={pending}
                   required
@@ -73,7 +79,7 @@ export function ProfileSettingsForm({
                 <Input
                   id="lastName"
                   name="lastName"
-                  defaultValue={employee.lastName}
+                  defaultValue={initial.lastName}
                   aria-invalid={!!state?.errors?.lastName}
                   disabled={pending}
                   required
@@ -91,7 +97,7 @@ export function ProfileSettingsForm({
               <Input
                 id="middleName"
                 name="middleName"
-                defaultValue={employee.middleName ?? ""}
+                defaultValue={initial.middleName ?? ""}
                 disabled={pending}
               />
               <FieldError
@@ -105,7 +111,7 @@ export function ProfileSettingsForm({
               <FieldLabel htmlFor="position">Position</FieldLabel>
               <Input
                 id="position"
-                defaultValue={employee.position}
+                defaultValue={initial.position}
                 disabled
                 className="text-muted-foreground"
               />
@@ -119,7 +125,7 @@ export function ProfileSettingsForm({
                 <Input
                   id="emergencyContactPerson"
                   name="emergencyContactPerson"
-                  defaultValue={employee.emergencyContactPerson ?? ""}
+                  defaultValue={initial.emergencyContactPerson ?? ""}
                   placeholder="e.g. Maria Dela Cruz"
                   disabled={pending}
                 />
@@ -136,7 +142,7 @@ export function ProfileSettingsForm({
                 <Input
                   id="emergencyContactNo"
                   name="emergencyContactNo"
-                  defaultValue={employee.emergencyContactNo ?? ""}
+                  defaultValue={initial.emergencyContactNo ?? ""}
                   placeholder="e.g. 0917 123 4567"
                   disabled={pending}
                 />

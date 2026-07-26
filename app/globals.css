@@ -46,6 +46,55 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --animate-kenburns: kenburns 24s ease-in-out infinite alternate;
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-airflow: airflow 16s linear infinite;
+  --animate-airflow-slow: airflow 26s linear infinite;
+  --animate-frost-glow: frost-glow 5s ease-in-out infinite;
+}
+
+@keyframes kenburns {
+  0% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  100% {
+    transform: scale(1.1) translate3d(-1.5%, -1.5%, 0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-16px);
+  }
+}
+
+@keyframes airflow {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes frost-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(165, 243, 252, 0.12),
+      0 25px 60px -12px rgba(8, 47, 73, 0.55),
+      0 0 40px -6px rgba(103, 232, 249, 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(165, 243, 252, 0.28),
+      0 25px 60px -12px rgba(8, 47, 73, 0.6),
+      0 0 55px -4px rgba(103, 232, 249, 0.28);
+  }
 }
 
 :root {
