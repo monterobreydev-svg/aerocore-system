@@ -21,6 +21,20 @@ export function roleLabel(role: Role) {
   return ROLE_LABELS[role]
 }
 
+// Short plain-language summary of what each role can actually reach, shown
+// next to the role picker so whoever creates an account isn't guessing.
+// Keep these in step with isAdminPathAllowedForRole and homeRouteForRole.
+const ROLE_ACCESS: Record<Role, string> = {
+  DIRECTOR: "Full access, including staff accounts and settings",
+  ADMINISTRATOR: "Everything except editing their own record",
+  ENGINEER: "Dashboard, schedules and reports only",
+  EMPLOYEE: "Employee portal only — their own schedule and claims",
+}
+
+export function roleAccessLabel(role: Role) {
+  return ROLE_ACCESS[role]
+}
+
 // Director and Administrator can reach every /admin page. Engineer is
 // restricted to the dashboard plus these path prefixes.
 const ENGINEER_ALLOWED_ADMIN_PATHS = ["/admin/schedules", "/admin/reports"]

@@ -1,13 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { Bell, ChevronDown, LogOut, Search, Settings } from "lucide-react"
+import { Bell, ChevronDown, LogOut, Settings } from "lucide-react"
 import { logout } from "@/app/actions/auth"
 import type { Role } from "@/app/generated/prisma/client"
 import { roleLabel } from "@/lib/roles"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -68,17 +67,6 @@ export function DashboardHeader({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <div className="relative hidden md:block">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search..."
-            className="h-9 w-56 rounded-lg bg-muted/50 pl-8 lg:w-72"
-          />
-          <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-background px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
-            ⌘K
-          </kbd>
-        </div>
-
         <DropdownMenu>
           <DropdownMenuTrigger
             render={

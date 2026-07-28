@@ -7,15 +7,58 @@ import { hashPassword } from "@/lib/password"
 import { verifySession } from "@/lib/session"
 import { assignableRoles } from "@/lib/roles"
 
+const optionalEmail = z
+  .string()
+  .trim()
+  .optional()
+  .refine((value) => !value || z.string().email().safeParse(value).success, {
+    message: "Enter a valid email address.",
+  })
+
+const optionalCivilStatus = z
+  .enum(["SINGLE", "MARRIED", "WIDOWED", "SEPARATED", "DIVORCED"])
+  .optional()
+  .or(z.literal("").transform(() => undefined))
+
+const optionalEmploymentType = z
+  .enum(["PROBATIONARY", "REGULAR", "CONTRACTUAL"])
+  .optional()
+  .or(z.literal("").transform(() => undefined))
+
+// A blank money input must stay null rather than coercing to 0 — "not set"
+// and "zero allowance" are different facts on a payslip.
+const optionalMoney = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value ? Number(value) : null))
+  .refine((value) => value === null || (Number.isFinite(value) && value >= 0), {
+    message: "Enter a valid amount.",
+  })
+
 const StaffSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required."),
   lastName: z.string().trim().min(1, "Last name is required."),
   middleName: z.string().trim().optional(),
+  phoneNo: z.string().trim().optional(),
+  email: optionalEmail,
+  birthDate: z.string().trim().optional(),
+  civilStatus: optionalCivilStatus,
+  address: z.string().trim().optional(),
+  employeeNo: z.string().trim().optional(),
   position: z.string().trim().min(1, "Position is required."),
+  employmentType: optionalEmploymentType,
+  dateHired: z.string().trim().optional(),
   hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
+  allowancePerCutoff: optionalMoney,
   skills: z.string().trim().optional(),
   emergencyContactPerson: z.string().trim().optional(),
   emergencyContactNo: z.string().trim().optional(),
+  emergencyContactRelationship: z.string().trim().optional(),
+  tinNo: z.string().trim().optional(),
+  sssNo: z.string().trim().optional(),
+  philhealthNo: z.string().trim().optional(),
+  pagibigNo: z.string().trim().optional(),
   username: z
     .string()
     .trim()
@@ -32,11 +75,25 @@ export type StaffState =
         firstName?: string[]
         lastName?: string[]
         middleName?: string[]
+        phoneNo?: string[]
+        email?: string[]
+        birthDate?: string[]
+        civilStatus?: string[]
+        address?: string[]
+        employeeNo?: string[]
         position?: string[]
+        employmentType?: string[]
+        dateHired?: string[]
         hourlyRate?: string[]
+        allowancePerCutoff?: string[]
         skills?: string[]
         emergencyContactPerson?: string[]
         emergencyContactNo?: string[]
+        emergencyContactRelationship?: string[]
+        tinNo?: string[]
+        sssNo?: string[]
+        philhealthNo?: string[]
+        pagibigNo?: string[]
         username?: string[]
         password?: string[]
         role?: string[]
@@ -60,11 +117,27 @@ export async function createStaffAccount(
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
     middleName: formData.get("middleName"),
+    phoneNo: formData.get("phoneNo"),
+    email: formData.get("email"),
+    birthDate: formData.get("birthDate"),
+    civilStatus: formData.get("civilStatus"),
+    address: formData.get("address"),
+    employeeNo: formData.get("employeeNo"),
     position: formData.get("position"),
+    employmentType: formData.get("employmentType"),
+    dateHired: formData.get("dateHired"),
     hourlyRate: formData.get("hourlyRate"),
+    allowancePerCutoff: formData.get("allowancePerCutoff"),
     skills: formData.get("skills"),
     emergencyContactPerson: formData.get("emergencyContactPerson"),
     emergencyContactNo: formData.get("emergencyContactNo"),
+    emergencyContactRelationship: formData.get(
+      "emergencyContactRelationship"
+    ),
+    tinNo: formData.get("tinNo"),
+    sssNo: formData.get("sssNo"),
+    philhealthNo: formData.get("philhealthNo"),
+    pagibigNo: formData.get("pagibigNo"),
     username: formData.get("username"),
     password: formData.get("password"),
     role: formData.get("role"),
@@ -78,11 +151,25 @@ export async function createStaffAccount(
     firstName,
     lastName,
     middleName,
+    phoneNo,
+    email,
+    birthDate,
+    civilStatus,
+    address,
+    employeeNo,
     position,
+    employmentType,
+    dateHired,
     hourlyRate,
+    allowancePerCutoff,
     skills,
     emergencyContactPerson,
     emergencyContactNo,
+    emergencyContactRelationship,
+    tinNo,
+    sssNo,
+    philhealthNo,
+    pagibigNo,
     username,
     password,
     role,
@@ -104,6 +191,17 @@ export async function createStaffAccount(
     return { errors: { username: ["That username is already taken."] } }
   }
 
+  if (employeeNo) {
+    const existingEmployeeNo = await prisma.employee.findUnique({
+      where: { employeeNo },
+    })
+    if (existingEmployeeNo) {
+      return {
+        errors: { employeeNo: ["That employee ID is already in use."] },
+      }
+    }
+  }
+
   const skillsArray = skills
     ? skills
         .split(",")
@@ -117,11 +215,25 @@ export async function createStaffAccount(
         firstName,
         lastName,
         middleName: middleName || null,
+        phoneNo: phoneNo || null,
+        email: email || null,
+        birthDate: birthDate ? new Date(birthDate) : null,
+        civilStatus: civilStatus || null,
+        address: address || null,
+        employeeNo: employeeNo || null,
         position,
+        employmentType: employmentType || null,
+        dateHired: dateHired ? new Date(dateHired) : null,
         hourlyRate,
+        allowancePerCutoff,
         skills: skillsArray,
         emergencyContactPerson: emergencyContactPerson || null,
         emergencyContactNo: emergencyContactNo || null,
+        emergencyContactRelationship: emergencyContactRelationship || null,
+        tinNo: tinNo || null,
+        sssNo: sssNo || null,
+        philhealthNo: philhealthNo || null,
+        pagibigNo: pagibigNo || null,
         createdById: session.accountId,
       },
     })
@@ -146,11 +258,25 @@ const UpdateStaffSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required."),
   lastName: z.string().trim().min(1, "Last name is required."),
   middleName: z.string().trim().optional(),
+  phoneNo: z.string().trim().optional(),
+  email: optionalEmail,
+  birthDate: z.string().trim().optional(),
+  civilStatus: optionalCivilStatus,
+  address: z.string().trim().optional(),
+  employeeNo: z.string().trim().optional(),
   position: z.string().trim().min(1, "Position is required."),
+  employmentType: optionalEmploymentType,
+  dateHired: z.string().trim().optional(),
   hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
+  allowancePerCutoff: optionalMoney,
   skills: z.string().trim().optional(),
   emergencyContactPerson: z.string().trim().optional(),
   emergencyContactNo: z.string().trim().optional(),
+  emergencyContactRelationship: z.string().trim().optional(),
+  tinNo: z.string().trim().optional(),
+  sssNo: z.string().trim().optional(),
+  philhealthNo: z.string().trim().optional(),
+  pagibigNo: z.string().trim().optional(),
   isActive: z.enum(["true", "false"]),
 })
 
@@ -160,11 +286,25 @@ export type UpdateStaffState =
         firstName?: string[]
         lastName?: string[]
         middleName?: string[]
+        phoneNo?: string[]
+        email?: string[]
+        birthDate?: string[]
+        civilStatus?: string[]
+        address?: string[]
+        employeeNo?: string[]
         position?: string[]
+        employmentType?: string[]
+        dateHired?: string[]
         hourlyRate?: string[]
+        allowancePerCutoff?: string[]
         skills?: string[]
         emergencyContactPerson?: string[]
         emergencyContactNo?: string[]
+        emergencyContactRelationship?: string[]
+        tinNo?: string[]
+        sssNo?: string[]
+        philhealthNo?: string[]
+        pagibigNo?: string[]
       }
       message?: string
       success?: boolean
@@ -190,11 +330,27 @@ export async function updateStaffAccount(
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
     middleName: formData.get("middleName"),
+    phoneNo: formData.get("phoneNo"),
+    email: formData.get("email"),
+    birthDate: formData.get("birthDate"),
+    civilStatus: formData.get("civilStatus"),
+    address: formData.get("address"),
+    employeeNo: formData.get("employeeNo"),
     position: formData.get("position"),
+    employmentType: formData.get("employmentType"),
+    dateHired: formData.get("dateHired"),
     hourlyRate: formData.get("hourlyRate"),
+    allowancePerCutoff: formData.get("allowancePerCutoff"),
     skills: formData.get("skills"),
     emergencyContactPerson: formData.get("emergencyContactPerson"),
     emergencyContactNo: formData.get("emergencyContactNo"),
+    emergencyContactRelationship: formData.get(
+      "emergencyContactRelationship"
+    ),
+    tinNo: formData.get("tinNo"),
+    sssNo: formData.get("sssNo"),
+    philhealthNo: formData.get("philhealthNo"),
+    pagibigNo: formData.get("pagibigNo"),
     isActive: formData.get("isActive"),
   })
 
@@ -217,11 +373,25 @@ export async function updateStaffAccount(
     firstName,
     lastName,
     middleName,
+    phoneNo,
+    email,
+    birthDate,
+    civilStatus,
+    address,
+    employeeNo,
     position,
+    employmentType,
+    dateHired,
     hourlyRate,
+    allowancePerCutoff,
     skills,
     emergencyContactPerson,
     emergencyContactNo,
+    emergencyContactRelationship,
+    tinNo,
+    sssNo,
+    philhealthNo,
+    pagibigNo,
     isActive,
   } = validatedFields.data
   const nextIsActive = isActive === "true"
@@ -241,6 +411,15 @@ export async function updateStaffAccount(
     return { message: "Staff account not found." }
   }
 
+  if (employeeNo && employeeNo !== employee.employeeNo) {
+    const clash = await prisma.employee.findUnique({ where: { employeeNo } })
+    if (clash) {
+      return {
+        errors: { employeeNo: ["That employee ID is already in use."] },
+      }
+    }
+  }
+
   const changes: { field: string; oldValue: string; newValue: string }[] = []
 
   function diff(field: string, oldValue: string | null, newValue: string | null) {
@@ -253,11 +432,39 @@ export async function updateStaffAccount(
     }
   }
 
+  const nextBirthDate = birthDate ? new Date(birthDate) : null
+  const nextDateHired = dateHired ? new Date(dateHired) : null
+  const nextCivilStatus = civilStatus || null
+  const nextEmploymentType = employmentType || null
+
   diff("firstName", employee.firstName, firstName)
   diff("lastName", employee.lastName, lastName)
   diff("middleName", employee.middleName, normalize(middleName))
+  diff("phoneNo", employee.phoneNo, normalize(phoneNo))
+  diff("email", employee.email, normalize(email))
+  diff(
+    "birthDate",
+    employee.birthDate ? employee.birthDate.toISOString().slice(0, 10) : null,
+    nextBirthDate ? nextBirthDate.toISOString().slice(0, 10) : null
+  )
+  diff("civilStatus", employee.civilStatus, nextCivilStatus)
+  diff("address", employee.address, normalize(address))
+  diff("employeeNo", employee.employeeNo, normalize(employeeNo))
   diff("position", employee.position, position)
+  diff("employmentType", employee.employmentType, nextEmploymentType)
+  diff(
+    "dateHired",
+    employee.dateHired ? employee.dateHired.toISOString().slice(0, 10) : null,
+    nextDateHired ? nextDateHired.toISOString().slice(0, 10) : null
+  )
   diff("hourlyRate", String(employee.hourlyRate), String(hourlyRate))
+  diff(
+    "allowancePerCutoff",
+    employee.allowancePerCutoff === null
+      ? null
+      : String(employee.allowancePerCutoff),
+    allowancePerCutoff === null ? null : String(allowancePerCutoff)
+  )
   diff("skills", employee.skills.join(", "), skillsArray.join(", "))
   diff(
     "emergencyContactPerson",
@@ -269,6 +476,15 @@ export async function updateStaffAccount(
     employee.emergencyContactNo,
     normalize(emergencyContactNo)
   )
+  diff(
+    "emergencyContactRelationship",
+    employee.emergencyContactRelationship,
+    normalize(emergencyContactRelationship)
+  )
+  diff("tinNo", employee.tinNo, normalize(tinNo))
+  diff("sssNo", employee.sssNo, normalize(sssNo))
+  diff("philhealthNo", employee.philhealthNo, normalize(philhealthNo))
+  diff("pagibigNo", employee.pagibigNo, normalize(pagibigNo))
   if (employee.account.isActive !== nextIsActive) {
     changes.push({
       field: "isActive",
@@ -285,11 +501,27 @@ export async function updateStaffAccount(
           firstName,
           lastName,
           middleName: normalize(middleName),
+          phoneNo: normalize(phoneNo),
+          email: normalize(email),
+          birthDate: nextBirthDate,
+          civilStatus: nextCivilStatus,
+          address: normalize(address),
+          employeeNo: normalize(employeeNo),
           position,
+          employmentType: nextEmploymentType,
+          dateHired: nextDateHired,
           hourlyRate,
+          allowancePerCutoff,
           skills: skillsArray,
           emergencyContactPerson: normalize(emergencyContactPerson),
           emergencyContactNo: normalize(emergencyContactNo),
+          emergencyContactRelationship: normalize(
+            emergencyContactRelationship
+          ),
+          tinNo: normalize(tinNo),
+          sssNo: normalize(sssNo),
+          philhealthNo: normalize(philhealthNo),
+          pagibigNo: normalize(pagibigNo),
         },
       })
 

@@ -1,13 +1,19 @@
-import { Users, UserCheck, UserX, ShieldCheck } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/session"
-import { cn } from "@/lib/utils"
-import { CreateStaffDialog } from "@/components/admin/create-staff-dialog"
+import { nextEmployeeNo } from "@/lib/employee"
 import { StaffCards, type StaffMember } from "@/components/admin/staff-cards"
-import { Card, CardContent } from "@/components/ui/card"
 
 export default async function StaffPage() {
   const session = await verifySession()
+
+  // Highest existing "E-0000" code, so the create form can pre-fill the next
+  // one. Sorted as text, which is why the codes are zero-padded.
+  const lastNumbered = await prisma.employee.findFirst({
+    where: { employeeNo: { not: null } },
+    orderBy: { employeeNo: "desc" },
+    select: { employeeNo: true },
+  })
+  const suggestedEmployeeNo = nextEmployeeNo(lastNumbered?.employeeNo)
 
   const accounts = await prisma.userAccount.findMany({
     include: {
@@ -44,11 +50,33 @@ export default async function StaffPage() {
       firstName: account.employee.firstName,
       lastName: account.employee.lastName,
       middleName: account.employee.middleName,
+      phoneNo: account.employee.phoneNo,
+      email: account.employee.email,
+      birthDate: account.employee.birthDate
+        ? account.employee.birthDate.toISOString().slice(0, 10)
+        : null,
+      civilStatus: account.employee.civilStatus,
+      address: account.employee.address,
+      employeeNo: account.employee.employeeNo,
       position: account.employee.position,
+      employmentType: account.employee.employmentType,
+      dateHired: account.employee.dateHired
+        ? account.employee.dateHired.toISOString().slice(0, 10)
+        : null,
       hourlyRate: Number(account.employee.hourlyRate),
+      allowancePerCutoff:
+        account.employee.allowancePerCutoff === null
+          ? null
+          : Number(account.employee.allowancePerCutoff),
       skills: account.employee.skills,
       emergencyContactPerson: account.employee.emergencyContactPerson,
       emergencyContactNo: account.employee.emergencyContactNo,
+      emergencyContactRelationship:
+        account.employee.emergencyContactRelationship,
+      tinNo: account.employee.tinNo,
+      sssNo: account.employee.sssNo,
+      philhealthNo: account.employee.philhealthNo,
+      pagibigNo: account.employee.pagibigNo,
       createdAt: account.employee.createdAt.toISOString(),
       createdByName: account.employee.createdBy
         ? `${account.employee.createdBy.employee.firstName} ${account.employee.createdBy.employee.lastName}`
@@ -64,86 +92,20 @@ export default async function StaffPage() {
     },
   }))
 
-  const activeCount = staff.filter((member) => member.isActive).length
-  const stats = [
-    {
-      label: "Total staff",
-      value: staff.length,
-      icon: Users,
-      color: "text-slate-600 dark:text-slate-400",
-      bg: "bg-slate-600/10",
-    },
-    {
-      label: "Active",
-      value: activeCount,
-      icon: UserCheck,
-      color: "text-emerald-600 dark:text-emerald-400",
-      bg: "bg-emerald-600/10",
-    },
-    {
-      label: "Inactive",
-      value: staff.length - activeCount,
-      icon: UserX,
-      color: "text-rose-600 dark:text-rose-400",
-      bg: "bg-rose-600/10",
-    },
-    {
-      label: "Directors & admins",
-      value: staff.filter((m) => m.role === "DIRECTOR" || m.role === "ADMINISTRATOR").length,
-      icon: ShieldCheck,
-      color: "text-violet-600 dark:text-violet-400",
-      bg: "bg-violet-600/10",
-    },
-  ]
-
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Staff</h2>
-          <p className="text-sm text-muted-foreground">
-            Employees with a login account.
-          </p>
-        </div>
-        <CreateStaffDialog currentRole={session.role} />
+      <div>
+        <h2 className="text-lg font-semibold">Employees</h2>
+        <p className="text-sm text-muted-foreground">
+          Personnel records and the accounts they sign in with.
+        </p>
       </div>
-
-      <Card className="shadow-sm" size="sm">
-        <CardContent className="grid grid-cols-2 divide-y divide-border sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-          {stats.map((stat, index) => (
-            <div
-              key={stat.label}
-              className={cn(
-                "flex items-center gap-3 py-3 sm:px-4 sm:py-0",
-                index === 0 && "sm:pl-0",
-                index === stats.length - 1 && "sm:pr-0"
-              )}
-            >
-              <div
-                className={cn(
-                  "flex size-9 shrink-0 items-center justify-center rounded-lg",
-                  stat.bg
-                )}
-              >
-                <stat.icon className={cn("size-4.5", stat.color)} />
-              </div>
-              <div>
-                <p className="text-xl leading-none font-semibold">
-                  {stat.value}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {stat.label}
-                </p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
 
       <StaffCards
         staff={staff}
         currentAccountId={session.accountId}
         currentRole={session.role}
+        suggestedEmployeeNo={suggestedEmployeeNo}
       />
     </div>
   )

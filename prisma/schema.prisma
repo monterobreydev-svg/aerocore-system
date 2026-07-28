@@ -19,19 +19,47 @@ enum Role {
   EMPLOYEE
 }
 
+enum CivilStatus {
+  SINGLE
+  MARRIED
+  WIDOWED
+  SEPARATED
+  DIVORCED
+}
+
+enum EmploymentType {
+  PROBATIONARY
+  REGULAR
+  CONTRACTUAL
+}
+
 model Employee {
-  id                     String       @id @default(uuid())
-  firstName              String
-  lastName               String
-  middleName             String?
-  emergencyContactPerson String?
-  emergencyContactNo     String?
-  position               String
-  hourlyRate             Decimal
-  skills                 String[]
-  createdAt              DateTime     @default(now())
-  createdById            String?
-  createdBy              UserAccount? @relation("EmployeeCreatedBy", fields: [createdById], references: [id])
+  id                           String          @id @default(uuid())
+  employeeNo                   String?         @unique
+  firstName                    String
+  lastName                     String
+  middleName                   String?
+  phoneNo                      String?
+  email                        String?
+  birthDate                    DateTime?
+  civilStatus                  CivilStatus?
+  address                      String?
+  emergencyContactPerson       String?
+  emergencyContactNo           String?
+  emergencyContactRelationship String?
+  position                     String
+  employmentType               EmploymentType?
+  dateHired                    DateTime?
+  hourlyRate                   Decimal
+  allowancePerCutoff           Decimal?
+  skills                       String[]
+  tinNo                        String?
+  sssNo                        String?
+  philhealthNo                 String?
+  pagibigNo                    String?
+  createdAt                    DateTime        @default(now())
+  createdById                  String?
+  createdBy                    UserAccount?    @relation("EmployeeCreatedBy", fields: [createdById], references: [id])
 
   account             UserAccount?         @relation("EmployeeAccount")
   editLogs            StaffEditLog[]       @relation("EmployeeEditLogs")
