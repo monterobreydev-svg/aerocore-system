@@ -103,6 +103,7 @@ export function ScheduleTable({
               <TableHead>Client</TableHead>
               <TableHead>Work type</TableHead>
               <TableHead>Assigned</TableHead>
+              <TableHead>Booked by</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -110,7 +111,7 @@ export function ScheduleTable({
             {schedules.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="h-32 text-center text-muted-foreground"
                 >
                   No schedules yet.
@@ -142,6 +143,14 @@ export function ScheduleTable({
                 </TableCell>
                 <TableCell>
                   <AssignedStack assignments={schedule.assignments} />
+                </TableCell>
+                <TableCell>
+                  <div className="text-sm">
+                    {schedule.createdByName ?? "—"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(schedule.createdAt).toLocaleDateString()}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <StatusChip status={schedule.status} />

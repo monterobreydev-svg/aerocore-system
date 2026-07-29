@@ -31,8 +31,8 @@ export function ScheduleMonthView({
   // for that date — the month grid can't show everything on a busy day.
   onOpenDay: (day: Date) => void
   // Clicking the empty part of a cell books on that day, the way every
-  // calendar app works.
-  onCreateAt: (day: Date) => void
+  // calendar app works. Omitted on the employee side, which is read-only.
+  onCreateAt?: (day: Date) => void
 }) {
   const today = new Date()
 
@@ -133,12 +133,14 @@ export function ScheduleMonthView({
               {/* Fills the leftover space so the whole empty area of the cell
                   is the "book here" target, without sitting on top of the
                   chips above it. */}
-              <button
-                type="button"
-                onClick={() => onCreateAt(day)}
-                aria-label={`Book a job on ${day.toDateString()}`}
-                className="min-h-4 flex-1 rounded outline-none hover:bg-sky-600/5 focus-visible:bg-sky-600/5"
-              />
+              {onCreateAt && (
+                <button
+                  type="button"
+                  onClick={() => onCreateAt(day)}
+                  aria-label={`Book a job on ${day.toDateString()}`}
+                  className="min-h-4 flex-1 rounded outline-none hover:bg-sky-600/5 focus-visible:bg-sky-600/5"
+                />
+              )}
             </div>
           )
         })}

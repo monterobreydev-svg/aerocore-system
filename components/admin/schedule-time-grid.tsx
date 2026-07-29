@@ -122,7 +122,7 @@ function DayColumn({
   startHour: number
   detailed: boolean
   onSelect: (schedule: ScheduleRecord) => void
-  onCreateAt: (day: Date, hour: number) => void
+  onCreateAt?: (day: Date, hour: number) => void
 }) {
   const daySchedules = schedules.filter((schedule) =>
     isSameDay(new Date(schedule.date), day)
@@ -145,17 +145,19 @@ function DayColumn({
     <div className="relative flex-1 border-l">
       {/* An hour-sized click target behind the blocks: clicking empty space
           books that day at that hour. Sits under the blocks in stacking order
-          (they're z-10) so it never swallows a click meant for a job. */}
-      {hours.map((hour) => (
-        <button
-          key={hour}
-          type="button"
-          onClick={() => onCreateAt(day, hour)}
-          aria-label={`Book a job on ${day.toDateString()} at ${hour}:00`}
-          style={{ height: HOUR_HEIGHT }}
-          className="block w-full outline-none hover:bg-sky-600/5 focus-visible:bg-sky-600/5"
-        />
-      ))}
+          (they're z-10) so it never swallows a click meant for a job. Absent
+          on the employee side, where the calendar is read-only. */}
+      {onCreateAt &&
+        hours.map((hour) => (
+          <button
+            key={hour}
+            type="button"
+            onClick={() => onCreateAt(day, hour)}
+            aria-label={`Book a job on ${day.toDateString()} at ${hour}:00`}
+            style={{ height: HOUR_HEIGHT }}
+            className="block w-full outline-none hover:bg-sky-600/5 focus-visible:bg-sky-600/5"
+          />
+        ))}
 
       {packed.map(({ item, column, columns }) => (
         <JobBlock
@@ -184,7 +186,7 @@ export function ScheduleTimeGrid({
   days: Date[]
   schedules: ScheduleRecord[]
   onSelect: (schedule: ScheduleRecord) => void
-  onCreateAt: (day: Date, hour: number) => void
+  onCreateAt?: (day: Date, hour: number) => void
 }) {
   const visible = useMemo(
     () =>

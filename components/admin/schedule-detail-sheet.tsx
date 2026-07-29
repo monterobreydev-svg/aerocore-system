@@ -11,6 +11,7 @@ import {
   Phone,
   StickyNote,
   Trash2,
+  UserRound,
   User,
   Users,
 } from "lucide-react"
@@ -204,6 +205,17 @@ function ScheduleSummary({
               <p className="whitespace-pre-wrap">{schedule.remarks}</p>
             </DetailRow>
           )}
+          {/* Who booked it, spelled out rather than tucked in the subtitle —
+              it's the first thing anyone asks when a job looks wrong. */}
+          <DetailRow icon={UserRound}>
+            <span className="text-muted-foreground">
+              Booked by{" "}
+              <span className="font-medium text-foreground">
+                {schedule.createdByName ?? "the system"}
+              </span>{" "}
+              on {new Date(schedule.createdAt).toLocaleString()}
+            </span>
+          </DetailRow>
         </div>
 
         {confirmDelete && (
@@ -419,8 +431,8 @@ export function ScheduleDetailSheet({
             {schedule.branch ? ` · ${schedule.branch.name}` : ""}
           </SheetTitle>
           <SheetDescription>
-            Created {new Date(schedule.createdAt).toLocaleDateString()}
-            {schedule.createdByName ? ` by ${schedule.createdByName}` : ""}
+            {formatScheduleDate(schedule.date)} ·{" "}
+            {formatTimeRange(schedule.startTime, schedule.endTime)}
           </SheetDescription>
         </SheetHeader>
 
