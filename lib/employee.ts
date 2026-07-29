@@ -1,6 +1,7 @@
 import type {
   CivilStatus,
   EmploymentType,
+  WorkType,
 } from "@/app/generated/prisma/client"
 
 const CIVIL_STATUS_LABELS: Record<CivilStatus, string> = {
@@ -32,6 +33,46 @@ export function employmentTypeLabel(type: EmploymentType) {
 export const EMPLOYMENT_TYPE_OPTIONS = Object.keys(
   EMPLOYMENT_TYPE_LABELS
 ) as EmploymentType[]
+
+// The fixed set of employee capabilities. Employee.skills is a String[] rather
+// than an enum, so these exact labels are what gets stored — display code can
+// print what's saved without a lookup, and adding a capability later needs no
+// migration. Deliberately kept separate from WorkType in lib/schedule.ts:
+// they overlap but aren't the same list (no "Testing & Commissioning" work
+// type, and that enum says "Troubleshoot" where a skill says "Troubleshooting").
+export const SKILL_OPTIONS = [
+  "Installation",
+  "Repair",
+  "Maintenance",
+  "Troubleshooting",
+  "Inspection",
+  "Survey",
+  "Cleaning",
+  "Testing & Commissioning",
+] as const
+
+export type Skill = (typeof SKILL_OPTIONS)[number]
+
+// Which capability a job's work type calls for, so the employee picker can
+// float the people who can actually do it to the top. Seven of the eight skills map
+// onto a WorkType; "Testing & Commissioning" has no matching job type yet, so
+// it never promotes anyone — worth revisiting if that work gets scheduled.
+export const WORK_TYPE_SKILL: Record<WorkType, Skill> = {
+  INSTALLATION: "Installation",
+  REPAIR: "Repair",
+  MAINTENANCE: "Maintenance",
+  CLEANING: "Cleaning",
+  INSPECTION: "Inspection",
+  SURVEY: "Survey",
+  TROUBLESHOOT: "Troubleshooting",
+}
+
+// How many of the job's work types a person is actually qualified for.
+export function skillMatchCount(skills: readonly string[], workTypes: WorkType[]) {
+  if (workTypes.length === 0) return 0
+  const owned = new Set(skills)
+  return workTypes.filter((type) => owned.has(WORK_TYPE_SKILL[type])).length
+}
 
 // Standard Philippine full-time assumption: 8 hours a day over 26 paid days.
 // The monthly figure is a projection shown while entering an hourly rate —

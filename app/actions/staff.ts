@@ -6,6 +6,15 @@ import { prisma } from "@/lib/prisma"
 import { hashPassword } from "@/lib/password"
 import { verifySession } from "@/lib/session"
 import { assignableRoles } from "@/lib/roles"
+import { SKILL_OPTIONS } from "@/lib/employee"
+
+// Checkboxes arrive as repeated `skills` entries; nothing outside the fixed
+// list is accepted, so a hand-rolled POST can't seed free-text values that
+// would never match when filtering employees by capability.
+const skillSet = z
+  .array(z.enum(SKILL_OPTIONS), { error: "Unknown skill selected." })
+  .optional()
+  .transform((value) => value ?? [])
 
 const optionalEmail = z
   .string()
@@ -51,7 +60,7 @@ const StaffSchema = z.object({
   dateHired: z.string().trim().optional(),
   hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
   allowancePerCutoff: optionalMoney,
-  skills: z.string().trim().optional(),
+  skills: skillSet,
   emergencyContactPerson: z.string().trim().optional(),
   emergencyContactNo: z.string().trim().optional(),
   emergencyContactRelationship: z.string().trim().optional(),
@@ -128,7 +137,7 @@ export async function createStaffAccount(
     dateHired: formData.get("dateHired"),
     hourlyRate: formData.get("hourlyRate"),
     allowancePerCutoff: formData.get("allowancePerCutoff"),
-    skills: formData.get("skills"),
+    skills: formData.getAll("skills"),
     emergencyContactPerson: formData.get("emergencyContactPerson"),
     emergencyContactNo: formData.get("emergencyContactNo"),
     emergencyContactRelationship: formData.get(
@@ -202,12 +211,6 @@ export async function createStaffAccount(
     }
   }
 
-  const skillsArray = skills
-    ? skills
-        .split(",")
-        .map((skill) => skill.trim())
-        .filter(Boolean)
-    : []
 
   await prisma.$transaction(async (tx) => {
     const employee = await tx.employee.create({
@@ -226,7 +229,7 @@ export async function createStaffAccount(
         dateHired: dateHired ? new Date(dateHired) : null,
         hourlyRate,
         allowancePerCutoff,
-        skills: skillsArray,
+        skills,
         emergencyContactPerson: emergencyContactPerson || null,
         emergencyContactNo: emergencyContactNo || null,
         emergencyContactRelationship: emergencyContactRelationship || null,
@@ -269,7 +272,7 @@ const UpdateStaffSchema = z.object({
   dateHired: z.string().trim().optional(),
   hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
   allowancePerCutoff: optionalMoney,
-  skills: z.string().trim().optional(),
+  skills: skillSet,
   emergencyContactPerson: z.string().trim().optional(),
   emergencyContactNo: z.string().trim().optional(),
   emergencyContactRelationship: z.string().trim().optional(),
@@ -341,7 +344,7 @@ export async function updateStaffAccount(
     dateHired: formData.get("dateHired"),
     hourlyRate: formData.get("hourlyRate"),
     allowancePerCutoff: formData.get("allowancePerCutoff"),
-    skills: formData.get("skills"),
+    skills: formData.getAll("skills"),
     emergencyContactPerson: formData.get("emergencyContactPerson"),
     emergencyContactNo: formData.get("emergencyContactNo"),
     emergencyContactRelationship: formData.get(
@@ -395,12 +398,6 @@ export async function updateStaffAccount(
     isActive,
   } = validatedFields.data
   const nextIsActive = isActive === "true"
-  const skillsArray = skills
-    ? skills
-        .split(",")
-        .map((skill) => skill.trim())
-        .filter(Boolean)
-    : []
 
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
@@ -465,7 +462,7 @@ export async function updateStaffAccount(
       : String(employee.allowancePerCutoff),
     allowancePerCutoff === null ? null : String(allowancePerCutoff)
   )
-  diff("skills", employee.skills.join(", "), skillsArray.join(", "))
+  diff("skills", employee.skills.join(", "), skills.join(", "))
   diff(
     "emergencyContactPerson",
     employee.emergencyContactPerson,
@@ -512,7 +509,7 @@ export async function updateStaffAccount(
           dateHired: nextDateHired,
           hourlyRate,
           allowancePerCutoff,
-          skills: skillsArray,
+          skills,
           emergencyContactPerson: normalize(emergencyContactPerson),
           emergencyContactNo: normalize(emergencyContactNo),
           emergencyContactRelationship: normalize(

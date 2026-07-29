@@ -1,12 +1,29 @@
-import { Building2, Landmark } from "lucide-react"
 import { prisma } from "@/lib/prisma"
-import { CreateClientDialog } from "@/components/admin/create-client-dialog"
-import { ClientTable, type ClientRecord } from "@/components/admin/client-table"
-import { Card, CardContent } from "@/components/ui/card"
+import { ClientList, type ClientRecord } from "@/components/admin/client-list"
+
+// Enough history to fill the detail tab without pulling a client's entire
+// job archive into the list payload. `_count` still reports the true total.
+const SERVICE_HISTORY_LIMIT = 50
 
 export default async function ClientsPage() {
   const clientRecords = await prisma.client.findMany({
-    include: { branches: { orderBy: { name: "asc" } } },
+    include: {
+      branches: { orderBy: { name: "asc" } },
+      contacts: { orderBy: [{ isPrimary: "desc" }, { name: "asc" }] },
+      schedules: {
+        orderBy: { date: "desc" },
+        take: SERVICE_HISTORY_LIMIT,
+        include: {
+          branch: { select: { name: true } },
+          assignments: {
+            include: {
+              employee: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+      },
+      _count: { select: { schedules: true } },
+    },
     orderBy: { name: "asc" },
   })
 
@@ -14,53 +31,51 @@ export default async function ClientsPage() {
     id: client.id,
     name: client.name,
     tin: client.tin,
+    taxStatus: client.taxStatus,
     address: client.address,
+    phoneNo: client.phoneNo,
+    email: client.email,
+    createdAt: client.createdAt.toISOString(),
+    totalJobs: client._count.schedules,
     branches: client.branches.map((branch) => ({
       id: branch.id,
       name: branch.name,
       address: branch.address,
     })),
+    contacts: client.contacts.map((contact) => ({
+      id: contact.id,
+      name: contact.name,
+      position: contact.position,
+      phoneNo: contact.phoneNo,
+      email: contact.email,
+      isPrimary: contact.isPrimary,
+    })),
+    jobs: client.schedules.map((schedule) => ({
+      id: schedule.id,
+      date: schedule.date.toISOString(),
+      startTime: schedule.startTime.toISOString(),
+      endTime: schedule.endTime.toISOString(),
+      status: schedule.status,
+      workTypes: schedule.workTypes,
+      branchName: schedule.branch?.name ?? null,
+      contactPerson: schedule.contactPerson,
+      employees: schedule.assignments.map(
+        (assignment) =>
+          `${assignment.employee.firstName} ${assignment.employee.lastName}`
+      ),
+    })),
   }))
-
-  const totalBranches = clients.reduce(
-    (sum, client) => sum + client.branches.length,
-    0
-  )
-
-  const stats = [
-    { label: "Total clients", value: clients.length, icon: Building2 },
-    { label: "Total branches", value: totalBranches, icon: Landmark },
-  ]
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Clients</h2>
-          <p className="text-sm text-muted-foreground">
-            Companies AeroCoole services, and their branches.
-          </p>
-        </div>
-        <CreateClientDialog />
+      <div>
+        <h2 className="text-lg font-semibold">Clients</h2>
+        <p className="text-sm text-muted-foreground">
+          Companies AeroCoole services, their locations and job history.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:max-w-md">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="shadow-sm">
-            <CardContent className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-semibold">{stat.value}</p>
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
-              </div>
-              <div className="flex size-9 items-center justify-center rounded-lg bg-sky-600/10">
-                <stat.icon className="size-4.5 text-sky-600 dark:text-sky-400" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <ClientTable clients={clients} />
+      <ClientList clients={clients} />
     </div>
   )
 }

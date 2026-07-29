@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RoleBadge } from "@/components/admin/role-badge"
+import { SkillsPicker } from "@/components/admin/skills-picker"
 import type { StaffMember } from "@/components/admin/staff-cards"
 
 function initials(firstName: string, lastName: string) {
@@ -148,8 +149,8 @@ function Row({
   const empty =
     value === null || value === undefined || value === "" || value === "—"
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b py-3 text-sm last:border-b-0">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+    <div className="flex items-baseline justify-between gap-4 border-b py-2 text-sm last:border-b-0">
+      <dt className="shrink-0 text-xs text-muted-foreground">{label}</dt>
       <dd
         className={cn(
           "min-w-0 text-right",
@@ -163,6 +164,9 @@ function Row({
   )
 }
 
+// size="sm" drops --card-spacing from 4 to 3; with the tighter Row padding a
+// card of facts reads in about two-thirds the height, so the whole record
+// fits on screen instead of trailing off below the fold.
 function InfoCard({
   title,
   description,
@@ -173,10 +177,12 @@ function InfoCard({
   children: React.ReactNode
 }) {
   return (
-    <Card className="shadow-sm">
+    <Card size="sm" className="shadow-sm">
       <CardHeader className="border-b">
         <CardTitle>{title}</CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
+        {description && (
+          <CardDescription className="text-xs">{description}</CardDescription>
+        )}
       </CardHeader>
       <CardContent>
         <dl className="flex flex-col">{children}</dl>
@@ -271,15 +277,15 @@ export function StaffDetailView({
       {/* Identity header — plain, not a card, so the page starts with the
           person's name rather than another box to parse. */}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-4">
-          <Avatar className="size-14 rounded-xl">
-            <AvatarFallback className="rounded-xl bg-sky-600/10 text-lg text-sky-700 dark:text-sky-400">
+        <div className="flex min-w-0 items-start gap-3">
+          <Avatar className="size-12 rounded-xl">
+            <AvatarFallback className="rounded-xl bg-sky-600/10 text-sky-700 dark:text-sky-400">
               {initials(e.firstName, e.lastName)}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-2xl leading-tight font-semibold">
+              <h2 className="text-xl leading-tight font-semibold">
                 {fullName}
               </h2>
               <Badge
@@ -297,7 +303,7 @@ export function StaffDetailView({
               {e.position}
               {e.employmentType && ` · ${employmentTypeLabel(e.employmentType)}`}
             </p>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">
+            <p className="mt-0.5 font-mono text-xs text-muted-foreground">
               {e.employeeNo ?? `@${staff.username}`}
               {e.dateHired && ` · hired ${e.dateHired}`}
             </p>
@@ -340,7 +346,7 @@ export function StaffDetailView({
           ))}
         </TabsList>
 
-        <TabsContent value="details" className="pt-5">
+        <TabsContent value="details" className="pt-4">
           {readOnly && (
             <div className="mb-5 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400">
               <ShieldAlert className="mt-0.5 size-4 shrink-0" />
@@ -657,19 +663,17 @@ export function StaffDetailView({
                       </div>
 
                       <Field data-invalid={!!state?.errors?.skills}>
-                        <FieldLabel htmlFor={`skills-${staff.id}`}>
-                          Skills
-                        </FieldLabel>
-                        <Input
-                          id={`skills-${staff.id}`}
-                          name="skills"
-                          defaultValue={initial.employee.skills.join(", ")}
-                          placeholder="Aircon installation, Electrical wiring"
+                        <FieldLabel>Skills</FieldLabel>
+                        <SkillsPicker
+                          idPrefix={`skill-${staff.id}`}
+                          selected={initial.employee.skills}
                           disabled={pending}
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Separate each skill with a comma.
-                        </p>
+                        <FieldError
+                          errors={state?.errors?.skills?.map((m) => ({
+                            message: m,
+                          }))}
+                        />
                       </Field>
                     </FieldGroup>
                   </div>
@@ -825,7 +829,7 @@ export function StaffDetailView({
               </div>
             </form>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-2">
               <InfoCard title="Contact">
                 <Row label="Mobile" value={e.phoneNo} />
                 <Row label="Email" value={e.email} />
@@ -860,7 +864,17 @@ export function StaffDetailView({
                 />
                 <Row
                   label="Skills"
-                  value={e.skills.length > 0 ? e.skills.join(", ") : null}
+                  value={
+                    e.skills.length > 0 ? (
+                      <span className="flex flex-wrap justify-end gap-1">
+                        {e.skills.map((skill) => (
+                          <Badge key={skill} variant="outline">
+                            {skill}
+                          </Badge>
+                        ))}
+                      </span>
+                    ) : null
+                  }
                 />
               </InfoCard>
 
@@ -1019,7 +1033,7 @@ export function StaffDetailView({
           )}
         </TabsContent>
 
-        <TabsContent value="attendance" className="pt-5">
+        <TabsContent value="attendance" className="pt-4">
           <ComingSoon
             icon={CalendarClock}
             title="Attendance history isn't tracked yet"
@@ -1027,7 +1041,7 @@ export function StaffDetailView({
           />
         </TabsContent>
 
-        <TabsContent value="payroll" className="pt-5">
+        <TabsContent value="payroll" className="pt-4">
           <ComingSoon
             icon={Wallet}
             title="Payroll records aren't tracked yet"
@@ -1035,7 +1049,7 @@ export function StaffDetailView({
           />
         </TabsContent>
 
-        <TabsContent value="reimbursements" className="pt-5">
+        <TabsContent value="reimbursements" className="pt-4">
           <ComingSoon
             icon={Receipt}
             title="Reimbursement history isn't tracked yet"

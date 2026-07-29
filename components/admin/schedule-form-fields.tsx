@@ -1,0 +1,409 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import { MapPin } from "lucide-react"
+import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
+import {
+  SCHEDULE_STATUSES,
+  SCHEDULE_STATUS_LABELS,
+  combineDateTime,
+  type EmployeeBusyBlock,
+} from "@/lib/schedule"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { SearchSelect } from "@/components/ui/search-select"
+import { ScheduleEmployeePicker } from "@/components/admin/schedule-employee-picker"
+import { ScheduleWorkTypePicker } from "@/components/admin/schedule-worktype-picker"
+import type {
+  ClientOption,
+  EmployeeOption,
+} from "@/components/admin/schedule-types"
+
+// The five fields worth carrying over when booking job after job — employees
+// usually work one client's sites across a day, so re-picking them every time
+// is the single biggest time sink in bulk entry.
+export type ScheduleContext = {
+  clientId: string
+  branchId: string
+  date: string
+  startTime: string
+  endTime: string
+}
+
+type FieldErrors = Partial<Record<string, string[]>>
+
+const DURATION_PRESETS = [
+  { label: "2h", minutes: 120 },
+  { label: "4h", minutes: 240 },
+  { label: "8h", minutes: 480 },
+]
+
+function addMinutesToTime(time: string, minutes: number) {
+  const [hours, mins] = time.split(":").map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(mins)) return ""
+  const total = Math.min(hours * 60 + mins + minutes, 23 * 60 + 59)
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+    total % 60
+  ).padStart(2, "0")}`
+}
+
+// Compact section heading — a rule with a label rather than an icon tile, so
+// four sections fit a phone screen without the chrome outweighing the fields.
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          {title}
+        </span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+      {children}
+    </section>
+  )
+}
+
+export function ScheduleFormFields({
+  idPrefix,
+  clients,
+  employees,
+  busy,
+  context,
+  onContextChange,
+  errors,
+  pending,
+  scheduleId,
+  defaultWorkTypes = [],
+  defaultEmployeeIds = [],
+  defaultContactPerson = "",
+  defaultContactNumber = "",
+  defaultRemarks = "",
+  defaultStatus,
+  showStatus = false,
+}: {
+  idPrefix: string
+  clients: ClientOption[]
+  employees: EmployeeOption[]
+  busy: EmployeeBusyBlock[]
+  context: ScheduleContext
+  onContextChange: (patch: Partial<ScheduleContext>) => void
+  errors?: FieldErrors
+  pending: boolean
+  scheduleId?: string
+  defaultWorkTypes?: WorkType[]
+  defaultEmployeeIds?: string[]
+  defaultContactPerson?: string
+  defaultContactNumber?: string
+  defaultRemarks?: string
+  defaultStatus?: ScheduleStatus
+  showStatus?: boolean
+}) {
+  // Held here rather than inside the picker so the employee list below can
+  // promote whoever holds the matching skill as soon as a work type is ticked.
+  const [workTypes, setWorkTypes] = useState<WorkType[]>(defaultWorkTypes)
+
+  const selectedClient = clients.find((client) => client.id === context.clientId)
+  const branches = useMemo(
+    () => selectedClient?.branches ?? [],
+    [selectedClient]
+  )
+
+  const clientOptions = useMemo(
+    () =>
+      clients.map((client) => ({
+        value: client.id,
+        label: client.name,
+        hint: client.address,
+      })),
+    [clients]
+  )
+
+  // A client with a hundred branches is the case this has to survive, hence a
+  // filtering combobox rather than a scrolling list. "Head office" is a real
+  // option, not a blank — booking against the main address is common.
+  const branchOptions = useMemo(
+    () => [
+      {
+        value: "",
+        label: "Head office",
+        hint: selectedClient?.address ?? "Main address",
+      },
+      ...branches.map((branch) => ({
+        value: branch.id,
+        label: branch.name,
+        hint: branch.address,
+      })),
+    ],
+    [branches, selectedClient]
+  )
+
+  const address = context.branchId
+    ? branches.find((branch) => branch.id === context.branchId)?.address
+    : selectedClient?.address
+
+  const start = combineDateTime(context.date, context.startTime)
+  const end = combineDateTime(context.date, context.endTime)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section title="Site">
+        <FieldGroup className="gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field data-invalid={!!errors?.clientId}>
+              <FieldLabel htmlFor={`${idPrefix}-clientId`}>Client</FieldLabel>
+              <SearchSelect
+                id={`${idPrefix}-clientId`}
+                name="clientId"
+                options={clientOptions}
+                value={context.clientId}
+                onValueChange={(value) =>
+                  onContextChange({ clientId: value, branchId: "" })
+                }
+                placeholder="Select a client"
+                searchPlaceholder="Search clients…"
+                emptyMessage="No client matches that."
+                disabled={pending}
+              />
+              <FieldError
+                errors={errors?.clientId?.map((message) => ({ message }))}
+              />
+            </Field>
+
+            <Field data-invalid={!!errors?.branchId}>
+              <FieldLabel htmlFor={`${idPrefix}-branchId`}>
+                Branch
+                {branches.length > 0 && (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {branches.length} available
+                  </span>
+                )}
+              </FieldLabel>
+              <SearchSelect
+                id={`${idPrefix}-branchId`}
+                name="branchId"
+                options={branchOptions}
+                value={context.branchId}
+                onValueChange={(value) => onContextChange({ branchId: value })}
+                placeholder={
+                  context.clientId ? "Head office" : "Pick a client first"
+                }
+                searchPlaceholder="Search branches…"
+                emptyMessage="No branch matches that."
+                disabled={pending || !context.clientId}
+              />
+              <FieldError
+                errors={errors?.branchId?.map((message) => ({ message }))}
+              />
+            </Field>
+          </div>
+
+          {address && (
+            <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="mt-0.5 size-3 shrink-0" />
+              <span className="min-w-0">{address}</span>
+            </p>
+          )}
+        </FieldGroup>
+      </Section>
+
+      <Section title="When">
+        <FieldGroup className="gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Field data-invalid={!!errors?.date} className="col-span-2 sm:col-span-2">
+              <FieldLabel htmlFor={`${idPrefix}-date`}>Date</FieldLabel>
+              <Input
+                id={`${idPrefix}-date`}
+                name="date"
+                type="date"
+                value={context.date}
+                onChange={(event) =>
+                  onContextChange({ date: event.target.value })
+                }
+                disabled={pending}
+                required
+              />
+              <FieldError
+                errors={errors?.date?.map((message) => ({ message }))}
+              />
+            </Field>
+            <Field data-invalid={!!errors?.startTime}>
+              <FieldLabel htmlFor={`${idPrefix}-startTime`}>Start</FieldLabel>
+              <Input
+                id={`${idPrefix}-startTime`}
+                name="startTime"
+                type="time"
+                value={context.startTime}
+                onChange={(event) =>
+                  onContextChange({ startTime: event.target.value })
+                }
+                disabled={pending}
+                required
+              />
+              <FieldError
+                errors={errors?.startTime?.map((message) => ({ message }))}
+              />
+            </Field>
+            <Field data-invalid={!!errors?.endTime}>
+              <FieldLabel htmlFor={`${idPrefix}-endTime`}>End</FieldLabel>
+              <Input
+                id={`${idPrefix}-endTime`}
+                name="endTime"
+                type="time"
+                value={context.endTime}
+                onChange={(event) =>
+                  onContextChange({ endTime: event.target.value })
+                }
+                disabled={pending}
+                required
+              />
+              <FieldError
+                errors={errors?.endTime?.map((message) => ({ message }))}
+              />
+            </Field>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Duration</span>
+            {DURATION_PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                disabled={pending || !context.startTime}
+                onClick={() =>
+                  onContextChange({
+                    endTime: addMinutesToTime(context.startTime, preset.minutes),
+                  })
+                }
+              >
+                {preset.label}
+              </Button>
+            ))}
+            {showStatus && (
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Status</span>
+                <Select
+                  name="status"
+                  defaultValue={defaultStatus}
+                  disabled={pending}
+                  items={Object.fromEntries(
+                    SCHEDULE_STATUSES.map((status) => [
+                      status,
+                      SCHEDULE_STATUS_LABELS[status],
+                    ])
+                  )}
+                >
+                  <SelectTrigger id={`${idPrefix}-status`} className="h-7">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULE_STATUSES.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {SCHEDULE_STATUS_LABELS[status]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        </FieldGroup>
+      </Section>
+
+      <Section title="Work">
+        <Field data-invalid={!!errors?.workTypes}>
+          <ScheduleWorkTypePicker
+            selected={workTypes}
+            onChange={setWorkTypes}
+            disabled={pending}
+          />
+          <FieldError
+            errors={errors?.workTypes?.map((message) => ({ message }))}
+          />
+        </Field>
+      </Section>
+
+      <Section title="Employees">
+        <Field data-invalid={!!errors?.employeeIds}>
+          <ScheduleEmployeePicker
+            employees={employees}
+            busy={busy}
+            workTypes={workTypes}
+            start={start}
+            end={end}
+            excludeScheduleId={scheduleId}
+            defaultSelectedIds={defaultEmployeeIds}
+            disabled={pending}
+          />
+          <FieldError
+            errors={errors?.employeeIds?.map((message) => ({ message }))}
+          />
+        </Field>
+      </Section>
+
+      <Section title="On-site contact">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field data-invalid={!!errors?.contactPerson}>
+            <Input
+              id={`${idPrefix}-contactPerson`}
+              name="contactPerson"
+              placeholder="Who meets the employees"
+              defaultValue={defaultContactPerson}
+              disabled={pending}
+            />
+            <FieldError
+              errors={errors?.contactPerson?.map((message) => ({ message }))}
+            />
+          </Field>
+          <Field data-invalid={!!errors?.contactNumber}>
+            <Input
+              id={`${idPrefix}-contactNumber`}
+              name="contactNumber"
+              placeholder="0917 123 4567"
+              inputMode="tel"
+              defaultValue={defaultContactNumber}
+              disabled={pending}
+            />
+            <FieldError
+              errors={errors?.contactNumber?.map((message) => ({ message }))}
+            />
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="Remarks">
+        <Field data-invalid={!!errors?.remarks}>
+          <Textarea
+            id={`${idPrefix}-remarks`}
+            name="remarks"
+            rows={2}
+            maxLength={2000}
+            placeholder="Optional — access instructions, unit numbers, tools to bring…"
+            defaultValue={defaultRemarks}
+            disabled={pending}
+            className="resize-y"
+          />
+          <FieldError
+            errors={errors?.remarks?.map((message) => ({ message }))}
+          />
+        </Field>
+      </Section>
+    </div>
+  )
+}

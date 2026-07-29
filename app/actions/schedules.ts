@@ -21,6 +21,71 @@ function combineDateAndTime(date: string, time: string) {
   return new Date(`${date}T${time}:00`)
 }
 
+function shortTime(value: Date) {
+  return value.toLocaleTimeString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+// The rule the whole feature hangs on: a person can't be in two places at
+// once. Checked here rather than only in the browser because the browser copy
+// can be stale — someone else may have booked the same employee seconds ago —
+// and because a server action is a public endpoint regardless of what the UI
+// does.
+//
+// Half-open comparison (`startTime < end` AND `endTime > start`) so a job
+// finishing at 12:00 and one starting at 12:00 are not treated as a clash.
+// CANCELLED jobs don't hold anyone's time; every other status does.
+async function findAssignmentConflicts({
+  employeeIds,
+  start,
+  end,
+  excludeScheduleId,
+}: {
+  employeeIds: string[]
+  start: Date
+  end: Date
+  excludeScheduleId?: string
+}) {
+  if (employeeIds.length === 0) return []
+
+  const clashing = await prisma.schedule.findMany({
+    where: {
+      ...(excludeScheduleId ? { id: { not: excludeScheduleId } } : {}),
+      status: { not: "CANCELLED" },
+      startTime: { lt: end },
+      endTime: { gt: start },
+      assignments: { some: { employeeId: { in: employeeIds } } },
+    },
+    select: {
+      startTime: true,
+      endTime: true,
+      client: { select: { name: true } },
+      branch: { select: { name: true } },
+      assignments: {
+        where: { employeeId: { in: employeeIds } },
+        select: {
+          employee: { select: { firstName: true, lastName: true } },
+        },
+      },
+    },
+    orderBy: { startTime: "asc" },
+  })
+
+  return clashing.flatMap((schedule) => {
+    const site = schedule.branch
+      ? `${schedule.client.name} · ${schedule.branch.name}`
+      : schedule.client.name
+    const when = `${shortTime(schedule.startTime)}–${shortTime(schedule.endTime)}`
+
+    return schedule.assignments.map(
+      (assignment) =>
+        `${assignment.employee.firstName} ${assignment.employee.lastName} is already booked at ${site} (${when}).`
+    )
+  })
+}
+
 const WORK_TYPE_VALUES = [
   "INSTALLATION",
   "REPAIR",
@@ -48,6 +113,7 @@ const ScheduleSchema = z
     endTime: z.string().min(1, "Set an end time."),
     contactPerson: z.string().trim().optional(),
     contactNumber: z.string().trim().optional(),
+    remarks: z.string().trim().max(2000, "Remarks are too long.").optional(),
     workTypes: z
       .array(z.enum(WORK_TYPE_VALUES))
       .min(1, "Select at least one work type."),
@@ -67,10 +133,14 @@ export type ScheduleState =
         endTime?: string[]
         contactPerson?: string[]
         contactNumber?: string[]
+        remarks?: string[]
         workTypes?: string[]
+        employeeIds?: string[]
       }
       message?: string
       success?: boolean
+      // Echoed back so "Save & add another" can report a running count.
+      createdId?: string
     }
   | undefined
 
@@ -91,6 +161,7 @@ export async function createSchedule(
     endTime: formData.get("endTime"),
     contactPerson: formData.get("contactPerson"),
     contactNumber: formData.get("contactNumber"),
+    remarks: formData.get("remarks"),
     workTypes: formData.getAll("workTypes"),
   })
 
@@ -106,23 +177,35 @@ export async function createSchedule(
     endTime,
     contactPerson,
     contactNumber,
+    remarks,
     workTypes,
   } = validatedFields.data
 
-  const employeeIds = formData
-    .getAll("employeeIds")
-    .map(String)
-    .filter(Boolean)
+  const employeeIds = [
+    ...new Set(formData.getAll("employeeIds").map(String).filter(Boolean)),
+  ]
 
-  await prisma.schedule.create({
+  const start = combineDateAndTime(date, startTime)
+  const end = combineDateAndTime(date, endTime)
+
+  const conflicts = await findAssignmentConflicts({ employeeIds, start, end })
+  if (conflicts.length > 0) {
+    return {
+      errors: { employeeIds: conflicts },
+      message: "Some of the employees are already booked at that time.",
+    }
+  }
+
+  const created = await prisma.schedule.create({
     data: {
       clientId,
       branchId: branchId || null,
       date: new Date(`${date}T00:00:00`),
-      startTime: combineDateAndTime(date, startTime),
-      endTime: combineDateAndTime(date, endTime),
+      startTime: start,
+      endTime: end,
       contactPerson: contactPerson || null,
       contactNumber: contactNumber || null,
+      remarks: remarks || null,
       workTypes,
       createdById: session.accountId,
       assignments:
@@ -130,11 +213,13 @@ export async function createSchedule(
           ? { create: employeeIds.map((employeeId) => ({ employeeId })) }
           : undefined,
     },
+    select: { id: true },
   })
 
   revalidatePath("/admin/schedules")
+  revalidatePath("/employee/schedule")
 
-  return { success: true }
+  return { success: true, createdId: created.id }
 }
 
 const UpdateScheduleSchema = z
@@ -147,6 +232,7 @@ const UpdateScheduleSchema = z
     endTime: z.string().min(1, "Set an end time."),
     contactPerson: z.string().trim().optional(),
     contactNumber: z.string().trim().optional(),
+    remarks: z.string().trim().max(2000, "Remarks are too long.").optional(),
     workTypes: z
       .array(z.enum(WORK_TYPE_VALUES))
       .min(1, "Select at least one work type."),
@@ -167,8 +253,10 @@ export type UpdateScheduleState =
         endTime?: string[]
         contactPerson?: string[]
         contactNumber?: string[]
+        remarks?: string[]
         workTypes?: string[]
         status?: string[]
+        employeeIds?: string[]
       }
       message?: string
       success?: boolean
@@ -193,6 +281,7 @@ export async function updateSchedule(
     endTime: formData.get("endTime"),
     contactPerson: formData.get("contactPerson"),
     contactNumber: formData.get("contactNumber"),
+    remarks: formData.get("remarks"),
     workTypes: formData.getAll("workTypes"),
     status: formData.get("status"),
   })
@@ -210,14 +299,32 @@ export async function updateSchedule(
     endTime,
     contactPerson,
     contactNumber,
+    remarks,
     workTypes,
     status,
   } = validatedFields.data
 
-  const employeeIds = formData
-    .getAll("employeeIds")
-    .map(String)
-    .filter(Boolean)
+  const employeeIds = [
+    ...new Set(formData.getAll("employeeIds").map(String).filter(Boolean)),
+  ]
+
+  const start = combineDateAndTime(date, startTime)
+  const end = combineDateAndTime(date, endTime)
+
+  // Excludes this schedule, so re-saving a job without changing its employees
+  // doesn't report the job clashing with itself.
+  const conflicts = await findAssignmentConflicts({
+    employeeIds,
+    start,
+    end,
+    excludeScheduleId: scheduleId,
+  })
+  if (conflicts.length > 0) {
+    return {
+      errors: { employeeIds: conflicts },
+      message: "Some of the employees are already booked at that time.",
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.schedule.update({
@@ -226,10 +333,11 @@ export async function updateSchedule(
         clientId,
         branchId: branchId || null,
         date: new Date(`${date}T00:00:00`),
-        startTime: combineDateAndTime(date, startTime),
-        endTime: combineDateAndTime(date, endTime),
+        startTime: start,
+        endTime: end,
         contactPerson: contactPerson || null,
         contactNumber: contactNumber || null,
+        remarks: remarks || null,
         workTypes,
         status,
       },
@@ -249,6 +357,32 @@ export async function updateSchedule(
   revalidatePath("/employee/schedule")
 
   return { success: true }
+}
+
+// Status is the field that changes most after a job is booked — it's how the
+// day gets closed out. Giving it its own action means marking one Completed is
+// a single click from the calendar, rather than opening the full edit form and
+// re-submitting every other field (which would also re-run the conflict check
+// on an unchanged assignment).
+export async function updateScheduleStatus(
+  scheduleId: string,
+  status: (typeof STATUS_VALUES)[number]
+) {
+  const session = await requireScheduleAccess()
+  if (!session) {
+    throw new Error("You don't have permission to edit schedules.")
+  }
+
+  const parsed = z.enum(STATUS_VALUES).safeParse(status)
+  if (!parsed.success) throw new Error("Unknown status.")
+
+  await prisma.schedule.update({
+    where: { id: scheduleId },
+    data: { status: parsed.data },
+  })
+
+  revalidatePath("/admin/schedules")
+  revalidatePath("/employee/schedule")
 }
 
 export async function deleteSchedule(scheduleId: string) {

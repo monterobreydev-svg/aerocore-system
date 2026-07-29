@@ -1,50 +1,40 @@
 "use client"
 
-import { useState } from "react"
 import type { WorkType } from "@/app/generated/prisma/client"
-import {
-  WORK_TYPES,
-  WORK_TYPE_LABELS,
-  WORK_TYPE_CHIP,
-  WORK_TYPE_DOT,
-} from "@/lib/schedule"
+import { WORK_TYPES, WORK_TYPE_LABELS, WORK_TYPE_SOLID } from "@/lib/schedule"
 import { cn } from "@/lib/utils"
 
+// Controlled by the form so the employee picker downstream can promote whoever
+// holds the matching skill — the selection has to be readable from outside.
 export function ScheduleWorkTypePicker({
-  defaultSelected = [],
+  selected,
+  onChange,
   disabled,
 }: {
-  defaultSelected?: WorkType[]
+  selected: WorkType[]
+  onChange: (next: WorkType[]) => void
   disabled?: boolean
 }) {
-  const [selected, setSelected] = useState<Set<WorkType>>(
-    () => new Set(defaultSelected)
-  )
-
   function toggle(type: WorkType) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(type)) {
-        next.delete(type)
-      } else {
-        next.add(type)
-      }
-      return next
-    })
+    onChange(
+      selected.includes(type)
+        ? selected.filter((value) => value !== type)
+        : [...selected, type]
+    )
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1.5">
       {WORK_TYPES.map((type) => {
-        const checked = selected.has(type)
+        const checked = selected.includes(type)
         return (
           <label
             key={type}
             className={cn(
-              "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              "inline-flex cursor-pointer items-center rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
               checked
-                ? cn(WORK_TYPE_CHIP[type], "border-current/20")
-                : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted",
+                ? WORK_TYPE_SOLID[type]
+                : "bg-muted/60 text-muted-foreground hover:bg-muted",
               disabled && "pointer-events-none opacity-50"
             )}
           >
@@ -57,7 +47,6 @@ export function ScheduleWorkTypePicker({
               disabled={disabled}
               className="sr-only"
             />
-            <span className={cn("size-1.5 rounded-full", WORK_TYPE_DOT[type])} />
             {WORK_TYPE_LABELS[type]}
           </label>
         )

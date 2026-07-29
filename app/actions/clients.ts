@@ -13,10 +13,26 @@ async function requireClientAccess() {
   return session
 }
 
+const optionalEmail = z
+  .string()
+  .trim()
+  .optional()
+  .refine((value) => !value || z.string().email().safeParse(value).success, {
+    message: "Enter a valid email address.",
+  })
+
+const optionalTaxStatus = z
+  .enum(["VAT", "NON_VAT", "VAT_EXEMPT", "ZERO_RATED"])
+  .optional()
+  .or(z.literal("").transform(() => undefined))
+
 const ClientSchema = z.object({
-  name: z.string().trim().min(1, "Client name is required."),
+  name: z.string().trim().min(1, "Registered name is required."),
   tin: z.string().trim().optional(),
+  taxStatus: optionalTaxStatus,
   address: z.string().trim().min(1, "Address is required."),
+  phoneNo: z.string().trim().optional(),
+  email: optionalEmail,
 })
 
 export type ClientState =
@@ -24,12 +40,28 @@ export type ClientState =
       errors?: {
         name?: string[]
         tin?: string[]
+        taxStatus?: string[]
         address?: string[]
+        phoneNo?: string[]
+        email?: string[]
+        contactName?: string[]
+        contactEmail?: string[]
       }
       message?: string
       success?: boolean
     }
   | undefined
+
+// The create form can seed the client's main contact person in the same
+// step — most clients are handed over with a name attached, and making
+// someone open the record again just to add it is busywork. All four
+// fields are optional; the block is only written when a name is given.
+const CreateClientSchema = ClientSchema.extend({
+  contactName: z.string().trim().optional(),
+  contactPosition: z.string().trim().optional(),
+  contactPhoneNo: z.string().trim().optional(),
+  contactEmail: optionalEmail,
+})
 
 export async function createClient(
   _state: ClientState,
@@ -40,20 +72,59 @@ export async function createClient(
     return { message: "You don't have permission to manage clients." }
   }
 
-  const validatedFields = ClientSchema.safeParse({
+  const validatedFields = CreateClientSchema.safeParse({
     name: formData.get("name"),
     tin: formData.get("tin"),
+    taxStatus: formData.get("taxStatus"),
     address: formData.get("address"),
+    phoneNo: formData.get("phoneNo"),
+    email: formData.get("email"),
+    contactName: formData.get("contactName"),
+    contactPosition: formData.get("contactPosition"),
+    contactPhoneNo: formData.get("contactPhoneNo"),
+    contactEmail: formData.get("contactEmail"),
   })
 
   if (!validatedFields.success) {
     return { errors: validatedFields.error.flatten().fieldErrors }
   }
 
-  const { name, tin, address } = validatedFields.data
+  const {
+    name,
+    tin,
+    taxStatus,
+    address,
+    phoneNo,
+    email,
+    contactName,
+    contactPosition,
+    contactPhoneNo,
+    contactEmail,
+  } = validatedFields.data
 
   await prisma.client.create({
-    data: { name, tin: tin || null, address },
+    data: {
+      name,
+      tin: tin || null,
+      taxStatus: taxStatus || null,
+      address,
+      phoneNo: phoneNo || null,
+      email: email || null,
+      ...(contactName
+        ? {
+            contacts: {
+              create: {
+                name: contactName,
+                position: contactPosition || null,
+                phoneNo: contactPhoneNo || null,
+                email: contactEmail || null,
+                // First contact on a brand-new client — nothing to demote.
+                isPrimary: true,
+              },
+            },
+          }
+        : {}),
+    },
   })
 
   revalidatePath("/admin/accounts/clients")
@@ -78,18 +149,29 @@ export async function updateClient(
     clientId: formData.get("clientId"),
     name: formData.get("name"),
     tin: formData.get("tin"),
+    taxStatus: formData.get("taxStatus"),
     address: formData.get("address"),
+    phoneNo: formData.get("phoneNo"),
+    email: formData.get("email"),
   })
 
   if (!validatedFields.success) {
     return { errors: validatedFields.error.flatten().fieldErrors }
   }
 
-  const { clientId, name, tin, address } = validatedFields.data
+  const { clientId, name, tin, taxStatus, address, phoneNo, email } =
+    validatedFields.data
 
   await prisma.client.update({
     where: { id: clientId },
-    data: { name, tin: tin || null, address },
+    data: {
+      name,
+      tin: tin || null,
+      taxStatus: taxStatus || null,
+      address,
+      phoneNo: phoneNo || null,
+      email: email || null,
+    },
   })
 
   revalidatePath("/admin/accounts/clients")
@@ -176,6 +258,164 @@ export async function updateBranch(
     where: { id: branchId },
     data: { name, address },
   })
+
+  revalidatePath("/admin/accounts/clients")
+
+  return { success: true }
+}
+
+const ContactSchema = z.object({
+  name: z.string().trim().min(1, "Contact name is required."),
+  position: z.string().trim().optional(),
+  phoneNo: z.string().trim().optional(),
+  email: optionalEmail,
+  isPrimary: z.enum(["true", "false"]).optional(),
+})
+
+export type ContactState =
+  | {
+      errors?: {
+        name?: string[]
+        position?: string[]
+        phoneNo?: string[]
+        email?: string[]
+      }
+      message?: string
+      success?: boolean
+    }
+  | undefined
+
+const CreateContactSchema = ContactSchema.extend({
+  clientId: z.string().min(1),
+})
+
+// Only one contact per client can be the primary — promoting a new one
+// demotes the rest in the same transaction so the list can't end up with two.
+async function clearOtherPrimaries(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  clientId: string,
+  keepId?: string
+) {
+  await tx.clientContact.updateMany({
+    where: { clientId, isPrimary: true, ...(keepId ? { NOT: { id: keepId } } : {}) },
+    data: { isPrimary: false },
+  })
+}
+
+export async function createClientContact(
+  _state: ContactState,
+  formData: FormData
+): Promise<ContactState> {
+  const session = await requireClientAccess()
+  if (!session) {
+    return { message: "You don't have permission to manage clients." }
+  }
+
+  const validatedFields = CreateContactSchema.safeParse({
+    clientId: formData.get("clientId"),
+    name: formData.get("name"),
+    position: formData.get("position"),
+    phoneNo: formData.get("phoneNo"),
+    email: formData.get("email"),
+    isPrimary: formData.get("isPrimary") ?? "false",
+  })
+
+  if (!validatedFields.success) {
+    return { errors: validatedFields.error.flatten().fieldErrors }
+  }
+
+  const { clientId, name, position, phoneNo, email, isPrimary } =
+    validatedFields.data
+  const primary = isPrimary === "true"
+
+  await prisma.$transaction(async (tx) => {
+    if (primary) await clearOtherPrimaries(tx, clientId)
+    await tx.clientContact.create({
+      data: {
+        clientId,
+        name,
+        position: position || null,
+        phoneNo: phoneNo || null,
+        email: email || null,
+        isPrimary: primary,
+      },
+    })
+  })
+
+  revalidatePath("/admin/accounts/clients")
+
+  return { success: true }
+}
+
+const UpdateContactSchema = ContactSchema.extend({
+  contactId: z.string().min(1),
+})
+
+export async function updateClientContact(
+  _state: ContactState,
+  formData: FormData
+): Promise<ContactState> {
+  const session = await requireClientAccess()
+  if (!session) {
+    return { message: "You don't have permission to manage clients." }
+  }
+
+  const validatedFields = UpdateContactSchema.safeParse({
+    contactId: formData.get("contactId"),
+    name: formData.get("name"),
+    position: formData.get("position"),
+    phoneNo: formData.get("phoneNo"),
+    email: formData.get("email"),
+    isPrimary: formData.get("isPrimary") ?? "false",
+  })
+
+  if (!validatedFields.success) {
+    return { errors: validatedFields.error.flatten().fieldErrors }
+  }
+
+  const { contactId, name, position, phoneNo, email, isPrimary } =
+    validatedFields.data
+  const primary = isPrimary === "true"
+
+  const existing = await prisma.clientContact.findUnique({
+    where: { id: contactId },
+  })
+  if (!existing) return { message: "Contact not found." }
+
+  await prisma.$transaction(async (tx) => {
+    if (primary) await clearOtherPrimaries(tx, existing.clientId, contactId)
+    await tx.clientContact.update({
+      where: { id: contactId },
+      data: {
+        name,
+        position: position || null,
+        phoneNo: phoneNo || null,
+        email: email || null,
+        isPrimary: primary,
+      },
+    })
+  })
+
+  revalidatePath("/admin/accounts/clients")
+
+  return { success: true }
+}
+
+export async function deleteClientContact(
+  _state: ContactState,
+  formData: FormData
+): Promise<ContactState> {
+  const session = await requireClientAccess()
+  if (!session) {
+    return { message: "You don't have permission to manage clients." }
+  }
+
+  const contactId = formData.get("contactId")
+  if (typeof contactId !== "string" || contactId === "") {
+    return { message: "Contact not found." }
+  }
+
+  await prisma.clientContact.delete({ where: { id: contactId } })
 
   revalidatePath("/admin/accounts/clients")
 

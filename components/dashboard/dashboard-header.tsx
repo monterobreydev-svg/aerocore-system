@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Bell, ChevronDown, LogOut, Settings } from "lucide-react"
+import { Bell, ChevronDown, KeyRound, LogOut, Settings } from "lucide-react"
 import { logout } from "@/app/actions/auth"
 import type { Role } from "@/app/generated/prisma/client"
 import { roleLabel } from "@/lib/roles"
@@ -134,6 +134,17 @@ export function DashboardHeader({
                 <Link href="/admin/settings">
                   <Settings />
                   Account settings
+                </Link>
+              }
+            />
+            {/* Same page, Security tab — the password form lives in settings
+                rather than the menu, but it's the errand people come to this
+                menu for, so it gets its own way in. */}
+            <DropdownMenuItem
+              render={
+                <Link href="/admin/settings?tab=security">
+                  <KeyRound />
+                  Change password
                 </Link>
               }
             />

@@ -48,6 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SkillsPicker } from "@/components/admin/skills-picker"
 
 const STEPS = [
   { id: 1, label: "Personal" },
@@ -266,11 +267,13 @@ export function CreateStaffDialog({
   }
 
   function goToStep(target: number) {
-    const data = formRef.current
-      ? (Object.fromEntries(
-          new FormData(formRef.current).entries()
-        ) as Record<string, string>)
+    const form = formRef.current ? new FormData(formRef.current) : null
+    const data = form
+      ? (Object.fromEntries(form.entries()) as Record<string, string>)
       : {}
+    // fromEntries keeps only the last value per key, which would reduce the
+    // skills checkboxes to whichever one happened to be ticked last.
+    if (form) data.skills = form.getAll("skills").join(", ")
 
     // Fill the username in as they arrive at the account step, not earlier —
     // by then the name is entered, and it's still theirs to overwrite.
@@ -680,18 +683,9 @@ export function CreateStaffDialog({
 
             <Separator />
 
-            <StepSection
-              title="Skills"
-              hint="— separate each one with a comma"
-            >
+            <StepSection title="Skills" hint="— tick everything they can do">
               <Field data-invalid={!!state?.errors?.skills}>
-                <FieldLabel htmlFor="skills">Skills</FieldLabel>
-                <Input
-                  id="skills"
-                  name="skills"
-                  placeholder="Aircon installation, Electrical wiring, Troubleshooting"
-                  disabled={pending}
-                />
+                <SkillsPicker idPrefix="new-staff-skill" disabled={pending} />
                 <FieldError
                   errors={state?.errors?.skills?.map((message) => ({
                     message,

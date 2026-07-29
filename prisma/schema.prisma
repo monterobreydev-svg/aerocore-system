@@ -96,17 +96,45 @@ model StaffEditLog {
   createdAt  DateTime    @default(now())
 }
 
+// How the client is registered with the BIR — drives how their invoices
+// are computed, so it's recorded alongside the TIN.
+enum TaxStatus {
+  VAT
+  NON_VAT
+  VAT_EXEMPT
+  ZERO_RATED
+}
+
 // Clients are companies/customers AeroCoole services. They never log in —
 // no UserAccount, no role — this is purely business/contact record-keeping.
 model Client {
-  id        String   @id @default(uuid())
+  id        String     @id @default(uuid())
   name      String
   tin       String?
+  taxStatus TaxStatus?
   address   String
-  createdAt DateTime @default(now())
+  phoneNo   String?
+  email     String?
+  createdAt DateTime   @default(now())
 
   branches  Branch[]
+  contacts  ClientContact[]
   schedules Schedule[]
+}
+
+// A client can have any number of people you'd call — accounts payable,
+// building admin, the on-site engineer. Separate from Schedule's per-job
+// contact, which is whoever meets the crew for that specific visit.
+model ClientContact {
+  id        String   @id @default(uuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  position  String?
+  phoneNo   String?
+  email     String?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 model Branch {
@@ -154,6 +182,10 @@ model Schedule {
   endTime       DateTime
   contactPerson String?
   contactNumber String?
+  // Free-text notes for whoever runs the job — access instructions, unit
+  // numbers, "bring the 3m ladder". Optional, and deliberately not structured:
+  // it's the field that catches whatever the other columns don't.
+  remarks       String?
   workTypes     WorkType[]
   status        ScheduleStatus @default(PENDING)
   createdAt     DateTime       @default(now())

@@ -91,14 +91,6 @@ function peso(amount: number) {
   })
 }
 
-function shortDate(value: string | null) {
-  if (!value) return "—"
-  return new Date(value).toLocaleDateString(undefined, {
-    month: "short",
-    year: "numeric",
-  })
-}
-
 const ROLE_FILTERS: Role[] = [
   "DIRECTOR",
   "ADMINISTRATOR",
@@ -145,27 +137,6 @@ function FilterChip({
     >
       {label}
     </button>
-  )
-}
-
-// The three figures under each card. Attendance and claims aren't tracked
-// yet, so this shows what the record actually knows about the person.
-function CardStat({
-  label,
-  value,
-  className,
-}: {
-  label: string
-  value: string
-  className?: string
-}) {
-  return (
-    <div className="px-3 py-3">
-      <p className="truncate text-xs whitespace-nowrap text-muted-foreground">
-        {label}
-      </p>
-      <p className={cn("mt-1 text-sm font-medium", className)}>{value}</p>
-    </div>
   )
 }
 
@@ -432,9 +403,7 @@ export function StaffCards({
             <Card
               key={member.id}
               onClick={() => setSelectedId(member.id)}
-              // pb-0 so the figures strip runs to the card's bottom edge
-              // instead of sitting above a band of leftover white padding.
-              className="group cursor-pointer gap-0 pb-0 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-sky-600/30"
+              className="group cursor-pointer shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-sky-600/30"
             >
               <CardContent>
                 <div className="flex items-start justify-between gap-3">
@@ -451,11 +420,16 @@ export function StaffCards({
                       <p className="truncate text-base leading-tight font-medium">
                         {member.employee.firstName} {member.employee.lastName}
                       </p>
-                      <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                        @{member.username}
+                      {/* Position replaces the removed figures strip — a job
+                          title says more at a glance than a pay rate, and the
+                          list view still carries the rate for comparing. */}
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {member.employee.position}
                       </p>
                       <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                        {member.employee.employeeNo ?? "—"}
+                        @{member.username}
+                        {member.employee.employeeNo &&
+                          ` · ${member.employee.employeeNo}`}
                       </p>
                     </div>
                   </div>
@@ -471,23 +445,6 @@ export function StaffCards({
                   )}
                 </div>
               </CardContent>
-
-              {/* Figures strip, flush to the card edges like a table footer */}
-              <div className="mt-4 grid grid-cols-3 divide-x border-t bg-muted/30">
-                <CardStat
-                  label="Hourly rate"
-                  value={peso(member.employee.hourlyRate)}
-                  className="tabular-nums"
-                />
-                <CardStat
-                  label="Hired"
-                  value={shortDate(member.employee.dateHired)}
-                />
-                <CardStat
-                  label="Skills"
-                  value={String(member.employee.skills.length)}
-                />
-              </div>
             </Card>
           ))}
         </div>

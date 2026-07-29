@@ -1,4 +1,4 @@
-import { CalendarDays, MapPin, Phone, Users } from "lucide-react"
+import { CalendarDays, MapPin, Phone, StickyNote, Users } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { getCurrentEmployee } from "@/lib/dal"
 import {
@@ -94,6 +94,15 @@ export default async function EmployeeSchedulePage() {
               {schedule.contactPerson}
               {schedule.contactPerson && schedule.contactNumber ? " · " : ""}
               {schedule.contactNumber}
+            </div>
+          )}
+
+          {/* Remarks are written for whoever turns up on site, so they belong
+              here rather than only on the admin side. */}
+          {schedule.remarks && (
+            <div className="flex items-start gap-1.5 rounded-lg bg-muted/50 px-2.5 py-2 text-xs">
+              <StickyNote className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <span className="whitespace-pre-wrap">{schedule.remarks}</span>
             </div>
           )}
         </CardContent>

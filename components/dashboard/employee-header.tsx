@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { Bell, ChevronDown, LogOut, Settings } from "lucide-react"
+import { Bell, ChevronDown, KeyRound, LogOut, Settings } from "lucide-react"
 import { logout } from "@/app/actions/auth"
 import type { Role } from "@/app/generated/prisma/client"
 import { roleLabel } from "@/lib/roles"
@@ -129,6 +129,17 @@ export function EmployeeHeader({
                 <Link href="/employee/settings">
                   <Settings />
                   Account settings
+                </Link>
+              }
+            />
+            {/* Same page, Security tab — the password form lives in settings
+                rather than the menu, but it's the errand people come to this
+                menu for, so it gets its own way in. */}
+            <DropdownMenuItem
+              render={
+                <Link href="/employee/settings?tab=security">
+                  <KeyRound />
+                  Change password
                 </Link>
               }
             />

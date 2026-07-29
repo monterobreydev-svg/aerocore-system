@@ -1,18 +1,39 @@
 "use client"
 
-import { useActionState, useEffect, useMemo, useState } from "react"
-import { MapPin, Phone, Trash2, User } from "lucide-react"
+import { useActionState, useEffect, useState } from "react"
+import type { ScheduleStatus } from "@/app/generated/prisma/client"
+import {
+  AlertTriangle,
+  CalendarDays,
+  Clock,
+  MapPin,
+  Pencil,
+  Phone,
+  StickyNote,
+  Trash2,
+  User,
+  Users,
+} from "lucide-react"
 import {
   deleteSchedule,
+  updateScheduleStatus,
   updateSchedule,
   type UpdateScheduleState,
 } from "@/app/actions/schedules"
 import {
   SCHEDULE_STATUSES,
+  SCHEDULE_STATUS_CHIP,
+  SCHEDULE_STATUS_DOT,
   SCHEDULE_STATUS_LABELS,
+  WORK_TYPE_LABELS,
+  WORK_TYPE_SOLID,
+  formatScheduleDate,
+  formatTimeRange,
   toDateInputValue,
   toTimeInputValue,
+  type EmployeeBusyBlock,
 } from "@/lib/schedule"
+import { cn } from "@/lib/utils"
 import {
   Sheet,
   SheetContent,
@@ -22,51 +43,248 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { ScheduleEmployeePicker } from "@/components/admin/schedule-employee-picker"
-import { ScheduleWorkTypePicker } from "@/components/admin/schedule-worktype-picker"
+  ScheduleFormFields,
+  type ScheduleContext,
+} from "@/components/admin/schedule-form-fields"
 import type {
   ClientOption,
   EmployeeOption,
   ScheduleRecord,
 } from "@/components/admin/schedule-types"
 
+function DetailRow({
+  icon: Icon,
+  children,
+}: {
+  icon: React.ElementType
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start gap-2.5 text-sm">
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  )
+}
+
+// Read-only first: opening a job should answer "what is this" before offering
+// to change it, and it makes Edit and Delete visible actions rather than
+// something you discover by scrolling a form.
+function ScheduleSummary({
+  schedule,
+  onEdit,
+  onDeleted,
+}: {
+  schedule: ScheduleRecord
+  onEdit: () => void
+  onDeleted: () => void
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [savingStatus, setSavingStatus] = useState<ScheduleStatus | null>(null)
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await deleteSchedule(schedule.id)
+      onDeleted()
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleStatus(status: ScheduleStatus) {
+    if (status === schedule.status) return
+    setSavingStatus(status)
+    try {
+      await updateScheduleStatus(schedule.id, status)
+    } finally {
+      setSavingStatus(null)
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {schedule.workTypes.map((type) => (
+            <Badge key={type} className={WORK_TYPE_SOLID[type]}>
+              {WORK_TYPE_LABELS[type]}
+            </Badge>
+          ))}
+        </div>
+
+        {/* Status is the one thing that changes constantly after booking —
+            closing out a day shouldn't mean opening the full edit form, so it
+            saves on click without touching anything else. */}
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Status
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {SCHEDULE_STATUSES.map((status) => {
+              const active = schedule.status === status
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => handleStatus(status)}
+                  disabled={savingStatus !== null || deleting}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors outline-none disabled:opacity-60",
+                    active
+                      ? cn(SCHEDULE_STATUS_CHIP[status], "border-transparent")
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      SCHEDULE_STATUS_DOT[status]
+                    )}
+                  />
+                  {SCHEDULE_STATUS_LABELS[status]}
+                  {savingStatus === status && "…"}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-lg border p-3">
+          <DetailRow icon={CalendarDays}>
+            {formatScheduleDate(schedule.date)}
+          </DetailRow>
+          <DetailRow icon={Clock}>
+            {formatTimeRange(schedule.startTime, schedule.endTime)}
+          </DetailRow>
+          <DetailRow icon={MapPin}>
+            <p>{schedule.branch?.name ?? "Head office"}</p>
+            <p className="text-xs text-muted-foreground">
+              {schedule.branch?.address ?? schedule.client.address}
+            </p>
+          </DetailRow>
+          <DetailRow icon={Users}>
+            {schedule.assignments.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {schedule.assignments.map((assignment) => (
+                  <Badge key={assignment.id} variant="outline">
+                    {assignment.employeeName}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <span className="text-amber-700 dark:text-amber-400">
+                No employees assigned yet
+              </span>
+            )}
+          </DetailRow>
+          <DetailRow icon={User}>
+            {schedule.contactPerson || schedule.contactNumber ? (
+              <span>
+                {schedule.contactPerson || "No name on file"}
+                {schedule.contactNumber && (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    {" · "}
+                    <Phone className="size-3" />
+                    {schedule.contactNumber}
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                No on-site contact recorded
+              </span>
+            )}
+          </DetailRow>
+          {schedule.remarks && (
+            <DetailRow icon={StickyNote}>
+              <p className="whitespace-pre-wrap">{schedule.remarks}</p>
+            </DetailRow>
+          )}
+        </div>
+
+        {confirmDelete && (
+          <div className="flex flex-col gap-3 rounded-lg bg-destructive/10 p-3 text-sm">
+            <p className="text-destructive">
+              Delete this job? Its employee assignments go with it and this
+              can&apos;t be undone.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Yes, delete"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+              >
+                Keep
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <SheetFooter className="mt-auto flex-row gap-2 border-t">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setConfirmDelete(true)}
+          disabled={deleting || confirmDelete}
+          className="text-destructive hover:bg-destructive/10"
+        >
+          <Trash2 />
+          Delete
+        </Button>
+        <Button type="button" onClick={onEdit} className="flex-1">
+          <Pencil />
+          Edit job
+        </Button>
+      </SheetFooter>
+    </div>
+  )
+}
+
 function ScheduleEditForm({
   schedule,
   clients,
   employees,
+  busy,
+  onCancel,
   onSaved,
 }: {
   schedule: ScheduleRecord
   clients: ClientOption[]
   employees: EmployeeOption[]
+  busy: EmployeeBusyBlock[]
+  onCancel: () => void
   onSaved: () => void
 }) {
   const [state, action, pending] = useActionState<
     UpdateScheduleState,
     FormData
   >(updateSchedule, undefined)
-  const [clientId, setClientId] = useState(schedule.client.id)
-  const [branchId, setBranchId] = useState(schedule.branch?.id ?? "")
-  const [deleting, setDeleting] = useState(false)
-  // Uncontrolled inputs below read their defaultValue from this frozen
-  // snapshot, not the live `schedule` prop — a successful save triggers
-  // revalidatePath, which can push fresh data into this still-mounted form
-  // before onSaved() closes the sheet, and changing defaultValue on an
-  // already-initialized uncontrolled field is what Base UI warns about.
+
+  const [context, setContext] = useState<ScheduleContext>(() => ({
+    clientId: schedule.client.id,
+    branchId: schedule.branch?.id ?? "",
+    date: toDateInputValue(schedule.date),
+    startTime: toTimeInputValue(schedule.startTime),
+    endTime: toTimeInputValue(schedule.endTime),
+  }))
+  // Frozen so a revalidate can't swap defaultValue under an already-mounted
+  // uncontrolled field while the sheet is closing.
   const [initial] = useState(schedule)
 
   useEffect(() => {
@@ -74,303 +292,104 @@ function ScheduleEditForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state])
 
-  const selectedClient = useMemo(
-    () => clients.find((client) => client.id === clientId),
-    [clients, clientId]
-  )
-  const branches = selectedClient?.branches ?? []
-  const address = branchId
-    ? branches.find((branch) => branch.id === branchId)?.address
-    : selectedClient?.address
-
   const formId = `schedule-edit-form-${schedule.id}`
-
-  async function handleDelete() {
-    if (!confirm("Delete this schedule? This can't be undone.")) return
-    setDeleting(true)
-    try {
-      await deleteSchedule(schedule.id)
-      onSaved()
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  const fieldsDisabled = pending || deleting
+  const conflictMessages = state?.errors?.employeeIds ?? []
 
   return (
-    <div className="flex flex-1 flex-col gap-6">
-      <div className="flex flex-col gap-6 px-4 py-4">
-      <div className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
-        {schedule.contactPerson || schedule.contactNumber ? (
-          <>
-            <User className="mt-0.5 size-4 shrink-0" />
-            <span>
-              {schedule.contactPerson || "No contact name on file"}
-              {schedule.contactNumber ? (
-                <span className="inline-flex items-center gap-1">
-                  {" "}
-                  · <Phone className="size-3" /> {schedule.contactNumber}
-                </span>
-              ) : null}
-            </span>
-          </>
-        ) : (
-          <span>No on-site contact recorded for this job.</span>
-        )}
-      </div>
+    <div className="flex flex-1 flex-col">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <form action={action} id={formId}>
+          <input type="hidden" name="scheduleId" value={schedule.id} />
+          <ScheduleFormFields
+            idPrefix={`schedule-${schedule.id}`}
+            clients={clients}
+            employees={employees}
+            busy={busy}
+            context={context}
+            onContextChange={(patch) =>
+              setContext((current) => ({ ...current, ...patch }))
+            }
+            errors={state?.errors}
+            pending={pending}
+            scheduleId={schedule.id}
+            defaultWorkTypes={initial.workTypes}
+            defaultEmployeeIds={initial.assignments.map((a) => a.employeeId)}
+            defaultContactPerson={initial.contactPerson ?? ""}
+            defaultContactNumber={initial.contactNumber ?? ""}
+            defaultRemarks={initial.remarks ?? ""}
+            defaultStatus={initial.status}
+            showStatus
+          />
 
-      <form action={action} id={formId} className="flex flex-col gap-4">
-        <input type="hidden" name="scheduleId" value={schedule.id} />
-        <FieldGroup>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field data-invalid={!!state?.errors?.clientId}>
-              <FieldLabel htmlFor={`clientId-${schedule.id}`}>
-                Client
-              </FieldLabel>
-              <Select
-                name="clientId"
-                value={clientId}
-                onValueChange={(value) => {
-                  setClientId(value as string)
-                  setBranchId("")
-                }}
-                disabled={fieldsDisabled}
-                items={Object.fromEntries(
-                  clients.map((client) => [client.id, client.name])
-                )}
-              >
-                <SelectTrigger id={`clientId-${schedule.id}`} className="w-full">
-                  <SelectValue placeholder="Select a client" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FieldError
-                errors={state?.errors?.clientId?.map((message) => ({
-                  message,
-                }))}
-              />
-            </Field>
-
-            <Field data-invalid={!!state?.errors?.branchId}>
-              <FieldLabel htmlFor={`branchId-${schedule.id}`}>
-                Branch (optional)
-              </FieldLabel>
-              <Select
-                name="branchId"
-                value={branchId}
-                onValueChange={(value) => setBranchId(value as string)}
-                disabled={fieldsDisabled || branches.length === 0}
-                items={Object.fromEntries(
-                  branches.map((branch) => [branch.id, branch.name])
-                )}
-              >
-                <SelectTrigger id={`branchId-${schedule.id}`} className="w-full">
-                  <SelectValue
-                    placeholder={
-                      branches.length === 0
-                        ? "No branches for this client"
-                        : "Select a branch"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FieldError
-                errors={state?.errors?.branchId?.map((message) => ({
-                  message,
-                }))}
-              />
-            </Field>
-          </div>
-
-          {address && (
-            <div className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
-              <MapPin className="mt-0.5 size-4 shrink-0" />
-              <span>{address}</span>
+          {conflictMessages.length > 0 && (
+            <div className="mt-4 flex flex-col gap-1.5 rounded-lg bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
+              <span className="inline-flex items-center gap-1.5 font-medium">
+                <AlertTriangle className="size-3.5" />
+                Double booking
+              </span>
+              {conflictMessages.map((message) => (
+                <span key={message}>{message}</span>
+              ))}
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field data-invalid={!!state?.errors?.date}>
-              <FieldLabel htmlFor={`date-${schedule.id}`}>Date</FieldLabel>
-              <Input
-                id={`date-${schedule.id}`}
-                name="date"
-                type="date"
-                defaultValue={toDateInputValue(initial.date)}
-                disabled={fieldsDisabled}
-                required
-              />
-              <FieldError
-                errors={state?.errors?.date?.map((message) => ({ message }))}
-              />
-            </Field>
-            <Field data-invalid={!!state?.errors?.startTime}>
-              <FieldLabel htmlFor={`startTime-${schedule.id}`}>
-                Start time
-              </FieldLabel>
-              <Input
-                id={`startTime-${schedule.id}`}
-                name="startTime"
-                type="time"
-                defaultValue={toTimeInputValue(initial.startTime)}
-                disabled={fieldsDisabled}
-                required
-              />
-              <FieldError
-                errors={state?.errors?.startTime?.map((message) => ({
-                  message,
-                }))}
-              />
-            </Field>
-            <Field data-invalid={!!state?.errors?.endTime}>
-              <FieldLabel htmlFor={`endTime-${schedule.id}`}>
-                End time
-              </FieldLabel>
-              <Input
-                id={`endTime-${schedule.id}`}
-                name="endTime"
-                type="time"
-                defaultValue={toTimeInputValue(initial.endTime)}
-                disabled={fieldsDisabled}
-                required
-              />
-              <FieldError
-                errors={state?.errors?.endTime?.map((message) => ({
-                  message,
-                }))}
-              />
-            </Field>
-          </div>
-
-          <Field data-invalid={!!state?.errors?.workTypes}>
-            <FieldLabel>Work type</FieldLabel>
-            <ScheduleWorkTypePicker
-              defaultSelected={schedule.workTypes}
-              disabled={fieldsDisabled}
-            />
-            <FieldError
-              errors={state?.errors?.workTypes?.map((message) => ({
-                message,
-              }))}
-            />
-          </Field>
-
-          <Field data-invalid={!!state?.errors?.status}>
-            <FieldLabel htmlFor={`status-${schedule.id}`}>Status</FieldLabel>
-            <Select
-              name="status"
-              defaultValue={initial.status}
-              disabled={fieldsDisabled}
-              items={Object.fromEntries(
-                SCHEDULE_STATUSES.map((status) => [
-                  status,
-                  SCHEDULE_STATUS_LABELS[status],
-                ])
-              )}
-            >
-              <SelectTrigger id={`status-${schedule.id}`} className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SCHEDULE_STATUSES.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {SCHEDULE_STATUS_LABELS[status]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <FieldError
-              errors={state?.errors?.status?.map((message) => ({
-                message,
-              }))}
-            />
-          </Field>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field data-invalid={!!state?.errors?.contactPerson}>
-              <FieldLabel htmlFor={`contactPerson-${schedule.id}`}>
-                Contact person (optional)
-              </FieldLabel>
-              <Input
-                id={`contactPerson-${schedule.id}`}
-                name="contactPerson"
-                defaultValue={initial.contactPerson ?? ""}
-                disabled={fieldsDisabled}
-              />
-              <FieldError
-                errors={state?.errors?.contactPerson?.map((message) => ({
-                  message,
-                }))}
-              />
-            </Field>
-            <Field data-invalid={!!state?.errors?.contactNumber}>
-              <FieldLabel htmlFor={`contactNumber-${schedule.id}`}>
-                Contact number (optional)
-              </FieldLabel>
-              <Input
-                id={`contactNumber-${schedule.id}`}
-                name="contactNumber"
-                defaultValue={initial.contactNumber ?? ""}
-                disabled={fieldsDisabled}
-              />
-              <FieldError
-                errors={state?.errors?.contactNumber?.map((message) => ({
-                  message,
-                }))}
-              />
-            </Field>
-          </div>
-
-          <Field>
-            <FieldLabel>Assign employees</FieldLabel>
-            <ScheduleEmployeePicker
-              employees={employees}
-              defaultSelectedIds={initial.assignments.map(
-                (a) => a.employeeId
-              )}
-              disabled={fieldsDisabled}
-            />
-          </Field>
-
-          {state?.message && (
-            <p className="text-sm text-destructive">{state.message}</p>
+          {state?.message && conflictMessages.length === 0 && (
+            <p className="mt-4 text-sm text-destructive">{state.message}</p>
           )}
-        </FieldGroup>
-      </form>
-
-      <Button
-        type="button"
-        variant="destructive"
-        size="sm"
-        onClick={handleDelete}
-        disabled={fieldsDisabled}
-        className="self-start"
-      >
-        <Trash2 />
-        {deleting ? "Deleting..." : "Delete schedule"}
-      </Button>
+        </form>
       </div>
 
-      <SheetFooter className="mt-auto border-t">
-        <Button type="submit" form={formId} disabled={fieldsDisabled} className="w-full">
+      <SheetFooter className="mt-auto flex-row gap-2 border-t">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={pending}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" form={formId} disabled={pending} className="flex-1">
           {pending ? "Saving..." : "Save changes"}
         </Button>
       </SheetFooter>
     </div>
+  )
+}
+
+function SheetBody({
+  schedule,
+  clients,
+  employees,
+  busy,
+  onClose,
+}: {
+  schedule: ScheduleRecord
+  clients: ClientOption[]
+  employees: EmployeeOption[]
+  busy: EmployeeBusyBlock[]
+  onClose: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+
+  if (editing) {
+    return (
+      <ScheduleEditForm
+        schedule={schedule}
+        clients={clients}
+        employees={employees}
+        busy={busy}
+        onCancel={() => setEditing(false)}
+        onSaved={onClose}
+      />
+    )
+  }
+
+  return (
+    <ScheduleSummary
+      schedule={schedule}
+      onEdit={() => setEditing(true)}
+      onDeleted={onClose}
+    />
   )
 }
 
@@ -380,20 +399,22 @@ export function ScheduleDetailSheet({
   onOpenChange,
   clients,
   employees,
+  busy,
 }: {
   schedule: ScheduleRecord | null
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: ClientOption[]
   employees: EmployeeOption[]
+  busy: EmployeeBusyBlock[]
 }) {
   if (!schedule) return null
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-lg">
+      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
         <SheetHeader className="border-b">
-          <SheetTitle>
+          <SheetTitle className={cn("truncate")}>
             {schedule.client.name}
             {schedule.branch ? ` · ${schedule.branch.name}` : ""}
           </SheetTitle>
@@ -403,12 +424,13 @@ export function ScheduleDetailSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <ScheduleEditForm
+        <SheetBody
           key={schedule.id}
           schedule={schedule}
           clients={clients}
           employees={employees}
-          onSaved={() => onOpenChange(false)}
+          busy={busy}
+          onClose={() => onOpenChange(false)}
         />
       </SheetContent>
     </Sheet>

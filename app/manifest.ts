@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "AeroCoole Workforce Portal",
     short_name: "AeroCoole",
     description:
-      "Scheduling, attendance, payroll, and reimbursements for AeroCoole crews.",
+      "Scheduling, attendance, payroll, and reimbursements for AeroCoole employees.",
     start_url: "/",
     display: "standalone",
     background_color: "#0f172a",

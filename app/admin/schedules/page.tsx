@@ -1,8 +1,9 @@
-import { CalendarClock, CheckCircle2, Clock, Undo2 } from "lucide-react"
+import { CalendarClock, CheckCircle2, Clock, Undo2, UserX } from "lucide-react"
 import { prisma } from "@/lib/prisma"
-import { CreateScheduleDialog } from "@/components/admin/create-schedule-dialog"
+import { isSameDay, type EmployeeBusyBlock } from "@/lib/schedule"
 import { SchedulesView } from "@/components/admin/schedules-view"
 import { Card, CardContent } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 import type {
   ClientOption,
   EmployeeOption,
@@ -34,7 +35,13 @@ export default async function SchedulesPage() {
     }),
     prisma.employee.findMany({
       where: { OR: [{ account: null }, { account: { isActive: true } }] },
-      select: { id: true, firstName: true, lastName: true, position: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        position: true,
+        skills: true,
+      },
       orderBy: { firstName: "asc" },
     }),
   ])
@@ -48,6 +55,7 @@ export default async function SchedulesPage() {
     status: schedule.status,
     contactPerson: schedule.contactPerson,
     contactNumber: schedule.contactNumber,
+    remarks: schedule.remarks,
     createdAt: schedule.createdAt.toISOString(),
     createdByName: schedule.createdBy
       ? `${schedule.createdBy.employee.firstName} ${schedule.createdBy.employee.lastName}`
@@ -60,6 +68,23 @@ export default async function SchedulesPage() {
       employeeName: `${assignment.employee.firstName} ${assignment.employee.lastName}`,
     })),
   }))
+
+  // One entry per (employee, job) so the assignment picker can flag a clash
+  // as the time is typed. Cancelled jobs are left out — they don't hold
+  // anyone's time, which is the same rule the server enforces on submit.
+  const busy: EmployeeBusyBlock[] = scheduleRecords
+    .filter((schedule) => schedule.status !== "CANCELLED")
+    .flatMap((schedule) =>
+      schedule.assignments.map((assignment) => ({
+        employeeId: assignment.employeeId,
+        scheduleId: schedule.id,
+        start: schedule.startTime.toISOString(),
+        end: schedule.endTime.toISOString(),
+        label: schedule.branch
+          ? `${schedule.client.name} · ${schedule.branch.name}`
+          : schedule.client.name,
+      }))
+    )
 
   const clients: ClientOption[] = clientRecords.map((client) => ({
     id: client.id,
@@ -74,78 +99,103 @@ export default async function SchedulesPage() {
 
   const employees: EmployeeOption[] = employeeRecords
 
-  const todayKey = new Date().toDateString()
-  const todayCount = schedules.filter(
-    (schedule) => new Date(schedule.date).toDateString() === todayKey
+  const today = new Date()
+  const todayCount = schedules.filter((schedule) =>
+    isSameDay(new Date(schedule.date), today)
   ).length
   const pendingCount = schedules.filter((s) => s.status === "PENDING").length
   const needsReturnCount = schedules.filter(
     (s) => s.status === "NEED_TO_RETURN"
   ).length
-  const completedCount = schedules.filter(
-    (s) => s.status === "COMPLETED"
+  const completedCount = schedules.filter((s) => s.status === "COMPLETED").length
+  // Upcoming jobs with nobody on them are the ones that quietly go wrong, so
+  // they get a tile of their own rather than hiding inside "Pending".
+  const unassignedCount = schedules.filter(
+    (s) =>
+      s.assignments.length === 0 &&
+      s.status === "PENDING" &&
+      new Date(s.date) >= new Date(today.toDateString())
   ).length
 
+  const summary = [
+    {
+      label: "Today's jobs",
+      value: todayCount,
+      icon: CalendarClock,
+      color: "text-sky-600 dark:text-sky-400",
+      bg: "bg-sky-600/10",
+    },
+    {
+      label: "Pending",
+      value: pendingCount,
+      icon: Clock,
+      color: "text-amber-600 dark:text-amber-400",
+      bg: "bg-amber-600/10",
+    },
+    {
+      label: "Unassigned",
+      value: unassignedCount,
+      icon: UserX,
+      color: "text-rose-600 dark:text-rose-400",
+      bg: "bg-rose-600/10",
+    },
+    {
+      label: "Need to return",
+      value: needsReturnCount,
+      icon: Undo2,
+      color: "text-orange-600 dark:text-orange-400",
+      bg: "bg-orange-600/10",
+    },
+    {
+      label: "Completed",
+      value: completedCount,
+      icon: CheckCircle2,
+      color: "text-emerald-600 dark:text-emerald-400",
+      bg: "bg-emerald-600/10",
+    },
+  ]
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Schedules</h2>
-          <p className="text-sm text-muted-foreground">
-            Book jobs and assign the employees who&apos;ll handle them.
-          </p>
-        </div>
-        <CreateScheduleDialog clients={clients} employees={employees} />
+    <div className="flex flex-col gap-5">
+      <div>
+        <h2 className="text-lg font-semibold">Schedules</h2>
+        <p className="text-sm text-muted-foreground">
+          Book jobs at client sites and deploy the employees who&apos;ll handle
+          them.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card className="shadow-sm">
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-semibold">{todayCount}</p>
-              <p className="text-sm text-muted-foreground">Today&apos;s jobs</p>
-            </div>
-            <div className="flex size-9 items-center justify-center rounded-lg bg-sky-600/10">
-              <CalendarClock className="size-4.5 text-sky-600 dark:text-sky-400" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm">
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-semibold">{pendingCount}</p>
-              <p className="text-sm text-muted-foreground">Pending</p>
-            </div>
-            <div className="flex size-9 items-center justify-center rounded-lg bg-amber-600/10">
-              <Clock className="size-4.5 text-amber-600 dark:text-amber-400" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm">
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-semibold">{needsReturnCount}</p>
-              <p className="text-sm text-muted-foreground">Need to return</p>
-            </div>
-            <div className="flex size-9 items-center justify-center rounded-lg bg-orange-600/10">
-              <Undo2 className="size-4.5 text-orange-600 dark:text-orange-400" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm">
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-semibold">{completedCount}</p>
-              <p className="text-sm text-muted-foreground">Completed</p>
-            </div>
-            <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-600/10">
-              <CheckCircle2 className="size-4.5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {summary.map((stat) => (
+          <Card key={stat.label} className="shadow-sm" size="sm">
+            <CardContent className="flex items-center gap-3">
+              <div
+                className={cn(
+                  "flex size-10 shrink-0 items-center justify-center rounded-lg",
+                  stat.bg
+                )}
+              >
+                <stat.icon className={cn("size-5", stat.color)} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-2xl leading-none font-semibold tabular-nums">
+                  {stat.value}
+                </p>
+                <p className="mt-1.5 truncate text-xs text-muted-foreground">
+                  {stat.label}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      <SchedulesView schedules={schedules} clients={clients} employees={employees} />
+      <SchedulesView
+        schedules={schedules}
+        clients={clients}
+        employees={employees}
+        busy={busy}
+      />
     </div>
   )
 }

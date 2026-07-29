@@ -1,10 +1,10 @@
 "use client"
 
-import { useActionState, useEffect, useMemo, useState } from "react"
-import { MapPin, Plus } from "lucide-react"
+import { useActionState, useEffect, useRef, useState } from "react"
+import { AlertTriangle, CheckCircle2 } from "lucide-react"
 import { createSchedule, type ScheduleState } from "@/app/actions/schedules"
+import { type EmployeeBusyBlock } from "@/lib/schedule"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -12,268 +12,165 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
+
 } from "@/components/ui/dialog"
 import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { ScheduleEmployeePicker } from "@/components/admin/schedule-employee-picker"
-import { ScheduleWorkTypePicker } from "@/components/admin/schedule-worktype-picker"
+  ScheduleFormFields,
+  type ScheduleContext,
+} from "@/components/admin/schedule-form-fields"
 import type {
   ClientOption,
   EmployeeOption,
 } from "@/components/admin/schedule-types"
 
+// What clicking an empty calendar slot hands over: the day, and for the time
+// grids the hour that was clicked.
+export type ScheduleSlot = {
+  date: string
+  startTime: string
+  endTime: string
+}
+
+export function defaultSlot(date: string): ScheduleSlot {
+  return { date, startTime: "08:00", endTime: "12:00" }
+}
+
 export function CreateScheduleDialog({
   clients,
   employees,
+  busy,
+  open,
+  onOpenChange,
+  slot,
 }: {
   clients: ClientOption[]
   employees: EmployeeOption[]
+  busy: EmployeeBusyBlock[]
+  // Controlled from the calendar so clicking an empty slot can open this
+  // pre-filled with that day and hour, not just the toolbar button.
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  slot: ScheduleSlot
 }) {
-  const [open, setOpen] = useState(false)
-  const [clientId, setClientId] = useState("")
-  const [branchId, setBranchId] = useState("")
   const [state, action, pending] = useActionState<ScheduleState, FormData>(
     createSchedule,
     undefined
   )
 
+  const [context, setContext] = useState<ScheduleContext>(() => ({
+    clientId: "",
+    branchId: "",
+    ...slot,
+  }))
+  // Bumping this remounts the volatile half of the form (work types,
+  // employees, contacts, remarks) while `context` survives in this component's
+  // state — the whole point of "Save & add another".
+  const [formKey, setFormKey] = useState(0)
+  const [createdCount, setCreatedCount] = useState(0)
+  // Read inside the effect only, so it doesn't need to be a dependency: which
+  // button was pressed decides whether the dialog stays open for the next job.
+  const keepOpenRef = useRef(false)
+  // Tracks the slot the dialog was last opened with, so re-opening on a
+  // different day reseeds the form without an effect firing on every render.
+  const openedWithRef = useRef<ScheduleSlot | null>(null)
+
   useEffect(() => {
-    if (state?.success) {
-      setOpen(false)
-      setClientId("")
-      setBranchId("")
-    }
+    if (!state?.success) return
+    setCreatedCount((count) => count + 1)
+    setFormKey((key) => key + 1)
+    if (!keepOpenRef.current) onOpenChange(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state])
 
-  const selectedClient = useMemo(
-    () => clients.find((client) => client.id === clientId),
-    [clients, clientId]
-  )
-  const branches = selectedClient?.branches ?? []
-  const address = branchId
-    ? branches.find((branch) => branch.id === branchId)?.address
-    : selectedClient?.address
+  useEffect(() => {
+    if (!open || openedWithRef.current === slot) return
+    openedWithRef.current = slot
+    setContext({ clientId: "", branchId: "", ...slot })
+    setFormKey((key) => key + 1)
+    setCreatedCount(0)
+  }, [open, slot])
+
+  function patchContext(patch: Partial<ScheduleContext>) {
+    setContext((current) => ({ ...current, ...patch }))
+  }
+
+  const conflictMessages = state?.errors?.employeeIds ?? []
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button>
-            <Plus />
-            New schedule
-          </Button>
-        }
-      />
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92vh] gap-3 sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Create schedule</DialogTitle>
-          <DialogDescription>
-            Book a job for a client and assign the employees who&apos;ll handle it.
+          <DialogTitle>Book a job</DialogTitle>
+          <DialogDescription className="text-xs">
+            “Save &amp; add another” keeps the site, date and time for the next
+            booking.
           </DialogDescription>
         </DialogHeader>
 
-        <form action={action} id="create-schedule-form">
-          <FieldGroup>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={!!state?.errors?.clientId}>
-                <FieldLabel htmlFor="clientId">Client</FieldLabel>
-                <Select
-                  name="clientId"
-                  value={clientId}
-                  onValueChange={(value) => {
-                    setClientId(value as string)
-                    setBranchId("")
-                  }}
-                  disabled={pending}
-                  items={Object.fromEntries(
-                    clients.map((client) => [client.id, client.name])
-                  )}
-                >
-                  <SelectTrigger id="clientId" className="w-full">
-                    <SelectValue placeholder="Select a client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldError
-                  errors={state?.errors?.clientId?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
+        <form
+          action={action}
+          id="create-schedule-form"
+          className="-mx-1 max-h-[65vh] overflow-y-auto px-1 py-0.5"
+        >
+          <ScheduleFormFields
+            key={formKey}
+            idPrefix="new-schedule"
+            clients={clients}
+            employees={employees}
+            busy={busy}
+            context={context}
+            onContextChange={patchContext}
+            errors={state?.errors}
+            pending={pending}
+          />
 
-              <Field data-invalid={!!state?.errors?.branchId}>
-                <FieldLabel htmlFor="branchId">Branch (optional)</FieldLabel>
-                <Select
-                  name="branchId"
-                  value={branchId}
-                  onValueChange={(value) => setBranchId(value as string)}
-                  disabled={pending || branches.length === 0}
-                  items={Object.fromEntries(
-                    branches.map((branch) => [branch.id, branch.name])
-                  )}
-                >
-                  <SelectTrigger id="branchId" className="w-full">
-                    <SelectValue
-                      placeholder={
-                        branches.length === 0
-                          ? "No branches for this client"
-                          : "Select a branch"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {branches.map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldError
-                  errors={state?.errors?.branchId?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
+          {conflictMessages.length > 0 && (
+            <div className="mt-4 flex flex-col gap-1.5 rounded-lg bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
+              <span className="inline-flex items-center gap-1.5 font-medium">
+                <AlertTriangle className="size-3.5" />
+                Double booking
+              </span>
+              {conflictMessages.map((message) => (
+                <span key={message}>{message}</span>
+              ))}
             </div>
+          )}
 
-            {address && (
-              <div className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
-                <MapPin className="mt-0.5 size-4 shrink-0" />
-                <span>{address}</span>
-              </div>
-            )}
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field data-invalid={!!state?.errors?.date}>
-                <FieldLabel htmlFor="date">Date</FieldLabel>
-                <Input
-                  id="date"
-                  name="date"
-                  type="date"
-                  disabled={pending}
-                  required
-                />
-                <FieldError
-                  errors={state?.errors?.date?.map((message) => ({ message }))}
-                />
-              </Field>
-              <Field data-invalid={!!state?.errors?.startTime}>
-                <FieldLabel htmlFor="startTime">Start time</FieldLabel>
-                <Input
-                  id="startTime"
-                  name="startTime"
-                  type="time"
-                  disabled={pending}
-                  required
-                />
-                <FieldError
-                  errors={state?.errors?.startTime?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
-              <Field data-invalid={!!state?.errors?.endTime}>
-                <FieldLabel htmlFor="endTime">End time</FieldLabel>
-                <Input
-                  id="endTime"
-                  name="endTime"
-                  type="time"
-                  disabled={pending}
-                  required
-                />
-                <FieldError
-                  errors={state?.errors?.endTime?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
-            </div>
-
-            <Field data-invalid={!!state?.errors?.workTypes}>
-              <FieldLabel>Work type</FieldLabel>
-              <ScheduleWorkTypePicker disabled={pending} />
-              <FieldError
-                errors={state?.errors?.workTypes?.map((message) => ({
-                  message,
-                }))}
-              />
-            </Field>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={!!state?.errors?.contactPerson}>
-                <FieldLabel htmlFor="contactPerson">
-                  Contact person (optional)
-                </FieldLabel>
-                <Input
-                  id="contactPerson"
-                  name="contactPerson"
-                  disabled={pending}
-                />
-                <FieldError
-                  errors={state?.errors?.contactPerson?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
-              <Field data-invalid={!!state?.errors?.contactNumber}>
-                <FieldLabel htmlFor="contactNumber">
-                  Contact number (optional)
-                </FieldLabel>
-                <Input
-                  id="contactNumber"
-                  name="contactNumber"
-                  disabled={pending}
-                />
-                <FieldError
-                  errors={state?.errors?.contactNumber?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
-            </div>
-
-            <Field>
-              <FieldLabel>Assign employees</FieldLabel>
-              <ScheduleEmployeePicker employees={employees} disabled={pending} />
-            </Field>
-
-            {state?.message && (
-              <p className="text-sm text-destructive">{state.message}</p>
-            )}
-          </FieldGroup>
+          {state?.message && conflictMessages.length === 0 && (
+            <p className="mt-4 text-sm text-destructive">{state.message}</p>
+          )}
         </form>
 
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" form="create-schedule-form" disabled={pending}>
-            {pending ? "Creating..." : "Create schedule"}
-          </Button>
+        {/* Buttons stack on a phone and sit inline from sm up; the counter
+            only earns its line once something has actually been booked. */}
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {createdCount > 0 && (
+            <p className="inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="size-3.5" />
+              {createdCount} booked
+            </p>
+          )}
+          <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+            <Button
+              type="submit"
+              form="create-schedule-form"
+              variant="outline"
+              disabled={pending}
+              onClick={() => (keepOpenRef.current = true)}
+              className="flex-1 sm:flex-none"
+            >
+              Save &amp; add
+            </Button>
+            <Button
+              type="submit"
+              form="create-schedule-form"
+              disabled={pending}
+              onClick={() => (keepOpenRef.current = false)}
+              className="flex-1 sm:flex-none"
+            >
+              {pending ? "Booking..." : "Book job"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

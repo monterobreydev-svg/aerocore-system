@@ -15,6 +15,7 @@ export type ScheduleRecord = {
   status: ScheduleStatus
   contactPerson: string | null
   contactNumber: string | null
+  remarks: string | null
   createdAt: string
   createdByName: string | null
   client: { id: string; name: string; address: string }
@@ -36,4 +37,6 @@ export type EmployeeOption = {
   firstName: string
   lastName: string
   position: string
+  // Drives which employees float to the top for a job's work types.
+  skills: string[]
 }

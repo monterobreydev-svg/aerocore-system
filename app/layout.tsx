@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AeroCore",
   description:
-    "Scheduling, attendance, payroll, and reimbursements for AeroCoole crews.",
+    "Scheduling, attendance, payroll, and reimbursements for AeroCoole employees.",
 };
 
 export const viewport: Viewport = {

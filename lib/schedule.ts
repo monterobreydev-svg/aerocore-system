@@ -34,6 +34,26 @@ export const WORK_TYPE_CHIP: Record<WorkType, string> = {
   TROUBLESHOOT: "bg-rose-600/10 text-rose-700 dark:text-rose-400",
 }
 
+// Solid fills for calendar entries, Google-Calendar style — the whole block
+// carries the colour rather than a thin edge, so a month at a glance reads as
+// blocks of work rather than a grey list. Kept in the pastel range (100/200 in
+// light, a soft translucent wash in dark) so a packed week doesn't glare, and
+// text is a deep tint of the same hue rather than white for contrast at small
+// sizes.
+export const WORK_TYPE_SOLID: Record<WorkType, string> = {
+  INSTALLATION:
+    "bg-indigo-100 text-indigo-900 dark:bg-indigo-400/25 dark:text-indigo-50",
+  REPAIR:
+    "bg-orange-100 text-orange-900 dark:bg-orange-400/25 dark:text-orange-50",
+  MAINTENANCE: "bg-sky-100 text-sky-900 dark:bg-sky-400/25 dark:text-sky-50",
+  CLEANING: "bg-teal-100 text-teal-900 dark:bg-teal-400/25 dark:text-teal-50",
+  INSPECTION:
+    "bg-violet-100 text-violet-900 dark:bg-violet-400/25 dark:text-violet-50",
+  SURVEY: "bg-lime-100 text-lime-900 dark:bg-lime-400/25 dark:text-lime-50",
+  TROUBLESHOOT:
+    "bg-rose-100 text-rose-900 dark:bg-rose-400/25 dark:text-rose-50",
+}
+
 // Left-border accent per work type, used on calendar chips.
 export const WORK_TYPE_BORDER: Record<WorkType, string> = {
   INSTALLATION: "border-l-indigo-500",
@@ -129,4 +149,163 @@ export function toTimeInputValue(iso: string) {
   const hours = String(date.getHours()).padStart(2, "0")
   const minutes = String(date.getMinutes()).padStart(2, "0")
   return `${hours}:${minutes}`
+}
+
+// ---------------------------------------------------------------------------
+// Calendar date maths
+//
+// All of it is local-time. Schedules are written as `new Date("YYYY-MM-DDT00:00:00")`,
+// i.e. local midnight, so comparing with toISOString() would shift the day for
+// anyone east of UTC — Manila included, which is the whole user base.
+// ---------------------------------------------------------------------------
+
+export function startOfDay(date: Date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+// Weeks run Monday–Sunday, matching how the working week is described.
+export function startOfWeek(date: Date) {
+  const d = startOfDay(date)
+  const day = d.getDay()
+  d.setDate(d.getDate() + ((day === 0 ? -6 : 1) - day))
+  return d
+}
+
+export function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+export function addDays(date: Date, days: number) {
+  const d = new Date(date)
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+export function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1)
+}
+
+export function isSameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+
+// "2026-07-29" from local parts — the value a <input type="date"> expects.
+export function dateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+export function minutesIntoDay(iso: string) {
+  const d = new Date(iso)
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+// ---------------------------------------------------------------------------
+// Double-booking
+// ---------------------------------------------------------------------------
+
+// Half-open intervals: a job ending at 12:00 and one starting at 12:00 don't
+// clash, so back-to-back deployments at the same site stay bookable.
+export function rangesOverlap(
+  aStart: number | Date,
+  aEnd: number | Date,
+  bStart: number | Date,
+  bEnd: number | Date
+) {
+  return +aStart < +bEnd && +bStart < +aEnd
+}
+
+// A cancelled job doesn't hold anyone's time. Everything else does, including
+// NEED_TO_RETURN and RESCHEDULED — those rows still carry a live date/time the
+// employee is expected at.
+export const BLOCKING_STATUSES: ScheduleStatus[] = SCHEDULE_STATUSES.filter(
+  (status) => status !== "CANCELLED"
+)
+
+// One employee's existing commitment, flattened for the browser so the
+// assignment picker can warn about a clash before anything is submitted.
+// The server re-checks regardless — this is a courtesy, not the guard.
+export type EmployeeBusyBlock = {
+  employeeId: string
+  scheduleId: string
+  start: string
+  end: string
+  label: string
+}
+
+export function findBusyConflicts(
+  busy: EmployeeBusyBlock[],
+  employeeId: string,
+  start: Date | null,
+  end: Date | null,
+  excludeScheduleId?: string
+) {
+  if (!start || !end || +end <= +start) return []
+  return busy.filter(
+    (block) =>
+      block.employeeId === employeeId &&
+      block.scheduleId !== excludeScheduleId &&
+      rangesOverlap(start, end, new Date(block.start), new Date(block.end))
+  )
+}
+
+// Combines a date input value and a time input value into a local Date.
+// Returns null when either half is missing or unparseable.
+export function combineDateTime(date: string, time: string) {
+  if (!date || !time) return null
+  const value = new Date(`${date}T${time}:00`)
+  return Number.isNaN(+value) ? null : value
+}
+
+// ---------------------------------------------------------------------------
+// Week/day time-grid layout
+// ---------------------------------------------------------------------------
+
+// Side-by-side placement for jobs whose times overlap. Events are grouped into
+// clusters that transitively overlap, and within a cluster each event takes the
+// first column that's free — the same approach desktop calendars use.
+export function packOverlapping<T extends { start: number; end: number }>(
+  items: T[]
+) {
+  const sorted = [...items].sort((a, b) => a.start - b.start || a.end - b.end)
+  const placed: { item: T; column: number; columns: number }[] = []
+
+  let cluster: { item: T; column: number }[] = []
+  let clusterEnd = -Infinity
+  let columnEnds: number[] = []
+
+  function flush() {
+    for (const entry of cluster) {
+      placed.push({ ...entry, columns: columnEnds.length })
+    }
+    cluster = []
+    columnEnds = []
+    clusterEnd = -Infinity
+  }
+
+  for (const item of sorted) {
+    if (item.start >= clusterEnd && cluster.length > 0) flush()
+
+    let column = columnEnds.findIndex((end) => end <= item.start)
+    if (column === -1) {
+      column = columnEnds.length
+      columnEnds.push(item.end)
+    } else {
+      columnEnds[column] = item.end
+    }
+
+    cluster.push({ item, column })
+    clusterEnd = Math.max(clusterEnd, item.end)
+  }
+  if (cluster.length > 0) flush()
+
+  return placed
 }
