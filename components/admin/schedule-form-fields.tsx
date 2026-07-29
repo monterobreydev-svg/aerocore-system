@@ -33,8 +33,8 @@ import type {
   EmployeeOption,
 } from "@/components/admin/schedule-types"
 
-// The five fields worth carrying over when booking job after job — employees
-// usually work one client's sites across a day, so re-picking them every time
+// The five fields worth carrying over when creating schedule after schedule —
+// employees usually work one client's sites across a day, so re-picking them
 // is the single biggest time sink in bulk entry.
 export type ScheduleContext = {
   clientId: string
@@ -134,7 +134,7 @@ export function ScheduleFormFields({
 
   // A client with a hundred branches is the case this has to survive, hence a
   // filtering combobox rather than a scrolling list. "Head office" is a real
-  // option, not a blank — booking against the main address is common.
+  // option, not a blank — scheduling against the main address is common.
   const branchOptions = useMemo(
     () => [
       {

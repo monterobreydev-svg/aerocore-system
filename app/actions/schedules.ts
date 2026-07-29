@@ -30,7 +30,7 @@ function shortTime(value: Date) {
 
 // The rule the whole feature hangs on: a person can't be in two places at
 // once. Checked here rather than only in the browser because the browser copy
-// can be stale — someone else may have booked the same employee seconds ago —
+// can be stale — someone else may have assigned the same employee seconds ago —
 // and because a server action is a public endpoint regardless of what the UI
 // does.
 //
@@ -81,7 +81,7 @@ async function findAssignmentConflicts({
 
     return schedule.assignments.map(
       (assignment) =>
-        `${assignment.employee.firstName} ${assignment.employee.lastName} is already booked at ${site} (${when}).`
+        `${assignment.employee.firstName} ${assignment.employee.lastName} is already assigned to ${site} (${when}).`
     )
   })
 }
@@ -192,7 +192,7 @@ export async function createSchedule(
   if (conflicts.length > 0) {
     return {
       errors: { employeeIds: conflicts },
-      message: "Some of the employees are already booked at that time.",
+      message: "Some of the employees are already assigned at that time.",
     }
   }
 
@@ -322,7 +322,7 @@ export async function updateSchedule(
   if (conflicts.length > 0) {
     return {
       errors: { employeeIds: conflicts },
-      message: "Some of the employees are already booked at that time.",
+      message: "Some of the employees are already assigned at that time.",
     }
   }
 
@@ -359,7 +359,7 @@ export async function updateSchedule(
   return { success: true }
 }
 
-// Status is the field that changes most after a job is booked — it's how the
+// Status is the field that changes most after a schedule is created — it's how the
 // day gets closed out. Giving it its own action means marking one Completed is
 // a single click from the calendar, rather than opening the full edit form and
 // re-submitting every other field (which would also re-run the conflict check

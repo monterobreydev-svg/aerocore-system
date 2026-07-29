@@ -100,10 +100,10 @@ export function CreateScheduleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] gap-3 sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Book a job</DialogTitle>
+          <DialogTitle>Create schedule</DialogTitle>
           <DialogDescription className="text-xs">
             “Save &amp; add another” keeps the site, date and time for the next
-            booking.
+            schedule.
           </DialogDescription>
         </DialogHeader>
 
@@ -128,7 +128,7 @@ export function CreateScheduleDialog({
             <div className="mt-4 flex flex-col gap-1.5 rounded-lg bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
               <span className="inline-flex items-center gap-1.5 font-medium">
                 <AlertTriangle className="size-3.5" />
-                Double booking
+                Schedule conflict
               </span>
               {conflictMessages.map((message) => (
                 <span key={message}>{message}</span>
@@ -142,12 +142,12 @@ export function CreateScheduleDialog({
         </form>
 
         {/* Buttons stack on a phone and sit inline from sm up; the counter
-            only earns its line once something has actually been booked. */}
+            only earns its line once something has actually been created. */}
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           {createdCount > 0 && (
             <p className="inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
               <CheckCircle2 className="size-3.5" />
-              {createdCount} booked
+              {createdCount} created
             </p>
           )}
           <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
@@ -168,7 +168,7 @@ export function CreateScheduleDialog({
               onClick={() => (keepOpenRef.current = false)}
               className="flex-1 sm:flex-none"
             >
-              {pending ? "Booking..." : "Book job"}
+              {pending ? "Creating..." : "Create schedule"}
             </Button>
           </div>
         </DialogFooter>

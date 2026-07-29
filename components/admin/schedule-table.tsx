@@ -103,7 +103,7 @@ export function ScheduleTable({
               <TableHead>Client</TableHead>
               <TableHead>Work type</TableHead>
               <TableHead>Assigned</TableHead>
-              <TableHead>Booked by</TableHead>
+              <TableHead>Created by</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>

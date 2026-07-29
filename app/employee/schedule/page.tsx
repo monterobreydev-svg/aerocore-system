@@ -6,7 +6,7 @@ import type { ScheduleRecord } from "@/components/admin/schedule-types"
 export default async function EmployeeSchedulePage() {
   const employee = await getCurrentEmployee()
 
-  // Driven straight off the assignment join, so anything the office books —
+  // Driven straight off the assignment join, so anything the office creates —
   // or reassigns, reschedules or cancels — shows up here on the next load.
   // The schedule actions revalidate this path, so that's immediate.
   const scheduleRecords = await prisma.schedule.findMany({
@@ -55,7 +55,7 @@ export default async function EmployeeSchedulePage() {
         <h2 className="text-lg font-semibold">My Schedule</h2>
         <p className="text-sm text-muted-foreground">
           Where you&apos;re deployed. Updated whenever the office changes a
-          booking.
+          schedule.
         </p>
       </div>
 

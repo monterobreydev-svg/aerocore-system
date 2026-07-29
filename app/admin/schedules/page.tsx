@@ -160,8 +160,8 @@ export default async function SchedulesPage() {
       <div>
         <h2 className="text-lg font-semibold">Schedules</h2>
         <p className="text-sm text-muted-foreground">
-          Book jobs at client sites and deploy the employees who&apos;ll handle
-          them.
+          Create schedules at client sites and deploy the employees who&apos;ll
+          handle them.
         </p>
       </div>
 

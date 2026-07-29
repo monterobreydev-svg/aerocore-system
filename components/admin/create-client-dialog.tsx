@@ -187,7 +187,7 @@ export function CreateClientDialog() {
             <Section
               icon={MapPin}
               title="Head office"
-              hint="Where jobs are booked unless you add branches later"
+              hint="Where schedules are created unless you add branches later"
             >
               <FieldGroup>
                 <Field data-invalid={!!state?.errors?.address}>

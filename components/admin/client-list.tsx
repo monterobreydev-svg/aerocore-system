@@ -40,6 +40,7 @@ export type ClientServiceJob = {
   branchName: string | null
   contactPerson: string | null
   employees: string[]
+  createdByName: string | null
 }
 
 export type ClientContact = {
@@ -82,7 +83,7 @@ export function locationLabel(client: ClientRecord) {
 }
 
 // Two distinct hues rather than colour-vs-grey: multi-site clients are the
-// ones that need a branch picked when booking, so the badge has to be
+// ones that need a branch picked when scheduling, so the badge has to be
 // telling at a glance across a grid. Violet matches the "Total branches"
 // summary tile; teal keeps single-site clients legible instead of reading
 // as disabled. Neither collides with the sky company icon beside them.

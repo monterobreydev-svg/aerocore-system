@@ -209,11 +209,11 @@ export function minutesIntoDay(iso: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Double-booking
+// Schedule conflicts
 // ---------------------------------------------------------------------------
 
 // Half-open intervals: a job ending at 12:00 and one starting at 12:00 don't
-// clash, so back-to-back deployments at the same site stay bookable.
+// clash, so back-to-back deployments at the same site stay schedulable.
 export function rangesOverlap(
   aStart: number | Date,
   aEnd: number | Date,

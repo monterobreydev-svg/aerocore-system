@@ -106,9 +106,12 @@ function ScheduleSummary({
     }
   }
 
+  // min-h-0 on both levels: a flex item's min-height defaults to its content,
+  // so without it the body grows past the sheet and pushes the footer — and
+  // the Save/Delete buttons with it — off the bottom of the screen.
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
         <div className="flex flex-wrap items-center gap-1.5">
           {schedule.workTypes.map((type) => (
             <Badge key={type} className={WORK_TYPE_SOLID[type]}>
@@ -117,7 +120,7 @@ function ScheduleSummary({
           ))}
         </div>
 
-        {/* Status is the one thing that changes constantly after booking —
+        {/* Status is the one thing that changes constantly after creation —
             closing out a day shouldn't mean opening the full edit form, so it
             saves on click without touching anything else. */}
         <div className="flex flex-col gap-2">
@@ -205,11 +208,11 @@ function ScheduleSummary({
               <p className="whitespace-pre-wrap">{schedule.remarks}</p>
             </DetailRow>
           )}
-          {/* Who booked it, spelled out rather than tucked in the subtitle —
+          {/* Who created it, spelled out rather than tucked in the subtitle —
               it's the first thing anyone asks when a job looks wrong. */}
           <DetailRow icon={UserRound}>
             <span className="text-muted-foreground">
-              Booked by{" "}
+              Created by{" "}
               <span className="font-medium text-foreground">
                 {schedule.createdByName ?? "the system"}
               </span>{" "}
@@ -248,7 +251,7 @@ function ScheduleSummary({
         )}
       </div>
 
-      <SheetFooter className="mt-auto flex-row gap-2 border-t">
+      <SheetFooter className="mt-auto shrink-0 flex-row gap-2 border-t">
         <Button
           type="button"
           variant="outline"
@@ -308,8 +311,8 @@ function ScheduleEditForm({
   const conflictMessages = state?.errors?.employeeIds ?? []
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <form action={action} id={formId}>
           <input type="hidden" name="scheduleId" value={schedule.id} />
           <ScheduleFormFields
@@ -332,26 +335,31 @@ function ScheduleEditForm({
             defaultStatus={initial.status}
             showStatus
           />
-
-          {conflictMessages.length > 0 && (
-            <div className="mt-4 flex flex-col gap-1.5 rounded-lg bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <AlertTriangle className="size-3.5" />
-                Double booking
-              </span>
-              {conflictMessages.map((message) => (
-                <span key={message}>{message}</span>
-              ))}
-            </div>
-          )}
-
-          {state?.message && conflictMessages.length === 0 && (
-            <p className="mt-4 text-sm text-destructive">{state.message}</p>
-          )}
         </form>
       </div>
 
-      <SheetFooter className="mt-auto flex-row gap-2 border-t">
+      {/* Errors sit outside the scroll area, pinned above the buttons. Inside
+          it they'd land at the bottom of a long form — you press Save, nothing
+          appears to happen, and the reason is off-screen. */}
+      {conflictMessages.length > 0 && (
+        <div className="flex max-h-32 shrink-0 flex-col gap-1 overflow-y-auto border-t bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
+          <span className="inline-flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            Schedule conflict — nobody can be in two places at once
+          </span>
+          {conflictMessages.map((message) => (
+            <span key={message}>{message}</span>
+          ))}
+        </div>
+      )}
+
+      {state?.message && conflictMessages.length === 0 && (
+        <p className="shrink-0 border-t bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
+          {state.message}
+        </p>
+      )}
+
+      <SheetFooter className="mt-auto shrink-0 flex-row gap-2 border-t">
         <Button
           type="button"
           variant="outline"
@@ -424,8 +432,8 @@ export function ScheduleDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
-        <SheetHeader className="border-b">
+      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden sm:max-w-xl">
+        <SheetHeader className="shrink-0 border-b pr-12">
           <SheetTitle className={cn("truncate")}>
             {schedule.client.name}
             {schedule.branch ? ` · ${schedule.branch.name}` : ""}

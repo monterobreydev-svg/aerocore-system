@@ -15,6 +15,11 @@ export default async function ClientsPage() {
         take: SERVICE_HISTORY_LIMIT,
         include: {
           branch: { select: { name: true } },
+          createdBy: {
+            include: {
+              employee: { select: { firstName: true, lastName: true } },
+            },
+          },
           assignments: {
             include: {
               employee: { select: { firstName: true, lastName: true } },
@@ -63,6 +68,9 @@ export default async function ClientsPage() {
         (assignment) =>
           `${assignment.employee.firstName} ${assignment.employee.lastName}`
       ),
+      createdByName: schedule.createdBy
+        ? `${schedule.createdBy.employee.firstName} ${schedule.createdBy.employee.lastName}`
+        : null,
     })),
   }))
 

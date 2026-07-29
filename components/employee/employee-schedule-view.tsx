@@ -12,6 +12,8 @@ import {
 import {
   SCHEDULE_STATUS_CHIP,
   SCHEDULE_STATUS_LABELS,
+  WORK_TYPE_LABELS,
+  WORK_TYPE_SOLID,
   addDays,
   addMonths,
   formatTime,
@@ -89,6 +91,24 @@ function JobEntry({
           </p>
         )}
 
+        {/* What the job actually is — same colours as the office calendar, so
+            a job reads the same on both sides. */}
+        {schedule.workTypes.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {schedule.workTypes.map((type) => (
+              <span
+                key={type}
+                className={cn(
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                  WORK_TYPE_SOLID[type]
+                )}
+              >
+                {WORK_TYPE_LABELS[type]}
+              </span>
+            ))}
+          </div>
+        )}
+
         <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
           <MapPin className="mt-0.5 size-3.5 shrink-0" />
           <span className="min-w-0">
@@ -145,7 +165,9 @@ function DayAgenda({
     .sort(byStartTime)
 
   if (jobs.length === 0) {
-    return <div className="py-10 text-center">{emptyMessage}</div>
+    // Left-aligned like everything else on the page — a centred block under a
+    // left-aligned heading reads as a misplaced element, not a deliberate one.
+    return <div className="py-5">{emptyMessage}</div>
   }
 
   return (
@@ -332,7 +354,7 @@ export function EmployeeScheduleView({
                     setSelectedDay(startOfDay(new Date(nextJob.date)))
                     setView("month")
                   }}
-                  className="mx-auto flex flex-col gap-1 rounded-xl bg-sky-600/10 px-4 py-3 text-left outline-none transition-colors hover:bg-sky-600/15"
+                  className="flex w-full flex-col gap-1 rounded-xl bg-sky-600/10 px-4 py-3 text-left outline-none transition-colors hover:bg-sky-600/15"
                 >
                   <span className="text-xs font-medium tracking-wide text-sky-700 uppercase dark:text-sky-400">
                     Next job
@@ -348,6 +370,23 @@ export function EmployeeScheduleView({
                     })}{" "}
                     · {formatTime(nextJob.startTime)}
                   </span>
+                  {/* The work type carries over here too — knowing it's a
+                      repair vs a survey matters before you set off. */}
+                  {nextJob.workTypes.length > 0 && (
+                    <span className="mt-0.5 flex flex-wrap gap-1">
+                      {nextJob.workTypes.map((type) => (
+                        <span
+                          key={type}
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                            WORK_TYPE_SOLID[type]
+                          )}
+                        >
+                          {WORK_TYPE_LABELS[type]}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </button>
               ) : (
                 <p className="text-sm text-muted-foreground">

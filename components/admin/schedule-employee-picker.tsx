@@ -202,7 +202,7 @@ export function ScheduleEmployeePicker({
             {clashingSelected.length === 1
               ? "One assigned employee is"
               : `${clashingSelected.length} assigned employees are`}{" "}
-            already booked in this time slot. Saving is blocked until you change
+            already assigned in this time slot. Saving is blocked until you change
             the time or drop them.
           </span>
         </div>

@@ -29,11 +29,19 @@ import { TAX_STATUS_OPTIONS, taxStatusLabel } from "@/lib/client"
 import {
   SCHEDULE_STATUS_CHIP,
   SCHEDULE_STATUS_LABELS,
-  WORK_TYPE_CHIP,
   WORK_TYPE_LABELS,
+  WORK_TYPE_SOLID,
   formatScheduleDate,
   formatTimeRange,
 } from "@/lib/schedule"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import {
   Dialog,
@@ -1066,7 +1074,7 @@ export function ClientDetailView({
                     Serviced at one location
                   </p>
                   <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-                    {client.name} has no separate branches — jobs are booked
+                    {client.name} has no separate branches — schedules are created
                     against {client.address}. Add a branch if they open another
                     site.
                   </p>
@@ -1140,7 +1148,7 @@ export function ClientDetailView({
                 <div>
                   <p className="text-sm font-medium">No service history yet</p>
                   <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-                    Jobs booked for {client.name} in Schedules will appear here
+                    Schedules created for {client.name} will appear here
                     automatically, newest first.
                   </p>
                 </div>
@@ -1167,50 +1175,92 @@ export function ClientDetailView({
                 ))}
               </div>
 
-              <div className="overflow-hidden rounded-xl ring-1 ring-foreground/10">
-                <div className="divide-y">
-                  {client.jobs.map((job) => (
-                    <div key={job.id} className="flex flex-col gap-2 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-baseline gap-x-2">
-                          <p className="text-sm font-medium">
+              {/* A read-only ledger of every schedule created for this client.
+                  Scrolls sideways rather than collapsing on small screens —
+                  the columns only make sense read across as one row. */}
+              <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableHead className="whitespace-nowrap">
+                        Date &amp; time
+                      </TableHead>
+                      <TableHead>Service rendered</TableHead>
+                      <TableHead>Branch</TableHead>
+                      <TableHead>Assigned</TableHead>
+                      <TableHead className="whitespace-nowrap">
+                        Created by
+                      </TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {client.jobs.map((job) => (
+                      <TableRow key={job.id} className="hover:bg-transparent">
+                        <TableCell className="align-top whitespace-nowrap">
+                          <div className="text-sm font-medium">
                             {formatScheduleDate(job.date)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
+                          </div>
+                          <div className="text-xs text-muted-foreground">
                             {formatTimeRange(job.startTime, job.endTime)}
-                          </p>
-                        </div>
-                        <Badge className={SCHEDULE_STATUS_CHIP[job.status]}>
-                          {SCHEDULE_STATUS_LABELS[job.status]}
-                        </Badge>
-                      </div>
+                          </div>
+                        </TableCell>
 
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {job.workTypes.map((workType) => (
-                          <Badge
-                            key={workType}
-                            className={WORK_TYPE_CHIP[workType]}
-                          >
-                            {WORK_TYPE_LABELS[workType]}
+                        <TableCell className="align-top">
+                          <div className="flex flex-wrap gap-1">
+                            {job.workTypes.map((workType) => (
+                              <Badge
+                                key={workType}
+                                className={WORK_TYPE_SOLID[workType]}
+                              >
+                                {WORK_TYPE_LABELS[workType]}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="align-top">
+                          {job.branchName ? (
+                            <span className="inline-flex items-start gap-1.5 text-sm">
+                              <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                              {job.branchName}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">
+                              Head office
+                            </span>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="align-top">
+                          {job.employees.length > 0 ? (
+                            <div className="flex flex-col gap-0.5 text-sm">
+                              {job.employees.map((name) => (
+                                <span key={name}>{name}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">
+                              Unassigned
+                            </span>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="align-top text-sm">
+                          {job.createdByName ?? (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="align-top">
+                          <Badge className={SCHEDULE_STATUS_CHIP[job.status]}>
+                            {SCHEDULE_STATUS_LABELS[job.status]}
                           </Badge>
-                        ))}
-                      </div>
-
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1.5">
-                          <MapPin className="size-3.5 shrink-0" />
-                          {job.branchName ?? "Main address"}
-                        </span>
-                        {job.employees.length > 0 && (
-                          <span>Employees: {job.employees.join(", ")}</span>
-                        )}
-                        {job.contactPerson && (
-                          <span>Contact: {job.contactPerson}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
 
               {hasMoreHistory && (

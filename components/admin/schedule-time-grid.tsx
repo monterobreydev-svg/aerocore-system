@@ -144,8 +144,8 @@ function DayColumn({
   return (
     <div className="relative flex-1 border-l">
       {/* An hour-sized click target behind the blocks: clicking empty space
-          books that day at that hour. Sits under the blocks in stacking order
-          (they're z-10) so it never swallows a click meant for a job. Absent
+          creates a schedule that day at that hour. Sits under the blocks in
+          stacking order (z-10) so it never swallows a click meant for a job.
           on the employee side, where the calendar is read-only. */}
       {onCreateAt &&
         hours.map((hour) => (
@@ -153,7 +153,7 @@ function DayColumn({
             key={hour}
             type="button"
             onClick={() => onCreateAt(day, hour)}
-            aria-label={`Book a job on ${day.toDateString()} at ${hour}:00`}
+            aria-label={`Create a schedule on ${day.toDateString()} at ${hour}:00`}
             style={{ height: HOUR_HEIGHT }}
             className="block w-full outline-none hover:bg-sky-600/5 focus-visible:bg-sky-600/5"
           />
@@ -273,7 +273,7 @@ export function ScheduleTimeGrid({
               style={{ height: gridHeight }}
             >
               {/* Hour rules sit behind the columns so they line up across all
-                  seven days regardless of what's booked in each. The rule is
+                  seven days regardless of what's scheduled in each. The rule is
                   on the row's top edge, which is where the hour actually
                   starts — that's the line each label is centred on. */}
               <div className="pointer-events-none absolute inset-0">

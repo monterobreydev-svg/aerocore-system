@@ -91,7 +91,7 @@ export function SchedulesView({
     defaultSlot(dateKey(new Date()))
   )
 
-  // Opening the booking dialog from anywhere: the toolbar button uses the day
+  // Opening the create dialog from anywhere: the toolbar button uses the day
   // the calendar is on, a month cell uses that day, a time-grid cell uses that
   // day and hour. A fresh object each time so the dialog reseeds its form.
   function openCreate(day: Date, hour?: number) {
@@ -154,7 +154,7 @@ export function SchedulesView({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Row 1 on mobile: date range + booking. Row 2: navigation + view
+      {/* Row 1 on mobile: date range + create. Row 2: navigation + view
           switch. On desktop it all collapses onto one line. */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 flex-1 sm:order-2 sm:flex-none">
@@ -270,7 +270,7 @@ export function SchedulesView({
           />
           {dayCount === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Nothing booked for this day.
+              Nothing scheduled for this day.
             </p>
           )}
         </>
@@ -282,7 +282,7 @@ export function SchedulesView({
 
       {view !== "list" && schedules.length === 0 && (
         <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No jobs booked yet. Use “New schedule” to book the first one.
+          No schedules yet. Use “New schedule” to create the first one.
         </div>
       )}
 
