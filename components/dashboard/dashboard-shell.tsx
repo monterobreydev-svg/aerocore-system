@@ -20,6 +20,8 @@ export async function DashboardShell({
     <SidebarProvider>
       <TooltipProvider delay={300}>
         <AppSidebar role={role} />
+        {/* The content area stays plain white — the blue lives in the bars
+            around it, not under the cards. */}
         <SidebarInset>
           <DashboardHeader
             employeeName={employeeName}

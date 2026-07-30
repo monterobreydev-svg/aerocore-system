@@ -58,7 +58,11 @@ export function DashboardHeader({
   })
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-sm sm:px-6">
+    // Two layers: the translucent page colour keeps the blur working, and a
+    // faint brand veil over it gives the bar its own cool cast without tinting
+    // the content below. The hairline picks up the hue in the middle and fades at
+    // both ends, so it reads as part of the shell rather than a grey rule.
+    <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background/85 bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--brand)_9%,transparent),color-mix(in_oklab,var(--brand)_4%,transparent))] px-4 backdrop-blur-md after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-gradient-to-r after:from-transparent after:via-brand/35 after:to-transparent supports-backdrop-filter:bg-background/70 sm:px-6">
       <SidebarTrigger className="-ml-1 rounded-lg" />
       <Separator orientation="vertical" className="h-5" />
 
@@ -84,7 +88,7 @@ export function DashboardHeader({
                 className="h-9 gap-2 rounded-lg px-1.5 pr-2"
               >
                 <Avatar className="size-7 rounded-lg">
-                  <AvatarFallback className="rounded-lg bg-sky-600/10 text-sky-700 dark:text-sky-400">
+                  <AvatarFallback className="rounded-lg bg-gradient-to-br from-brand to-brand-strong text-[0.7rem] font-semibold text-brand-foreground">
                     {initials(employeeName)}
                   </AvatarFallback>
                 </Avatar>

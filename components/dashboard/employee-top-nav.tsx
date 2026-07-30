@@ -10,7 +10,8 @@ export function EmployeeTopNav() {
 
   return (
     <nav
-      className="sticky top-16 z-10 hidden border-b bg-background/80 px-6 backdrop-blur-sm md:block"
+      // Fainter than the header above it, so the two bars stack as one band.
+      className="sticky top-16 z-10 hidden border-b bg-background/85 bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--brand)_5%,transparent),transparent)] px-6 backdrop-blur-md supports-backdrop-filter:bg-background/70 md:block"
       aria-label="Section navigation"
     >
       <div className="flex gap-1">
@@ -24,8 +25,8 @@ export function EmployeeTopNav() {
               key={item.url}
               href={item.url}
               className={cn(
-                "flex items-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
-                isActive && "border-sky-600 text-sky-700 dark:text-sky-400"
+                "flex items-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground",
+                isActive && "border-brand text-brand"
               )}
             >
               <item.icon className="size-4" />

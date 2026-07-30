@@ -56,7 +56,7 @@ export function EmployeeHeader({
   })
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-sm sm:px-6">
+    <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background/85 bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--brand)_9%,transparent),color-mix(in_oklab,var(--brand)_4%,transparent))] px-4 backdrop-blur-md after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-gradient-to-r after:from-transparent after:via-brand/35 after:to-transparent supports-backdrop-filter:bg-background/70 sm:px-6">
       <div className="relative size-8 shrink-0">
         <Image
           src="/logo.png"
@@ -82,7 +82,7 @@ export function EmployeeHeader({
             render={
               <Button variant="ghost" className="h-9 gap-1.5 rounded-lg px-1.5">
                 <Avatar className="size-7 rounded-lg">
-                  <AvatarFallback className="rounded-lg bg-sky-600/10 text-sky-700 dark:text-sky-400">
+                  <AvatarFallback className="rounded-lg bg-gradient-to-br from-brand to-brand-strong text-[0.7rem] font-semibold text-brand-foreground">
                     {initials(employeeName)}
                   </AvatarFallback>
                 </Avatar>
