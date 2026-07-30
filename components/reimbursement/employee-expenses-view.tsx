@@ -36,10 +36,9 @@ const LiquidationForm = dynamic(() =>
 
 export type ClaimItem = {
   id: string
-  clientName: string | null
-  soNumber: string | null
   description: string
   amount: number
+  clients: { name: string; soNumber: string | null; amount: number }[]
 }
 
 export type Claim = {
@@ -141,14 +140,30 @@ function ClaimCard({ claim }: { claim: Claim }) {
               <div key={item.id} className="flex gap-3 py-2 first:pt-0 last:pb-0">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm leading-tight">{item.description}</p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                    {item.clientName ? (
-                      <span>{item.clientName}</span>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {item.clients.length === 0 ? (
+                      <span>Not job-specific</span>
                     ) : (
-                      <span>Not client-specific</span>
+                      item.clients.map((client, index) => (
+                        <div
+                          key={`${client.name}-${index}`}
+                          className="flex flex-wrap items-baseline gap-x-1.5"
+                        >
+                          <span className="break-words">{client.name}</span>
+                          {item.clients.length > 1 && (
+                            <span className="tabular-nums">
+                              {peso(client.amount)}
+                            </span>
+                          )}
+                          {client.soNumber && (
+                            <span className="font-mono break-all">
+                              S.O. {client.soNumber}
+                            </span>
+                          )}
+                        </div>
+                      ))
                     )}
-                    {item.soNumber && <span>· S.O. {item.soNumber}</span>}
-                  </p>
+                  </div>
                 </div>
                 <span className="shrink-0 text-sm font-medium tabular-nums">
                   {peso(item.amount)}
@@ -198,7 +213,7 @@ export function EmployeeExpensesView({
           <Info className="size-4 shrink-0 text-sky-700 dark:text-sky-400" />
           Liquidation guidelines
         </p>
-        <ul className="grid gap-2.5 sm:grid-cols-3">
+        <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
           {REIMBURSEMENT_GUIDELINES.map((rule) => (
             <li key={rule.title} className="flex gap-2">
               <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-sky-600 dark:bg-sky-400" />

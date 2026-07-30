@@ -1,6 +1,7 @@
 "use client"
 
 import { useActionState, useEffect, useState } from "react"
+import dynamic from "next/dynamic"
 import {
   CalendarClock,
   ChevronDown,
@@ -61,6 +62,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RoleBadge } from "@/components/admin/role-badge"
 import { SkillsPicker } from "@/components/admin/skills-picker"
 import type { StaffMember } from "@/components/admin/staff-cards"
+
+// A table, a pager and the liquidation dialog — none of it needed to read
+// someone's profile, so it stays out of the chunk that renders one.
+const StaffReimbursements = dynamic(() =>
+  import("@/components/admin/staff-reimbursements").then(
+    (m) => m.StaffReimbursements
+  )
+)
 
 function initials(firstName: string, lastName: string) {
   return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase()
@@ -337,9 +346,9 @@ export function StaffDetailView({
             >
               <tab.icon className="size-4" />
               {tab.label}
-              {tab.value === "reimbursements" && (
+              {tab.value === "reimbursements" && staff.claimCount > 0 && (
                 <Badge variant="secondary" className="ml-1">
-                  0
+                  {staff.claimCount}
                 </Badge>
               )}
             </TabsTrigger>
@@ -1050,11 +1059,10 @@ export function StaffDetailView({
         </TabsContent>
 
         <TabsContent value="reimbursements" className="pt-4">
-          <ComingSoon
-            icon={Receipt}
-            title="Reimbursement history isn't tracked yet"
-            description={`Once the Reimbursements feature is built, ${e.firstName}'s expense claims will show up here.`}
-          />
+          {/* Only fetched — and only downloaded — once someone opens the tab. */}
+          {activeTab === "reimbursements" && (
+            <StaffReimbursements employeeId={e.id} firstName={e.firstName} />
+          )}
         </TabsContent>
       </Tabs>
     </div>

@@ -12,10 +12,35 @@ export default async function EmployeeExpensesPage() {
   const [records, clientRecords, releases] = await Promise.all([
     prisma.reimbursement.findMany({
       where: { employeeId: employee.id },
-      include: {
+      select: {
+        id: true,
+        referenceNo: true,
+        status: true,
+        totalAmount: true,
+        expenseDate: true,
+        receiptKey: true,
+        receiptName: true,
+        isLate: true,
+        lateReason: true,
+        note: true,
+        submittedAt: true,
+        reviewedAt: true,
+        reviewNote: true,
         items: {
           orderBy: { createdAt: "asc" },
-          include: { client: { select: { name: true } } },
+          select: {
+            id: true,
+            description: true,
+            amount: true,
+            clients: {
+              select: {
+                soNumber: true,
+                amount: true,
+                client: { select: { name: true } },
+              },
+              orderBy: { client: { name: "asc" } },
+            },
+          },
         },
       },
       orderBy: { expenseDate: "desc" },
@@ -47,10 +72,13 @@ export default async function EmployeeExpensesPage() {
     reviewNote: record.reviewNote,
     items: record.items.map((item) => ({
       id: item.id,
-      clientName: item.client?.name ?? null,
-      soNumber: item.soNumber,
       description: item.description,
       amount: Number(item.amount),
+      clients: item.clients.map((link) => ({
+        name: link.client.name,
+        soNumber: link.soNumber,
+        amount: Number(link.amount),
+      })),
     })),
   }))
 

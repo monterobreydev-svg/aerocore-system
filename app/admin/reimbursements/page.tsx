@@ -2,79 +2,136 @@ import { AlertTriangle, Clock, ReceiptText, Wallet } from "lucide-react"
 import { requireManager } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { isR2Configured } from "@/lib/r2"
-import { peso } from "@/lib/reimbursement"
+import { buildFundContexts, peso } from "@/lib/reimbursement"
+import { CLAIM_DETAIL_SELECT, loadFunders, toAdminClaim } from "@/lib/claim-query"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
+import { AdminReimbursementsView } from "@/components/reimbursement/admin-reimbursements-view"
 import {
-  AdminReimbursementsView,
+  CLAIM_PAGE_SIZE,
   type AdminClaim,
+  type AdminTab,
+  type EmployeeBalance,
   type FundLedgerRow,
-} from "@/components/reimbursement/admin-reimbursements-view"
-import type { EmployeeBalance } from "@/components/reimbursement/release-fund-dialog"
+} from "@/components/reimbursement/admin-claim"
 
-export default async function AdminReimbursementsPage() {
+// The review queue is short by nature — a decided liquidation leaves it for the
+// employee's staff record — but it still gets a ceiling so a runaway month can't
+// turn the first paint into a megabyte.
+const QUEUE_LIMIT = 100
+
+function tabFrom(value: string | string[] | undefined): AdminTab {
+  const raw = Array.isArray(value) ? value[0] : value
+  return raw === "funds" ? "funds" : "queue"
+}
+
+function pageFrom(value: string | string[] | undefined, pages: number) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return 1
+  return Math.min(Math.max(1, Math.trunc(parsed)), Math.max(1, pages))
+}
+
+export default async function AdminReimbursementsPage({
+  searchParams,
+}: PageProps<"/admin/reimbursements">) {
   await requireManager()
 
-  const [records, releaseRecords, employeeRecords] = await Promise.all([
+  // Every release and every claim, but only the columns the running balance is
+  // made of — the arithmetic has to see the whole ledger to be right, and none
+  // of this crosses to the browser.
+  const [params, ledgerReleases, ledgerClaims, employeeRecords] =
+    await Promise.all([
+      searchParams,
+      prisma.fundRelease.findMany({
+        select: { id: true, employeeId: true, amount: true, releasedAt: true },
+      }),
+      prisma.reimbursement.findMany({
+        select: {
+          id: true,
+          employeeId: true,
+          status: true,
+          totalAmount: true,
+          submittedAt: true,
+          isLate: true,
+        },
+      }),
+      prisma.employee.findMany({
+        where: { OR: [{ account: null }, { account: { isActive: true } }] },
+        select: { id: true, firstName: true, lastName: true, employeeNo: true },
+        orderBy: { firstName: "asc" },
+      }),
+    ])
+
+  const ledger = {
+    releases: ledgerReleases.map((release) => ({
+      id: release.id,
+      employeeId: release.employeeId,
+      amount: Number(release.amount),
+      releasedAt: release.releasedAt.toISOString(),
+    })),
+    claims: ledgerClaims.map((claim) => ({
+      id: claim.id,
+      employeeId: claim.employeeId,
+      status: claim.status,
+      totalAmount: Number(claim.totalAmount),
+      submittedAt: claim.submittedAt.toISOString(),
+      isLate: claim.isLate,
+    })),
+  }
+
+  const fundContexts = buildFundContexts(ledger.releases, ledger.claims)
+
+  // The total is already in hand from the ledger, so paging the release log
+  // costs no extra count query.
+  const releaseTotal = ledger.releases.length
+  const releasePages = Math.max(1, Math.ceil(releaseTotal / CLAIM_PAGE_SIZE))
+
+  const tab = tabFrom(params.tab)
+  const releasePage = pageFrom(params.rp, releasePages)
+
+  const [queueRecords, releaseRecords] = await Promise.all([
+    // Only what needs a decision. Anything already decided — approved or
+    // rejected — is history, and history lives on the employee's staff record.
     prisma.reimbursement.findMany({
-      include: {
-        employee: {
-          select: { firstName: true, lastName: true, employeeNo: true },
-        },
-        reviewedBy: {
-          include: { employee: { select: { firstName: true, lastName: true } } },
-        },
-        items: {
-          orderBy: { createdAt: "asc" },
-          include: { client: { select: { name: true } } },
-        },
-      },
-      orderBy: [{ status: "asc" }, { expenseDate: "desc" }],
+      where: { status: "PENDING_REVIEW" },
+      select: CLAIM_DETAIL_SELECT,
+      orderBy: [{ expenseDate: "desc" }],
+      take: QUEUE_LIMIT,
     }),
     prisma.fundRelease.findMany({
-      include: {
+      select: {
+        id: true,
+        employeeId: true,
+        amount: true,
+        method: true,
+        reference: true,
+        note: true,
+        proofKey: true,
+        proofName: true,
+        releasedAt: true,
         employee: { select: { firstName: true, lastName: true } },
         releasedBy: {
-          include: { employee: { select: { firstName: true, lastName: true } } },
+          select: { employee: { select: { firstName: true, lastName: true } } },
         },
       },
       orderBy: { releasedAt: "desc" },
-    }),
-    prisma.employee.findMany({
-      where: { OR: [{ account: null }, { account: { isActive: true } }] },
-      select: { id: true, firstName: true, lastName: true, employeeNo: true },
-      orderBy: { firstName: "asc" },
+      skip: (releasePage - 1) * CLAIM_PAGE_SIZE,
+      take: CLAIM_PAGE_SIZE,
     }),
   ])
 
-  const claims: AdminClaim[] = records.map((record) => ({
-    id: record.id,
-    referenceNo: record.referenceNo,
-    employeeId: record.employeeId,
-    employeeName: `${record.employee.firstName} ${record.employee.lastName}`,
-    employeeNo: record.employee.employeeNo,
-    status: record.status,
-    totalAmount: Number(record.totalAmount),
-    expenseDate: record.expenseDate.toISOString(),
-    receiptKey: record.receiptKey,
-    receiptName: record.receiptName,
-    isLate: record.isLate,
-    lateReason: record.lateReason,
-    note: record.note,
-    submittedAt: record.submittedAt.toISOString(),
-    reviewedAt: record.reviewedAt?.toISOString() ?? null,
-    reviewNote: record.reviewNote,
-    reviewedByName: record.reviewedBy
-      ? `${record.reviewedBy.employee.firstName} ${record.reviewedBy.employee.lastName}`
-      : null,
-    items: record.items.map((item) => ({
-      id: item.id,
-      clientName: item.client?.name ?? null,
-      soNumber: item.soNumber,
-      description: item.description,
-      amount: Number(item.amount),
-    })),
-  }))
+  const funders = await loadFunders([
+    ...new Set(
+      queueRecords
+        .map((record) => fundContexts[record.id]?.fundedByReleaseId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ])
+
+  const queue: AdminClaim[] = queueRecords.map((record) =>
+    toAdminClaim(record, fundContexts, funders)
+  )
 
   const releases: FundLedgerRow[] = releaseRecords.map((release) => ({
     id: release.id,
@@ -97,17 +154,17 @@ export default async function AdminReimbursementsPage() {
     id: employee.id,
     name: `${employee.firstName} ${employee.lastName}`,
     employeeNo: employee.employeeNo,
-    released: releases
+    released: ledger.releases
       .filter((r) => r.employeeId === employee.id)
       .reduce((sum, r) => sum + r.amount, 0),
-    liquidated: claims
+    liquidated: ledger.claims
       .filter((c) => c.employeeId === employee.id && c.status !== "REJECTED")
       .reduce((sum, c) => sum + c.totalAmount, 0),
   }))
 
-  const forReview = claims.filter((c) => c.status === "PENDING_REVIEW")
+  const forReview = ledger.claims.filter((c) => c.status === "PENDING_REVIEW")
   const lateAwaiting = forReview.filter((c) => c.isLate)
-  const totalReleased = releases.reduce((sum, r) => sum + r.amount, 0)
+  const totalReleased = ledger.releases.reduce((sum, r) => sum + r.amount, 0)
   const outstanding = balances.reduce(
     (sum, b) => sum + Math.max(0, b.released - b.liquidated),
     0
@@ -188,9 +245,10 @@ export default async function AdminReimbursementsPage() {
       </div>
 
       <AdminReimbursementsView
-        claims={claims}
+        queue={queue}
         releases={releases}
         balances={balances}
+        paging={{ tab, releasePage, releasePages, releaseTotal }}
       />
     </div>
   )

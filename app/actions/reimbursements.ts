@@ -8,12 +8,29 @@ import {
   buildObjectKey,
   isAllowedUploadType,
   isR2Configured,
+  keySegment,
   MAX_UPLOAD_BYTES,
   presignDownload,
   presignUpload,
+  uniqueObjectKey,
 } from "@/lib/r2"
-import { isLateExpense, nextReferenceNo, peso } from "@/lib/reimbursement"
+import {
+  buildFundContexts,
+  isLateExpense,
+  nextReferenceNo,
+  peso,
+  splitAmount,
+} from "@/lib/reimbursement"
+import {
+  CLAIM_DETAIL_SELECT,
+  loadFunders,
+  toAdminClaim,
+} from "@/lib/claim-query"
 import { notifyEmployee, notifyReviewers } from "@/lib/notify"
+import {
+  CLAIM_PAGE_SIZE,
+  type AdminClaim,
+} from "@/components/reimbursement/admin-claim"
 
 async function requireAdmin() {
   const session = await verifySession()
@@ -36,6 +53,24 @@ export type UploadTicket =
   | { ok: true; url: string; key: string }
   | { ok: false; message: string }
 
+// What the form knows that the file itself doesn't. Both are hints only: the
+// server still decides the whole key, so a tampered value can at worst produce
+// an oddly named file in the sender's own folder.
+export type UploadContext = {
+  /** Receipts: the day being liquidated (YYYY-MM-DD). */
+  expenseDate?: string
+  /** Funding proof: the transfer reference the administrator typed. */
+  reference?: string
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
+
+function dateOnly(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(
+    value.getDate()
+  ).padStart(2, "0")}`
+}
+
 // Hands the browser a short-lived URL to PUT a file straight into R2. Going
 // direct keeps a 10 MB receipt out of the server action body, which is capped
 // far lower. The key is generated here, never accepted from the client.
@@ -43,7 +78,8 @@ export async function createUploadUrl(
   folder: "receipts" | "funding-proof",
   filename: string,
   contentType: string,
-  size: number
+  size: number,
+  context: UploadContext = {}
 ): Promise<UploadTicket> {
   const session = await verifySession()
 
@@ -60,15 +96,70 @@ export async function createUploadUrl(
       message: "File storage isn't configured yet. Ask IT to set up R2.",
     }
   }
-  if (!isAllowedUploadType(contentType)) {
+  // A day's receipts are compiled into one PDF before they're filed. Photos are
+  // still fine for proof of a transfer, which is a single screenshot.
+  if (folder === "receipts") {
+    if (contentType !== "application/pdf") {
+      return { ok: false, message: "Receipts have to be a single PDF file." }
+    }
+  } else if (!isAllowedUploadType(contentType)) {
     return { ok: false, message: "Upload a JPG, PNG, WEBP, HEIC or PDF." }
   }
   if (!Number.isFinite(size) || size <= 0 || size > MAX_UPLOAD_BYTES) {
     return { ok: false, message: "Files must be smaller than 10 MB." }
   }
 
-  const key = buildObjectKey(folder, filename)
+  const uploader = await prisma.employee.findUnique({
+    where: { id: session.employeeId },
+    select: { firstName: true },
+  })
+  const owner = uploader?.firstName ?? "unknown"
+
+  const { date, label } =
+    folder === "receipts"
+      ? await receiptNaming(session.employeeId, owner, context.expenseDate)
+      : // Proof of a transfer is filed the day it's sent, under the reference
+        // the administrator can look up in the banking app.
+        {
+          date: dateOnly(new Date()),
+          label: `${dateOnly(new Date())}_${keySegment(context.reference ?? "", "no-reference")}`,
+        }
+
+  const key = await uniqueObjectKey(
+    buildObjectKey({ folder, owner, date, label, filename })
+  )
   return { ok: true, url: await presignUpload(key, contentType), key }
+}
+
+// "2026-07-30_Prince_3" — the day being liquidated, who filed it, and which
+// liquidation of theirs it is that month. The count is taken over the month the
+// expense falls in, so a late June receipt filed in July numbers against June.
+async function receiptNaming(
+  employeeId: string,
+  firstName: string,
+  expenseDate: string | undefined
+) {
+  const parsed =
+    expenseDate && DATE_ONLY.test(expenseDate)
+      ? new Date(`${expenseDate}T00:00:00`)
+      : null
+  const day = parsed && !Number.isNaN(+parsed) ? parsed : new Date()
+
+  const filed = await prisma.reimbursement.count({
+    where: {
+      employeeId,
+      expenseDate: {
+        gte: new Date(day.getFullYear(), day.getMonth(), 1),
+        lt: new Date(day.getFullYear(), day.getMonth() + 1, 1),
+      },
+    },
+  })
+
+  const date = dateOnly(day)
+  return {
+    date,
+    label: `${date}_${keySegment(firstName, "unknown")}_${filed + 1}`,
+  }
 }
 
 // Signed view URL, minted per request. The bucket stays private, so this is
@@ -91,22 +182,118 @@ export async function getFileUrl(key: string): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------
+// One employee's full liquidation history, for the staff record
+// ---------------------------------------------------------------------------
+
+// Everything they've filed — approved, rejected and still waiting. The review
+// page is a work queue and only shows what needs deciding; the whole record
+// belongs to the person, so it's read from the staff record instead, one page and
+// one employee at a time. Sending it with the staff list would be
+// O(employees x liquidations) on a page that mostly doesn't open them.
+export async function listEmployeeReimbursements(
+  employeeId: string,
+  page = 1
+): Promise<{ rows: AdminClaim[]; total: number; page: number; pages: number }> {
+  const empty = { rows: [], total: 0, page: 1, pages: 1 }
+
+  const session = await requireAdmin()
+  if (!session || !employeeId) return empty
+
+  // The running balance has to see everything this person has ever been given
+  // and spent, or "fund before" on an old claim would be wrong. Narrow columns,
+  // one employee, and none of it is returned as-is.
+  const [ledgerReleases, ledgerClaims] = await Promise.all([
+    prisma.fundRelease.findMany({
+      where: { employeeId },
+      select: { id: true, employeeId: true, amount: true, releasedAt: true },
+    }),
+    prisma.reimbursement.findMany({
+      where: { employeeId },
+      select: {
+        id: true,
+        employeeId: true,
+        status: true,
+        totalAmount: true,
+        submittedAt: true,
+      },
+    }),
+  ])
+
+  const total = ledgerClaims.length
+  if (total === 0) return empty
+
+  const pages = Math.max(1, Math.ceil(total / CLAIM_PAGE_SIZE))
+  const at = Math.min(Math.max(1, Math.trunc(page)), pages)
+
+  const contexts = buildFundContexts(
+    ledgerReleases.map((release) => ({
+      id: release.id,
+      employeeId: release.employeeId,
+      amount: Number(release.amount),
+      releasedAt: release.releasedAt.toISOString(),
+    })),
+    ledgerClaims.map((claim) => ({
+      id: claim.id,
+      employeeId: claim.employeeId,
+      status: claim.status,
+      totalAmount: Number(claim.totalAmount),
+      submittedAt: claim.submittedAt.toISOString(),
+    }))
+  )
+
+  // Newest filing first, whatever its state — a mixed list can't sort by the
+  // review date because the ones still waiting don't have one.
+  const records = await prisma.reimbursement.findMany({
+    where: { employeeId },
+    select: CLAIM_DETAIL_SELECT,
+    orderBy: [{ submittedAt: "desc" }],
+    skip: (at - 1) * CLAIM_PAGE_SIZE,
+    take: CLAIM_PAGE_SIZE,
+  })
+
+  const funderIds = [
+    ...new Set(
+      records
+        .map((record) => contexts[record.id]?.fundedByReleaseId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ]
+
+  const funders = await loadFunders(funderIds)
+
+  return {
+    rows: records.map((record) => toAdminClaim(record, contexts, funders)),
+    total,
+    page: at,
+    pages,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Submitting a liquidation
 // ---------------------------------------------------------------------------
 
 // A line is just where the money went. When it was spent and the scan proving
 // it belong to the claim — one liquidation covers one day, filed with one
 // compiled receipt.
-const ItemSchema = z.object({
-  clientId: z.string().trim().optional(),
+//
+// A line can name several jobs: one tank of fuel serving two client sites is a
+// single payment, charged evenly to each job it served. Naming none is valid
+// too — not everything is billable to a job.
+const ItemClientSchema = z.object({
+  clientId: z.string().trim().min(1),
   soNumber: z.string().trim().max(60).optional(),
+})
+
+const ItemSchema = z.object({
+  clients: z.array(ItemClientSchema).max(10).optional(),
   description: z.string().trim().min(1, "Describe what was bought."),
   amount: z.number().positive("Enter an amount greater than zero."),
 })
 
 const LiquidationSchema = z.object({
   expenseDate: z.string().min(1, "Pick the date being liquidated."),
-  receiptKey: z.string().trim().optional(),
+  receiptKey: z.string().trim().min(1, "Attach the receipts as one PDF."),
   receiptName: z.string().trim().optional(),
   receiptType: z.string().trim().optional(),
   note: z.string().trim().max(1000).optional(),
@@ -121,6 +308,7 @@ export type LiquidationState =
         expenseDate?: string[]
         lateReason?: string[]
         note?: string[]
+        receipt?: string[]
       }
       message?: string
       success?: boolean
@@ -154,9 +342,13 @@ export async function submitLiquidation(
   if (!validated.success) {
     const flat = validated.error.flatten()
     return {
-      errors: flat.fieldErrors,
+      errors: {
+        ...flat.fieldErrors,
+        receipt: flat.fieldErrors.receiptKey,
+      },
       message:
         flat.fieldErrors.items?.[0] ??
+        flat.fieldErrors.receiptKey?.[0] ??
         flat.fieldErrors.expenseDate?.[0] ??
         flat.formErrors[0] ??
         "Check the expense rows and try again.",
@@ -170,7 +362,7 @@ export async function submitLiquidation(
     receiptType,
     note,
     lateReason,
-    items,
+    items: rawItems,
   } = validated.data
   const now = new Date()
 
@@ -196,6 +388,49 @@ export async function submitLiquidation(
     }
   }
 
+  // The receipt is the whole basis of the claim, and the office needs one
+  // compiled PDF per day rather than a pile of phone photos.
+  if (receiptType && receiptType !== "application/pdf") {
+    return {
+      errors: { receipt: ["Receipts must be a single PDF file."] },
+      message: "Receipts must be a single PDF file.",
+    }
+  }
+
+  // Named clients have to exist, and a job can only be named once per expense —
+  // the browser prevents both, but the browser isn't what's authoritative here.
+  // The split is recomputed here for the same reason: what each job is charged
+  // is an accounting figure, not something to take the client's word for.
+  const items = rawItems.map((item) => {
+    const named = [
+      ...new Map(
+        (item.clients ?? []).map((link) => [link.clientId, link])
+      ).values(),
+    ]
+    const shares = splitAmount(item.amount, named.length)
+    return {
+      description: item.description,
+      amount: item.amount,
+      clients: named.map((link, index) => ({
+        clientId: link.clientId,
+        soNumber: link.soNumber,
+        amount: shares[index],
+      })),
+    }
+  })
+
+  const namedClientIds = [
+    ...new Set(items.flatMap((item) => item.clients.map((c) => c.clientId))),
+  ]
+  if (namedClientIds.length > 0) {
+    const found = await prisma.client.count({
+      where: { id: { in: namedClientIds } },
+    })
+    if (found !== namedClientIds.length) {
+      return { message: "One of the jobs you picked no longer exists." }
+    }
+  }
+
   const totalAmount = items.reduce((sum, item) => sum + item.amount, 0)
 
   const latest = await prisma.reimbursement.findFirst({
@@ -210,7 +445,7 @@ export async function submitLiquidation(
       employeeId: session.employeeId,
       totalAmount,
       expenseDate,
-      receiptKey: receiptKey || null,
+      receiptKey,
       receiptName: receiptName || null,
       receiptType: receiptType || null,
       isLate,
@@ -218,10 +453,15 @@ export async function submitLiquidation(
       note: note || null,
       items: {
         create: items.map((item) => ({
-          clientId: item.clientId || null,
-          soNumber: item.soNumber || null,
           description: item.description,
           amount: item.amount,
+          clients: {
+            create: item.clients.map((link) => ({
+              clientId: link.clientId,
+              soNumber: link.soNumber || null,
+              amount: link.amount,
+            })),
+          },
         })),
       },
     },

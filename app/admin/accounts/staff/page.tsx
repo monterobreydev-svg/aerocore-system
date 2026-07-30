@@ -15,6 +15,17 @@ export default async function StaffPage() {
   })
   const suggestedEmployeeNo = nextEmployeeNo(lastNumbered?.employeeNo)
 
+  // Just the tally per person for the Reimbursements tab badge — every
+  // liquidation they've filed, whatever its state. The rows themselves are
+  // fetched only when that tab is opened — see listEmployeeReimbursements.
+  const claimCounts = await prisma.reimbursement.groupBy({
+    by: ["employeeId"],
+    _count: { _all: true },
+  })
+  const claimsByEmployee = new Map(
+    claimCounts.map((row) => [row.employeeId, row._count._all])
+  )
+
   const accounts = await prisma.userAccount.findMany({
     include: {
       employee: {
@@ -45,6 +56,7 @@ export default async function StaffPage() {
     username: account.username,
     role: account.role,
     isActive: account.isActive,
+    claimCount: claimsByEmployee.get(account.employee.id) ?? 0,
     employee: {
       id: account.employee.id,
       firstName: account.employee.firstName,

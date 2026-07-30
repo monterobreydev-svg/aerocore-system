@@ -18,14 +18,7 @@ import {
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { SearchSelect } from "@/components/ui/search-select"
 import { FileUpload, type UploadedFile } from "@/components/reimbursement/file-upload"
-
-export type EmployeeBalance = {
-  id: string
-  name: string
-  employeeNo: string | null
-  released: number
-  liquidated: number
-}
+import type { EmployeeBalance } from "@/components/reimbursement/admin-claim"
 
 export function ReleaseFundDialog({
   employees,
@@ -42,14 +35,12 @@ export function ReleaseFundDialog({
     releaseFund,
     undefined
   )
+  // The dialog is mounted only while it's open, so a fresh open starts from
+  // these initial values — nothing to reset in an effect.
   const [employeeId, setEmployeeId] = useState(presetEmployeeId ?? "")
   const [proof, setProof] = useState<UploadedFile | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    setEmployeeId(presetEmployeeId ?? "")
-    setProof(null)
-  }, [open, presetEmployeeId])
+  // Controlled because the stored proof is named after it.
+  const [reference, setReference] = useState("")
 
   useEffect(() => {
     if (state?.success) onOpenChange(false)
@@ -155,9 +146,15 @@ export function ReleaseFundDialog({
             <Input
               id="release-ref"
               name="reference"
+              value={reference}
+              onChange={(event) => setReference(event.target.value)}
               placeholder="Transaction / voucher number"
               disabled={pending}
             />
+            <p className="text-[11px] text-muted-foreground">
+              The proof file is stored under this number — fill it in before
+              attaching.
+            </p>
           </Field>
 
           <Field data-invalid={!!state?.errors?.proof}>
@@ -170,6 +167,7 @@ export function ReleaseFundDialog({
               onChange={setProof}
               disabled={pending}
               label="Attach screenshot or voucher"
+              context={{ reference }}
             />
             <FieldError
               errors={state?.errors?.proof?.map((message) => ({ message }))}

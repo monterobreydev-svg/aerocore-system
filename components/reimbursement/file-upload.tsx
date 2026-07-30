@@ -2,7 +2,11 @@
 
 import { useRef, useState } from "react"
 import { FileText, Loader2, Paperclip, X } from "lucide-react"
-import { createUploadUrl, getFileUrl } from "@/app/actions/reimbursements"
+import {
+  createUploadUrl,
+  getFileUrl,
+  type UploadContext,
+} from "@/app/actions/reimbursements"
 import { cn } from "@/lib/utils"
 import { compressImage, formatBytes } from "@/lib/compress-image"
 import { Button } from "@/components/ui/button"
@@ -23,6 +27,8 @@ export function FileUpload({
   disabled,
   label = "Attach file",
   className,
+  context,
+  accept = "image/jpeg,image/png,image/webp,image/heic,application/pdf",
 }: {
   folder: "receipts" | "funding-proof"
   value: UploadedFile | null
@@ -30,6 +36,10 @@ export function FileUpload({
   disabled?: boolean
   label?: string
   className?: string
+  /** Form values that name the stored file — see `createUploadUrl`. */
+  context?: UploadContext
+  /** Receipts are PDF-only; the server enforces the same thing. */
+  accept?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -50,7 +60,13 @@ export function FileUpload({
         )
       }
 
-      const ticket = await createUploadUrl(folder, file.name, file.type, file.size)
+      const ticket = await createUploadUrl(
+        folder,
+        file.name,
+        file.type,
+        file.size,
+        context
+      )
       if (!ticket.ok) {
         setError(ticket.message)
         return
@@ -132,7 +148,7 @@ export function FileUpload({
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+        accept={accept}
         className="hidden"
         disabled={disabled || busy}
         onChange={(event) => {
@@ -187,7 +203,11 @@ export function FileLink({
         }
       }}
       className={cn(
-        "inline-flex min-w-0 items-center gap-1.5 text-xs text-sky-700 underline-offset-2 outline-none hover:underline disabled:opacity-60 dark:text-sky-400",
+        // max-w-full matters: receipt names like
+        // "260201_ACSRAC_SLICE OF LIFE FOOD CORP_SAN PASCUAL.pdf" are wider than
+        // any panel they sit in, and an inline-flex box sizes to its content
+        // unless it's capped. Without it the truncate below never engages.
+        "inline-flex max-w-full min-w-0 items-center gap-1.5 text-xs text-sky-700 underline-offset-2 outline-none hover:underline disabled:opacity-60 dark:text-sky-400",
         className
       )}
     >
@@ -196,7 +216,7 @@ export function FileLink({
       ) : (
         <FileText className="size-3.5 shrink-0" />
       )}
-      <span className="truncate">{name}</span>
+      <span className="min-w-0 truncate">{name}</span>
     </button>
   )
 }

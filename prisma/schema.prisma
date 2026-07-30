@@ -172,7 +172,7 @@ model Client {
   branches           Branch[]
   contacts           ClientContact[]
   schedules          Schedule[]
-  reimbursementItems ReimbursementItem[] @relation("ClientReimbursementItems")
+  reimbursementItems ReimbursementItemClient[] @relation("ClientReimbursementItems")
 }
 
 // A client can have any number of people you'd call — accounts payable,
@@ -316,12 +316,35 @@ model ReimbursementItem {
   id              String        @id @default(uuid())
   reimbursementId String
   reimbursement   Reimbursement @relation(fields: [reimbursementId], references: [id], onDelete: Cascade)
-  clientId        String?
-  client          Client?       @relation("ClientReimbursementItems", fields: [clientId], references: [id])
-  soNumber        String?
   description     String
   amount          Decimal
   createdAt       DateTime      @default(now())
+
+  // One payment can serve more than one job — a tank of fuel covering two
+  // client sites is one expense, not two. `amount` stays the figure on the
+  // receipt; the share charged to each job lives on the rows below. No rows
+  // means the expense isn't tied to a client at all.
+  clients ReimbursementItemClient[]
+}
+
+// Which job an expense was for. Separate row per client because both the S.O.
+// number and the share of the money belong to the pairing, not to the expense:
+// the same tank of fuel is S.O. 148 at one site and S.O. 151 at the other.
+model ReimbursementItemClient {
+  id       String            @id @default(uuid())
+  itemId   String
+  item     ReimbursementItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  clientId String
+  client   Client            @relation("ClientReimbursementItems", fields: [clientId], references: [id])
+  soNumber String?
+  // The expense divided by the number of jobs it covered, to the centavo.
+  // Stored rather than derived so a later edit to the line can't silently
+  // restate what was already charged to a job. The shares always add back up
+  // to the item's amount.
+  amount   Decimal
+
+  @@unique([itemId, clientId])
+  @@index([clientId])
 }
 
 // The payout trail. Separate rows rather than fields on the claim so a partial

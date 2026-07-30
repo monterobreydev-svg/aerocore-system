@@ -50,6 +50,8 @@ export type StaffMember = {
   username: string
   role: Role
   isActive: boolean
+  /** Liquidations on this person's record — one number, not the rows. */
+  claimCount: number
   employee: {
     id: string
     firstName: string
