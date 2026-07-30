@@ -16,15 +16,26 @@ import {
 } from "@/lib/schedule"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { ScheduleTable } from "@/components/admin/schedule-table"
+import dynamic from "next/dynamic"
 import { ScheduleMonthView } from "@/components/admin/schedule-calendar"
-import { ScheduleTimeGrid } from "@/components/admin/schedule-time-grid"
-import { ScheduleDetailSheet } from "@/components/admin/schedule-detail-sheet"
-import {
-  CreateScheduleDialog,
-  defaultSlot,
-  type ScheduleSlot,
-} from "@/components/admin/create-schedule-dialog"
+import { defaultSlot, type ScheduleSlot } from "@/components/admin/schedule-slot"
+
+// Month is the landing view, so it ships in the first chunk. Everything else
+// is behind a tap — the week/day grid, the list table, the detail sheet and
+// the create dialog only download once someone actually asks for them. On a
+// slow connection that is the difference between a usable page and a spinner.
+const ScheduleTimeGrid = dynamic(() =>
+  import("@/components/admin/schedule-time-grid").then((m) => m.ScheduleTimeGrid)
+)
+const ScheduleTable = dynamic(() =>
+  import("@/components/admin/schedule-table").then((m) => m.ScheduleTable)
+)
+const ScheduleDetailSheet = dynamic(() =>
+  import("@/components/admin/schedule-detail-sheet").then((m) => m.ScheduleDetailSheet)
+)
+const CreateScheduleDialog = dynamic(() =>
+  import("@/components/admin/create-schedule-dialog").then((m) => m.CreateScheduleDialog)
+)
 import type {
   ClientOption,
   EmployeeOption,
@@ -286,23 +297,29 @@ export function SchedulesView({
         </div>
       )}
 
-      <CreateScheduleDialog
-        clients={clients}
-        employees={employees}
-        busy={busy}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        slot={slot}
-      />
+      {/* Mounted only once opened. Rendering them unconditionally would
+          download their chunks on first paint and undo the lazy import. */}
+      {createOpen && (
+        <CreateScheduleDialog
+          clients={clients}
+          employees={employees}
+          busy={busy}
+          open
+          onOpenChange={setCreateOpen}
+          slot={slot}
+        />
+      )}
 
-      <ScheduleDetailSheet
-        schedule={selected}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        clients={clients}
-        employees={employees}
-        busy={busy}
-      />
+      {sheetOpen && selected && (
+        <ScheduleDetailSheet
+          schedule={selected}
+          open
+          onOpenChange={setSheetOpen}
+          clients={clients}
+          employees={employees}
+          busy={busy}
+        />
+      )}
     </div>
   )
 }

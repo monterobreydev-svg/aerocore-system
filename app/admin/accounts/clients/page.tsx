@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireManager } from "@/lib/auth"
 import { ClientList, type ClientRecord } from "@/components/admin/client-list"
 
 // Enough history to fill the detail tab without pulling a client's entire
@@ -6,6 +7,8 @@ import { ClientList, type ClientRecord } from "@/components/admin/client-list"
 const SERVICE_HISTORY_LIMIT = 50
 
 export default async function ClientsPage() {
+  await requireManager()
+
   const clientRecords = await prisma.client.findMany({
     include: {
       branches: { orderBy: { name: "asc" } },

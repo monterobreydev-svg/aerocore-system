@@ -1,10 +1,11 @@
 import "server-only"
 import { SignJWT, jwtVerify } from "jose"
 import { cookies } from "next/headers"
-import { cache } from "react"
-import { redirect } from "next/navigation"
 import type { Role } from "@/app/generated/prisma/client"
 
+// Cookie and token plumbing only. The authoritative session check lives in
+// lib/auth.ts because it queries Postgres, and proxy.ts imports `decrypt`
+// from here — pulling Prisma into the proxy's bundle would break it.
 export type SessionPayload = {
   accountId: string
   employeeId: string
@@ -12,7 +13,7 @@ export type SessionPayload = {
 }
 
 const encodedKey = new TextEncoder().encode(process.env.SESSION_SECRET)
-const COOKIE_NAME = "session"
+export const COOKIE_NAME = "session"
 
 export async function encrypt(payload: SessionPayload) {
   return new SignJWT(payload)
@@ -54,14 +55,3 @@ export async function deleteSession() {
   const cookieStore = await cookies()
   cookieStore.delete(COOKIE_NAME)
 }
-
-export const verifySession = cache(async () => {
-  const cookieStore = await cookies()
-  const session = await decrypt(cookieStore.get(COOKIE_NAME)?.value)
-
-  if (!session?.accountId) {
-    redirect("/login")
-  }
-
-  return session
-})

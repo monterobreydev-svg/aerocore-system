@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma"
-import { verifySession } from "@/lib/session"
+import { requireManager } from "@/lib/auth"
 import { nextEmployeeNo } from "@/lib/employee"
 import { StaffCards, type StaffMember } from "@/components/admin/staff-cards"
 
 export default async function StaffPage() {
-  const session = await verifySession()
+  const session = await requireManager()
 
   // Highest existing "E-0000" code, so the create form can pre-fill the next
   // one. Sorted as text, which is why the codes are zero-padded.

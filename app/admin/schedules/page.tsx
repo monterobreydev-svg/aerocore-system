@@ -29,8 +29,10 @@ export default async function SchedulesPage() {
       },
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
     }),
+    // Name and address only. Branches are fetched per client when one is
+    // picked (listBranches) rather than shipping every branch of every client.
     prisma.client.findMany({
-      include: { branches: { orderBy: { name: "asc" } } },
+      select: { id: true, name: true, address: true },
       orderBy: { name: "asc" },
     }),
     prisma.employee.findMany({
@@ -86,16 +88,7 @@ export default async function SchedulesPage() {
       }))
     )
 
-  const clients: ClientOption[] = clientRecords.map((client) => ({
-    id: client.id,
-    name: client.name,
-    address: client.address,
-    branches: client.branches.map((branch) => ({
-      id: branch.id,
-      name: branch.name,
-      address: branch.address,
-    })),
-  }))
+  const clients: ClientOption[] = clientRecords
 
   const employees: EmployeeOption[] = employeeRecords
 

@@ -29,7 +29,6 @@ export type ClientOption = {
   id: string
   name: string
   address: string
-  branches: BranchOption[]
 }
 
 export type EmployeeOption = {

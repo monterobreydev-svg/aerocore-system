@@ -64,21 +64,33 @@ model Employee {
   account             UserAccount?         @relation("EmployeeAccount")
   editLogs            StaffEditLog[]       @relation("EmployeeEditLogs")
   scheduleAssignments ScheduleAssignment[] @relation("EmployeeScheduleAssignments")
+  reimbursements      Reimbursement[]      @relation("EmployeeReimbursements")
+  fundReleases        FundRelease[]        @relation("EmployeeFundReleases")
 }
 
 model UserAccount {
-  id           String    @id @default(uuid())
-  employeeId   String    @unique
-  employee     Employee  @relation("EmployeeAccount", fields: [employeeId], references: [id])
-  username     String    @unique
-  passwordHash String
-  role         Role
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
+  id                  String    @id @default(uuid())
+  employeeId          String    @unique
+  employee            Employee  @relation("EmployeeAccount", fields: [employeeId], references: [id])
+  username            String    @unique
+  passwordHash        String
+  role                Role
+  isActive            Boolean   @default(true)
+  lastLoginAt         DateTime?
+  // Brute-force lockout. Stored on the row rather than in memory so it holds
+  // across restarts and across instances behind a load balancer.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  // Every session issued before this instant is refused. Set on password
+  // change so a stolen or shared login dies the moment the password rotates,
+  // instead of surviving until the 7-day token expires.
+  sessionsRevokedAt   DateTime?
 
-  createdEmployees Employee[]     @relation("EmployeeCreatedBy")
-  staffEdits       StaffEditLog[] @relation("StaffEditsMade")
-  createdSchedules Schedule[]     @relation("ScheduleCreatedBy")
+  createdEmployees     Employee[]      @relation("EmployeeCreatedBy")
+  staffEdits           StaffEditLog[]  @relation("StaffEditsMade")
+  createdSchedules     Schedule[]      @relation("ScheduleCreatedBy")
+  reimbursementReviews Reimbursement[] @relation("ReimbursementReviewedBy")
+  fundReleases         FundRelease[]   @relation("FundReleasedBy")
 }
 
 // Audit trail for edits made to a staff member's Employee/UserAccount record
@@ -117,9 +129,10 @@ model Client {
   email     String?
   createdAt DateTime   @default(now())
 
-  branches  Branch[]
-  contacts  ClientContact[]
-  schedules Schedule[]
+  branches           Branch[]
+  contacts           ClientContact[]
+  schedules          Schedule[]
+  reimbursementItems ReimbursementItem[] @relation("ClientReimbursementItems")
 }
 
 // A client can have any number of people you'd call — accounts payable,
@@ -206,4 +219,90 @@ model ScheduleAssignment {
   createdAt  DateTime @default(now())
 
   @@unique([scheduleId, employeeId])
+}
+
+// ---------------------------------------------------------------------------
+// Reimbursements
+//
+// An employee spends their own money on a job, then liquidates: one claim
+// holding one row per receipt. Admin reviews, then records the payout — which
+// can be split across several transfers, hence a separate funding table.
+// ---------------------------------------------------------------------------
+
+enum ReimbursementStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model Reimbursement {
+  id          String              @id @default(uuid())
+  referenceNo String              @unique
+  employeeId  String
+  employee    Employee            @relation("EmployeeReimbursements", fields: [employeeId], references: [id])
+  status      ReimbursementStatus @default(PENDING_REVIEW)
+  totalAmount Decimal
+  // One liquidation covers one day's spending, so the date and the compiled
+  // receipt scan live here rather than on each line. The breakdown below says
+  // where the money went; this says when, and holds the proof.
+  expenseDate DateTime
+  receiptKey  String?
+  receiptName String?
+  receiptType String?
+  // Frozen at submission: whether the day being liquidated was already outside
+  // the filing window. Recomputing later would flip as time passes.
+  isLate      Boolean             @default(false)
+  lateReason  String?
+  note        String?
+  submittedAt DateTime            @default(now())
+
+  reviewedById String?
+  reviewedBy   UserAccount? @relation("ReimbursementReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  items ReimbursementItem[]
+
+  @@index([employeeId, status])
+}
+
+// One receipt: what was bought, for which client, on which S.O., how much,
+// and the scan itself. clientId is nullable because not every expense is
+// billable to a client (fuel between sites, office supplies).
+// One expense line: what was bought, for which client, on which S.O., how
+// much. No date and no receipt of its own -- both belong to the claim, which
+// covers a single day and carries one compiled scan.
+model ReimbursementItem {
+  id              String        @id @default(uuid())
+  reimbursementId String
+  reimbursement   Reimbursement @relation(fields: [reimbursementId], references: [id], onDelete: Cascade)
+  clientId        String?
+  client          Client?       @relation("ClientReimbursementItems", fields: [clientId], references: [id])
+  soNumber        String?
+  description     String
+  amount          Decimal
+  createdAt       DateTime      @default(now())
+}
+
+// The payout trail. Separate rows rather than fields on the claim so a partial
+// release, a correction, or a second transfer all stay on the record.
+// Money handed to an employee up front -- a working fund they draw on for job
+// expenses and account for with liquidations. Tied to the person, not to a
+// claim: the balance is what they still hold, across everything.
+model FundRelease {
+  id           String      @id @default(uuid())
+  employeeId   String
+  employee     Employee    @relation("EmployeeFundReleases", fields: [employeeId], references: [id])
+  amount       Decimal
+  method       String?
+  reference    String?
+  note         String?
+  proofKey     String?
+  proofName    String?
+  proofType    String?
+  releasedById String
+  releasedBy   UserAccount @relation("FundReleasedBy", fields: [releasedById], references: [id])
+  releasedAt   DateTime    @default(now())
+
+  @@index([employeeId])
 }

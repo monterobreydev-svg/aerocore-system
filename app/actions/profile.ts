@@ -4,7 +4,8 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { hashPassword, verifyPassword } from "@/lib/password"
-import { verifySession } from "@/lib/session"
+import { verifySession } from "@/lib/auth"
+import { createSession } from "@/lib/session"
 
 const optionalEmail = z
   .string()
@@ -284,12 +285,39 @@ export async function changePassword(
     return { errors: { currentPassword: ["That's not your current password."] } }
   }
 
+  // Truncated to the second because a JWT's `iat` has no sub-second part —
+  // storing 12:00:00.500 here would revoke a token stamped 12:00:00, including
+  // the replacement one issued a moment later.
+  const revokedAt = new Date(Math.floor(Date.now() / 1000) * 1000)
+
   await prisma.userAccount.update({
     where: { id: account.id },
-    data: { passwordHash: hashPassword(newPassword) },
+    data: {
+      passwordHash: hashPassword(newPassword),
+      // Kills every session signed before now. Changing your password is the
+      // one action that should boot whoever else is logged in as you.
+      sessionsRevokedAt: revokedAt,
+      // A password change is also the natural place to clear a lockout.
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    },
   })
+
+  // ...including this one, so re-issue it. Being signed out of the device you
+  // just used is the wrong outcome — everywhere else is the point.
+  await createSession(
+    {
+      accountId: session.accountId,
+      employeeId: session.employeeId,
+      role: session.role,
+    },
+    false
+  )
 
   revalidateSettings(formData.get("section"))
 
-  return { success: true, message: "Password updated." }
+  return {
+    success: true,
+    message: "Password updated. Other devices have been signed out.",
+  }
 }

@@ -3,7 +3,7 @@
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
-import { verifySession } from "@/lib/session"
+import { verifySession } from "@/lib/auth"
 
 async function requireClientAccess() {
   const session = await verifySession()

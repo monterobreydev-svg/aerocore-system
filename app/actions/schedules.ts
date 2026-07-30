@@ -3,7 +3,7 @@
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
-import { verifySession } from "@/lib/session"
+import { verifySession } from "@/lib/auth"
 
 async function requireScheduleAccess() {
   const session = await verifySession()
@@ -383,6 +383,24 @@ export async function updateScheduleStatus(
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
+}
+
+// Branches are fetched for one client at a time, on demand.
+//
+// Sending every client's branches with the page is O(clients x branches): a
+// handful of 100-branch clients adds hundreds of KB to a load that mostly
+// doesn't need them, and on 3G that is seconds of blank screen. The form only
+// ever shows one client's branches, so it asks for them when a client is
+// picked. The browser caches the result per client for the session.
+export async function listBranches(clientId: string) {
+  const session = await requireScheduleAccess()
+  if (!session || !clientId) return []
+
+  return prisma.branch.findMany({
+    where: { clientId },
+    select: { id: true, name: true, address: true },
+    orderBy: { name: "asc" },
+  })
 }
 
 export async function deleteSchedule(scheduleId: string) {

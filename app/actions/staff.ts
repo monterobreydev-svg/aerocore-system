@@ -4,7 +4,7 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { hashPassword } from "@/lib/password"
-import { verifySession } from "@/lib/session"
+import { verifySession } from "@/lib/auth"
 import { assignableRoles } from "@/lib/roles"
 import { SKILL_OPTIONS } from "@/lib/employee"
 

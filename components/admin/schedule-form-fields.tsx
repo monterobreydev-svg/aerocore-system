@@ -1,8 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { MapPin } from "lucide-react"
 import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
+import { listBranches } from "@/app/actions/schedules"
 import {
   SCHEDULE_STATUSES,
   SCHEDULE_STATUS_LABELS,
@@ -29,6 +30,7 @@ import { SearchSelect } from "@/components/ui/search-select"
 import { ScheduleEmployeePicker } from "@/components/admin/schedule-employee-picker"
 import { ScheduleWorkTypePicker } from "@/components/admin/schedule-worktype-picker"
 import type {
+  BranchOption,
   ClientOption,
   EmployeeOption,
 } from "@/components/admin/schedule-types"
@@ -43,6 +45,9 @@ export type ScheduleContext = {
   startTime: string
   endTime: string
 }
+
+// Stable identity so the memo below does not rebuild on every render.
+const NO_BRANCHES: BranchOption[] = []
 
 type FieldErrors = Partial<Record<string, string[]>>
 
@@ -117,10 +122,37 @@ export function ScheduleFormFields({
   const [workTypes, setWorkTypes] = useState<WorkType[]>(defaultWorkTypes)
 
   const selectedClient = clients.find((client) => client.id === context.clientId)
-  const branches = useMemo(
-    () => selectedClient?.branches ?? [],
-    [selectedClient]
-  )
+
+  // Branches arrive on demand rather than with the page — see listBranches().
+  // Held as a cache keyed by client so switching back to one already looked at
+  // costs nothing.
+  //
+  // Both the list and the loading flag are *derived* from that cache rather
+  // than stored separately: there's no state to push, so the effect only ever
+  // fetches, and an empty selection needs no effect at all.
+  const [branchCache, setBranchCache] = useState<
+    Record<string, BranchOption[]>
+  >({})
+  const branches = context.clientId
+    ? (branchCache[context.clientId] ?? NO_BRANCHES)
+    : NO_BRANCHES
+  const loadingBranches =
+    Boolean(context.clientId) && !branchCache[context.clientId]
+
+  useEffect(() => {
+    const clientId = context.clientId
+    if (!clientId || branchCache[clientId]) return
+
+    let cancelled = false
+    listBranches(clientId).then((rows) => {
+      if (!cancelled) {
+        setBranchCache((current) => ({ ...current, [clientId]: rows }))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [context.clientId, branchCache])
 
   const clientOptions = useMemo(
     () =>
@@ -199,7 +231,11 @@ export function ScheduleFormFields({
                 value={context.branchId}
                 onValueChange={(value) => onContextChange({ branchId: value })}
                 placeholder={
-                  context.clientId ? "Head office" : "Pick a client first"
+                  !context.clientId
+                    ? "Pick a client first"
+                    : loadingBranches
+                      ? "Loading branches…"
+                      : "Head office"
                 }
                 searchPlaceholder="Search branches…"
                 emptyMessage="No branch matches that."

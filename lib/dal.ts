@@ -1,7 +1,7 @@
 import "server-only"
 import { cache } from "react"
 import { prisma } from "@/lib/prisma"
-import { verifySession } from "@/lib/session"
+import { verifySession } from "@/lib/auth"
 
 export const getCurrentEmployee = cache(async () => {
   const session = await verifySession()

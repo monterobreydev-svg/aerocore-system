@@ -18,6 +18,7 @@ import {
   ScheduleFormFields,
   type ScheduleContext,
 } from "@/components/admin/schedule-form-fields"
+import type { ScheduleSlot } from "@/components/admin/schedule-slot"
 import type {
   ClientOption,
   EmployeeOption,
@@ -25,16 +26,6 @@ import type {
 
 // What clicking an empty calendar slot hands over: the day, and for the time
 // grids the hour that was clicked.
-export type ScheduleSlot = {
-  date: string
-  startTime: string
-  endTime: string
-}
-
-export function defaultSlot(date: string): ScheduleSlot {
-  return { date, startTime: "08:00", endTime: "12:00" }
-}
-
 export function CreateScheduleDialog({
   clients,
   employees,
