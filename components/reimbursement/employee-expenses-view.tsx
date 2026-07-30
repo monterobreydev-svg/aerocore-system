@@ -171,11 +171,13 @@ export function EmployeeExpensesView({
   clients,
   released,
   liquidated,
+  lastReleasedAt,
 }: {
   claims: Claim[]
   clients: ClientChoice[]
   released: number
   liquidated: number
+  lastReleasedAt: string | null
 }) {
   const [formOpen, setFormOpen] = useState(false)
 
@@ -184,6 +186,7 @@ export function EmployeeExpensesView({
       <FundCard
         released={released}
         liquidated={liquidated}
+        lastReleasedAt={lastReleasedAt}
         onStart={() => setFormOpen(true)}
       />
 

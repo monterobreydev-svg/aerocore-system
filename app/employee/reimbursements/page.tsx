@@ -26,7 +26,8 @@ export default async function EmployeeExpensesPage() {
     }),
     prisma.fundRelease.findMany({
       where: { employeeId: employee.id },
-      select: { amount: true },
+      select: { amount: true, releasedAt: true },
+      orderBy: { releasedAt: "desc" },
     }),
   ])
 
@@ -54,6 +55,8 @@ export default async function EmployeeExpensesPage() {
   }))
 
   const released = releases.reduce((sum, r) => sum + Number(r.amount), 0)
+  // Newest first, so the head of the list is the last top-up the office made.
+  const lastReleasedAt = releases[0]?.releasedAt.toISOString() ?? null
   // A rejected liquidation doesn't reduce the balance — that money is still
   // theirs to account for, which is exactly what a rejection means.
   const liquidated = claims
@@ -82,6 +85,7 @@ export default async function EmployeeExpensesPage() {
         clients={clientRecords}
         released={released}
         liquidated={liquidated}
+        lastReleasedAt={lastReleasedAt}
       />
     </div>
   )
