@@ -3,8 +3,18 @@ import { getCurrentEmployee } from "@/lib/dal"
 import { EmployeeScheduleView } from "@/components/employee/employee-schedule-view"
 import type { ScheduleRecord } from "@/components/admin/schedule-types"
 
-export default async function EmployeeSchedulePage() {
+export default async function EmployeeSchedulePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string | string[] }>
+}) {
   const employee = await getCurrentEmployee()
+
+  // ?date=YYYY-MM-DD is how a notification points at the day it's about. Read
+  // here rather than with useSearchParams so the view renders on the right day
+  // server-side, with no flash of today first.
+  const dateParam = (await searchParams).date
+  const focusDate = Array.isArray(dateParam) ? dateParam[0] : dateParam
 
   // Driven straight off the assignment join, so anything the office creates —
   // or reassigns, reschedules or cancels — shows up here on the next load.
@@ -59,7 +69,15 @@ export default async function EmployeeSchedulePage() {
         </p>
       </div>
 
-      <EmployeeScheduleView schedules={schedules} employeeId={employee.id} />
+      {/* Keyed on the linked day: tapping a notification while already on this
+          page is a same-route navigation, which would otherwise keep the view's
+          existing state and leave it sitting on today. */}
+      <EmployeeScheduleView
+        key={focusDate ?? "today"}
+        schedules={schedules}
+        employeeId={employee.id}
+        focusDate={focusDate}
+      />
     </div>
   )
 }

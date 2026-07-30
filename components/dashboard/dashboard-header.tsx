@@ -1,10 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { Bell, ChevronDown, KeyRound, LogOut, Settings } from "lucide-react"
+import { ChevronDown, KeyRound, LogOut, Settings } from "lucide-react"
 import { logout } from "@/app/actions/auth"
 import type { Role } from "@/app/generated/prisma/client"
 import { roleLabel } from "@/lib/roles"
+import type { InboxItem } from "@/lib/notifications"
+import { NotificationBell } from "@/components/dashboard/notification-bell"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
@@ -37,9 +39,13 @@ function greetingForHour(hour: number) {
 export function DashboardHeader({
   employeeName,
   role,
+  notifications,
+  pendingCount,
 }: {
   employeeName: string
   role: Role
+  notifications: InboxItem[]
+  pendingCount: number
 }) {
   const firstName = employeeName.split(" ")[0]
   const now = new Date()
@@ -50,7 +56,6 @@ export function DashboardHeader({
     month: "long",
     day: "numeric",
   })
-  const unreadCount = 0
 
   return (
     <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-sm sm:px-6">
@@ -67,32 +72,7 @@ export function DashboardHeader({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative rounded-lg"
-                aria-label="Notifications"
-              >
-                <Bell className="size-[18px]" />
-                {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-sky-600" />
-                )}
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end" className="w-72">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-              You&apos;re all caught up.
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <NotificationBell items={notifications} pendingCount={pendingCount} />
 
         <Separator orientation="vertical" className="h-5" />
 

@@ -203,6 +203,17 @@ export function dateKey(date: Date) {
   return `${year}-${month}-${day}`
 }
 
+// The reverse of dateKey, for a ?date= in the URL. Local midnight again, so a
+// linked day lines up with the calendar rather than landing a day off. Anything
+// that isn't a plain date returns null — a hand-edited URL should fall back to
+// today, not put the grid on Invalid Date.
+export function parseDateKey(value: string | null | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+
+  const date = new Date(`${value}T00:00:00`)
+  return Number.isNaN(+date) ? null : date
+}
+
 export function minutesIntoDay(iso: string) {
   const d = new Date(iso)
   return d.getHours() * 60 + d.getMinutes()

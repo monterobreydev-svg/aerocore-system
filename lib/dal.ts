@@ -2,6 +2,7 @@ import "server-only"
 import { cache } from "react"
 import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/auth"
+import { NOTIFICATION_LIMIT, type InboxItem } from "@/lib/notifications"
 
 export const getCurrentEmployee = cache(async () => {
   const session = await verifySession()
@@ -75,3 +76,35 @@ export const getAccountSettings = cache(async () => {
 })
 
 export type AccountSettings = Awaited<ReturnType<typeof getAccountSettings>>
+
+// The bell, on every page of both shells — so it is deliberately two cheap
+// indexed queries and nothing more. Everything in the table is outstanding by
+// definition, so the badge is the full count while the list stays capped:
+// "12" is right even though only eight rows are carried.
+export const getNotificationInbox = cache(async () => {
+  const session = await verifySession()
+
+  const [rows, pendingCount] = await Promise.all([
+    prisma.notification.findMany({
+      where: { recipientId: session.accountId },
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        body: true,
+        href: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: NOTIFICATION_LIMIT,
+    }),
+    prisma.notification.count({ where: { recipientId: session.accountId } }),
+  ])
+
+  const items: InboxItem[] = rows.map((row) => ({
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+  }))
+
+  return { items, pendingCount }
+})

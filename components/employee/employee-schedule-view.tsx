@@ -18,6 +18,7 @@ import {
   addMonths,
   formatTime,
   isSameDay,
+  parseDateKey,
   startOfDay,
   startOfMonth,
   startOfWeek,
@@ -264,15 +265,28 @@ function MonthGrid({
 export function EmployeeScheduleView({
   schedules,
   employeeId,
+  focusDate,
 }: {
   schedules: ScheduleRecord[]
   employeeId: string
+  // A day to open on, from ?date= — how a notification shows the job it just
+  // announced instead of dropping you on today and leaving you to find it.
+  focusDate?: string
 }) {
-  // Today is what an employee opens this for, so it's the landing view.
-  const [view, setView] = useState<"today" | "month">("today")
   const today = useMemo(() => startOfDay(new Date()), [])
-  const [cursor, setCursor] = useState(today)
-  const [selectedDay, setSelectedDay] = useState(today)
+
+  // A linked day that isn't today can only be shown on the month view, so
+  // that's where it lands, with the day already selected. Linking to today
+  // still opens Today — it's the same jobs, in the view built for them.
+  const focus = useMemo(() => {
+    const parsed = parseDateKey(focusDate)
+    return parsed && !isSameDay(parsed, today) ? startOfDay(parsed) : null
+  }, [focusDate, today])
+
+  // Today is what an employee opens this for, so it's the landing view.
+  const [view, setView] = useState<"today" | "month">(focus ? "month" : "today")
+  const [cursor, setCursor] = useState(focus ? startOfMonth(focus) : today)
+  const [selectedDay, setSelectedDay] = useState(focus ?? today)
 
   const nextJob = useMemo(
     () =>

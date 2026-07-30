@@ -10,6 +10,7 @@ import {
   addMonths,
   dateKey,
   isSameDay,
+  parseDateKey,
   startOfDay,
   startOfWeek,
   type EmployeeBusyBlock,
@@ -87,14 +88,20 @@ export function SchedulesView({
   clients,
   employees,
   busy,
+  focusDate,
 }: {
   schedules: ScheduleRecord[]
   clients: ClientOption[]
   employees: EmployeeOption[]
   busy: EmployeeBusyBlock[]
+  // A day to open on, from ?date= — a schedule notification links to the day of
+  // the job rather than to whatever today happens to be.
+  focusDate?: string
 }) {
   const [view, setView] = useState<View>("month")
-  const [cursor, setCursor] = useState(() => startOfDay(new Date()))
+  const [cursor, setCursor] = useState(
+    () => parseDateKey(focusDate) ?? startOfDay(new Date())
+  )
   const [selected, setSelected] = useState<ScheduleRecord | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)

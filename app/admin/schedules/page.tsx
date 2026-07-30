@@ -10,7 +10,15 @@ import type {
   ScheduleRecord,
 } from "@/components/admin/schedule-types"
 
-export default async function SchedulesPage() {
+export default async function SchedulesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string | string[] }>
+}) {
+  // ?date=YYYY-MM-DD is how a notification points at the day it's about.
+  const dateParam = (await searchParams).date
+  const focusDate = Array.isArray(dateParam) ? dateParam[0] : dateParam
+
   const [scheduleRecords, clientRecords, employeeRecords] = await Promise.all([
     prisma.schedule.findMany({
       include: {
@@ -183,11 +191,16 @@ export default async function SchedulesPage() {
         ))}
       </div>
 
+      {/* Keyed on the linked day so tapping a notification while already on
+          this page still moves the calendar, instead of keeping the state the
+          view already had. */}
       <SchedulesView
+        key={focusDate ?? "today"}
         schedules={schedules}
         clients={clients}
         employees={employees}
         busy={busy}
+        focusDate={focusDate}
       />
     </div>
   )

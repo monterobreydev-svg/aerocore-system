@@ -91,6 +91,46 @@ model UserAccount {
   createdSchedules     Schedule[]      @relation("ScheduleCreatedBy")
   reimbursementReviews Reimbursement[] @relation("ReimbursementReviewedBy")
   fundReleases         FundRelease[]   @relation("FundReleasedBy")
+  notifications        Notification[]  @relation("NotificationRecipient")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+enum NotificationType {
+  SCHEDULE_ASSIGNED
+  LIQUIDATION_SUBMITTED
+  FUND_RELEASED
+}
+
+// Addressed to a UserAccount rather than an Employee: an inbox only means
+// something for someone who can sign in and read it.
+//
+// The title and body are written once, at the moment the thing happened, and
+// stored as plain text. That's deliberate — re-deriving the wording later from
+// live rows would make an old notification change its story (or vanish) when
+// the schedule it referred to is edited or deleted.
+//
+// There is no read flag: a notification is a nudge with a lifetime, not a
+// record. Opening it or clearing the list deletes the row, so the table only
+// ever holds what someone still has to look at. Nothing is lost by that — the
+// schedule, liquidation or fund release it points at is the actual record,
+// with its own timestamps and actor.
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  recipient   UserAccount      @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  body        String
+  // Where tapping it should land. Nullable so a notification with nowhere
+  // useful to go is still valid.
+  href        String?
+  createdAt   DateTime         @default(now())
+
+  // Serves both the inbox query (newest first for one person) and the count.
+  @@index([recipientId, createdAt])
 }
 
 // Audit trail for edits made to a staff member's Employee/UserAccount record

@@ -1,10 +1,11 @@
 import type { Role } from "@/app/generated/prisma/client"
+import { getNotificationInbox } from "@/lib/dal"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 
-export function DashboardShell({
+export async function DashboardShell({
   role,
   employeeName,
   children,
@@ -13,12 +14,19 @@ export function DashboardShell({
   employeeName: string
   children: React.ReactNode
 }) {
+  const { items, pendingCount } = await getNotificationInbox()
+
   return (
     <SidebarProvider>
       <TooltipProvider delay={300}>
         <AppSidebar role={role} />
         <SidebarInset>
-          <DashboardHeader employeeName={employeeName} role={role} />
+          <DashboardHeader
+            employeeName={employeeName}
+            role={role}
+            notifications={items}
+            pendingCount={pendingCount}
+          />
           <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
             {children}
           </div>

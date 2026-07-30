@@ -12,7 +12,8 @@ import {
   presignDownload,
   presignUpload,
 } from "@/lib/r2"
-import { isLateExpense, nextReferenceNo } from "@/lib/reimbursement"
+import { isLateExpense, nextReferenceNo, peso } from "@/lib/reimbursement"
+import { notifyEmployee, notifyReviewers } from "@/lib/notify"
 
 async function requireAdmin() {
   const session = await verifySession()
@@ -203,7 +204,7 @@ export async function submitLiquidation(
   })
   const referenceNo = nextReferenceNo(latest?.referenceNo, now)
 
-  await prisma.reimbursement.create({
+  const claim = await prisma.reimbursement.create({
     data: {
       referenceNo,
       employeeId: session.employeeId,
@@ -224,6 +225,17 @@ export async function submitLiquidation(
         })),
       },
     },
+    select: { employee: { select: { firstName: true, lastName: true } } },
+  })
+
+  // Whoever reviews it: the amount and who filed it are the two things that
+  // decide whether they open it now or after lunch. Late filings say so,
+  // since those are the ones that need a decision rather than a glance.
+  await notifyReviewers({
+    type: "LIQUIDATION_SUBMITTED",
+    title: isLate ? "Late liquidation filed" : "New liquidation filed",
+    body: `${claim.employee.firstName} ${claim.employee.lastName} filed ${referenceNo} for ${peso(totalAmount)}.`,
+    destination: "reimbursements",
   })
 
   revalidateAll()
@@ -364,6 +376,17 @@ export async function releaseFund(
       proofType: proofType || null,
       releasedById: session.accountId,
     },
+  })
+
+  // The employee is holding this money now, so they're told how much and how
+  // it reached them — the method is what they check their account against.
+  await notifyEmployee(employeeId, {
+    type: "FUND_RELEASED",
+    title: "Working fund released",
+    body: method
+      ? `${peso(amount)} was released to you via ${method}.`
+      : `${peso(amount)} was released to you.`,
+    destination: "reimbursements",
   })
 
   revalidateAll()

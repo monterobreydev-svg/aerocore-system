@@ -4,6 +4,8 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/auth"
+import { dateKey } from "@/lib/schedule"
+import { notifyEmployees } from "@/lib/notify"
 
 async function requireScheduleAccess() {
   const session = await verifySession()
@@ -26,6 +28,37 @@ function shortTime(value: Date) {
     hour: "numeric",
     minute: "2-digit",
   })
+}
+
+function shortDate(value: Date) {
+  return value.toLocaleDateString("en-PH", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  })
+}
+
+// What an assigned employee needs off a notification without opening anything:
+// when, and where. Composed here so the create and edit paths word it the same.
+function assignmentNotice(job: {
+  date: Date
+  startTime: Date
+  endTime: Date
+  client: { name: string }
+  branch: { name: string } | null
+}) {
+  const site = job.branch ? `${job.client.name} · ${job.branch.name}` : job.client.name
+
+  return {
+    type: "SCHEDULE_ASSIGNED" as const,
+    title: "New schedule assigned",
+    body: `${shortDate(job.date)}, ${shortTime(job.startTime)}–${shortTime(job.endTime)} · ${site}`,
+    // Resolved per recipient: an engineer assigned to a job reads it on the
+    // admin calendar, an employee on their own schedule page — and both open on
+    // the job's own day rather than today.
+    destination: "schedule" as const,
+    focusDate: dateKey(job.date),
+  }
 }
 
 // The rule the whole feature hangs on: a person can't be in two places at
@@ -213,8 +246,23 @@ export async function createSchedule(
           ? { create: employeeIds.map((employeeId) => ({ employeeId })) }
           : undefined,
     },
-    select: { id: true },
+    // The client and branch names come back with the row rather than in a
+    // second query — the notification needs them and they're already joined.
+    select: {
+      id: true,
+      date: true,
+      startTime: true,
+      endTime: true,
+      client: { select: { name: true } },
+      branch: { select: { name: true } },
+    },
   })
+
+  // An engineer who put themselves on the job doesn't need telling.
+  await notifyEmployees(
+    employeeIds.filter((id) => id !== session.employeeId),
+    assignmentNotice(created)
+  )
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
@@ -326,8 +374,18 @@ export async function updateSchedule(
     }
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.schedule.update({
+  const { job, addedEmployeeIds } = await prisma.$transaction(async (tx) => {
+    // Read before the wipe: editing a job re-writes every assignment, so
+    // "who is new to this job" can only be answered from what was there
+    // first. Without it, saving a remarks change would re-notify the whole
+    // crew.
+    const previous = await tx.scheduleAssignment.findMany({
+      where: { scheduleId },
+      select: { employeeId: true },
+    })
+    const before = new Set(previous.map((row) => row.employeeId))
+
+    const updated = await tx.schedule.update({
       where: { id: scheduleId },
       data: {
         clientId,
@@ -341,6 +399,13 @@ export async function updateSchedule(
         workTypes,
         status,
       },
+      select: {
+        date: true,
+        startTime: true,
+        endTime: true,
+        client: { select: { name: true } },
+        branch: { select: { name: true } },
+      },
     })
 
     await tx.scheduleAssignment.deleteMany({ where: { scheduleId } })
@@ -351,7 +416,19 @@ export async function updateSchedule(
         skipDuplicates: true,
       })
     }
+
+    return {
+      job: updated,
+      addedEmployeeIds: employeeIds.filter((id) => !before.has(id)),
+    }
   })
+
+  // Outside the transaction: an inbox row failing is not a reason to undo the
+  // edit itself.
+  await notifyEmployees(
+    addedEmployeeIds.filter((id) => id !== session.employeeId),
+    assignmentNotice(job)
+  )
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
