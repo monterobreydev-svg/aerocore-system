@@ -29,7 +29,11 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
+// 4rem, not the stock 3rem: the collapsed rail still has to carry the brand mark
+// at the top, and a 2.25rem logo in a 3rem rail leaves no margin worth the name.
+// It also gives the 2rem menu buttons room to sit centred rather than pressed
+// against the left edge.
+const SIDEBAR_WIDTH_ICON = "4rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 type SidebarContextProps = {
