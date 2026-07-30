@@ -56,19 +56,36 @@ export function FileUpload({
         return
       }
 
-      const response = await fetch(ticket.url, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
-      })
+      // The two ways this leg fails are worth telling apart. fetch only *throws*
+      // for a network-level failure — offline, DNS, or a preflight the storage
+      // bucket refused — and in that last case the browser withholds the
+      // response by design, so there is no status to report. Blaming the
+      // connection for a bucket that isn't accepting uploads from this origin
+      // sends whoever hits it looking in the wrong place.
+      let response: Response
+      try {
+        response = await fetch(ticket.url, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type },
+        })
+      } catch {
+        setError(
+          "Couldn't reach file storage. If you're online, the storage bucket isn't accepting uploads from this site — ask IT to check its CORS settings."
+        )
+        return
+      }
+
       if (!response.ok) {
-        setError("Upload failed. Check your connection and try again.")
+        setError(
+          `File storage rejected the upload (${response.status}). Try again, and tell IT if it keeps happening.`
+        )
         return
       }
 
       onChange({ key: ticket.key, name: file.name, type: file.type })
     } catch {
-      setError("Upload failed. Check your connection and try again.")
+      setError("Couldn't prepare the file for upload. Try again.")
     } finally {
       setBusy(false)
       if (inputRef.current) inputRef.current.value = ""
