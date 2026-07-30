@@ -6,8 +6,12 @@ import { Loader2, Receipt } from "lucide-react"
 import { listEmployeeReimbursements } from "@/app/actions/reimbursements"
 import { peso } from "@/lib/reimbursement"
 import { Badge } from "@/components/ui/badge"
-import { ClaimRows, Pager } from "@/components/reimbursement/claim-table"
-import type { AdminClaim } from "@/components/reimbursement/admin-claim"
+import { Pager } from "@/components/ui/pager"
+import { ClaimRows } from "@/components/reimbursement/claim-table"
+import {
+  CLAIM_PAGE_SIZE,
+  type AdminClaim,
+} from "@/components/reimbursement/admin-claim"
 
 const AdminClaimDialog = dynamic(() =>
   import("@/components/reimbursement/admin-claim-dialog").then(
@@ -110,6 +114,7 @@ export function StaffReimbursements({
         pages={current.pages}
         total={current.total}
         noun="liquidations"
+        pageSize={CLAIM_PAGE_SIZE}
         onPage={setPage}
       />
 

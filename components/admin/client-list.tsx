@@ -4,8 +4,6 @@ import { useMemo, useState } from "react"
 import {
   Building2,
   ChevronRight,
-  LayoutGrid,
-  List,
   MapPin,
   Search,
   Wrench,
@@ -21,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Pager } from "@/components/ui/pager"
 import { CreateClientDialog } from "@/components/admin/create-client-dialog"
 import { ClientDetailView } from "@/components/admin/client-detail-view"
 
@@ -126,30 +125,15 @@ function FilterChip({
   )
 }
 
-function CardStat({
-  label,
-  value,
-  className,
-}: {
-  label: string
-  value: string
-  className?: string
-}) {
-  return (
-    <div className="px-3 py-3">
-      <p className="truncate text-xs whitespace-nowrap text-muted-foreground">
-        {label}
-      </p>
-      <p className={cn("mt-1 text-sm font-medium", className)}>{value}</p>
-    </div>
-  )
-}
+// Fifteen rows is about a screenful on a laptop without the header scrolling out
+// of reach.
+const PAGE_SIZE = 15
 
 export function ClientList({ clients }: { clients: ClientRecord[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [branchFilter, setBranchFilter] = useState<BranchFilter>("all")
-  const [view, setView] = useState<"grid" | "list">("grid")
+  const [page, setPage] = useState(1)
 
   const selected = clients.find((client) => client.id === selectedId) ?? null
 
@@ -174,6 +158,12 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
     })
   }, [clients, query, branchFilter])
 
+  // Paging happens after the search, never before it: a query runs across every
+  // client the page holds, and the pager then walks the matches.
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
+  const at = Math.min(page, pages)
+  const rows = visible.slice((at - 1) * PAGE_SIZE, at * PAGE_SIZE)
+
   if (selected) {
     return (
       <ClientDetailView client={selected} onBack={() => setSelectedId(null)} />
@@ -185,6 +175,7 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
   function clearFilters() {
     setQuery("")
     setBranchFilter("all")
+    setPage(1)
   }
 
   const withBranches = clients.filter(
@@ -259,7 +250,10 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setPage(1)
+            }}
             placeholder="Search client, TIN or address"
             aria-label="Search clients"
             className="h-9 pl-9"
@@ -267,7 +261,10 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
           {query && (
             <button
               type="button"
-              onClick={() => setQuery("")}
+              onClick={() => {
+                setQuery("")
+                setPage(1)
+              }}
               aria-label="Clear search"
               className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground outline-none hover:text-foreground"
             >
@@ -282,43 +279,27 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
           <FilterChip
             active={branchFilter === "all"}
             label="All"
-            onClick={() => setBranchFilter("all")}
+            onClick={() => {
+              setBranchFilter("all")
+              setPage(1)
+            }}
           />
           <FilterChip
             active={branchFilter === "multi"}
             label="With branches"
-            onClick={() => setBranchFilter("multi")}
+            onClick={() => {
+              setBranchFilter("multi")
+              setPage(1)
+            }}
           />
           <FilterChip
             active={branchFilter === "single"}
             label="Single location"
-            onClick={() => setBranchFilter("single")}
+            onClick={() => {
+              setBranchFilter("single")
+              setPage(1)
+            }}
           />
-        </div>
-
-        <div className="flex items-center gap-0.5 rounded-lg border p-0.5">
-          <Button
-            type="button"
-            variant={view === "grid" ? "secondary" : "ghost"}
-            size="icon"
-            className="size-7 rounded-md"
-            aria-label="Card view"
-            aria-pressed={view === "grid"}
-            onClick={() => setView("grid")}
-          >
-            <LayoutGrid className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={view === "list" ? "secondary" : "ghost"}
-            size="icon"
-            className="size-7 rounded-md"
-            aria-label="List view"
-            aria-pressed={view === "list"}
-            onClick={() => setView("list")}
-          >
-            <List className="size-4" />
-          </Button>
         </div>
 
         <div className="ml-auto">
@@ -361,128 +342,85 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
               Try a different search term or clear the filters.
             </p>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={clearFilters}
+          >
             Clear filters
           </Button>
         </div>
-      ) : view === "grid" ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {visible.map((client) => {
-            const last = lastServiceDate(client)
-            return (
-              <Card
-                key={client.id}
-                onClick={() => setSelectedId(client.id)}
-                className="group cursor-pointer gap-0 pb-0 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-sky-600/30"
-              >
-                {/* flex-1 so this absorbs the extra height when a row's cards
-                    stretch to match the tallest — otherwise a shorter card's
-                    leftover space lands below the stat strip as a white band. */}
-                <CardContent className="flex-1">
-                  {/* Company names run long and all-caps in practice, so the
-                      name owns the full row and may wrap to two lines — the
-                      badge sits underneath rather than eating the width. */}
-                  <div className="flex min-w-0 gap-3">
-                    <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-sky-600/10">
-                      <Building2 className="size-5 text-sky-600 dark:text-sky-400" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="line-clamp-2 text-base leading-tight font-medium">
-                        {client.name}
-                      </p>
-                      <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                        {client.tin ?? "No TIN"}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {client.address}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <Badge className={locationBadgeClass(client)}>
-                      {locationLabel(client)}
-                    </Badge>
-                  </div>
-                </CardContent>
-
-                <div className="mt-4 grid grid-cols-3 divide-x border-t bg-muted/30">
-                  <CardStat
-                    label="Branches"
-                    value={String(client.branches.length)}
-                  />
-                  <CardStat
-                    label="Contacts"
-                    value={String(client.contacts.length)}
-                  />
-                  <CardStat
-                    label="Last service"
-                    value={last ? shortDate(last) : "—"}
-                  />
-                </div>
-              </Card>
-            )
-          })}
-        </div>
       ) : (
-        <div className="overflow-hidden rounded-xl ring-1 ring-foreground/10">
-          <div className="hidden items-center gap-4 border-b bg-muted/40 px-4 py-2.5 text-xs font-medium tracking-wide text-muted-foreground uppercase md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <span>Client</span>
-            <span>Address</span>
-            <span>Locations</span>
-            <span className="text-right">Contacts</span>
-            <span className="w-24 text-right">Last service</span>
-          </div>
+        <>
+          <div className="overflow-hidden rounded-xl ring-1 ring-foreground/10">
+            <div className="hidden items-center gap-4 border-b bg-muted/40 px-4 py-2.5 text-xs font-medium tracking-wide text-muted-foreground uppercase md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <span>Client</span>
+              <span>Address</span>
+              <span>Locations</span>
+              <span className="text-right">Contacts</span>
+              <span className="w-24 text-right">Last service</span>
+            </div>
 
-          <div className="divide-y">
-            {visible.map((client) => {
-              const last = lastServiceDate(client)
-              return (
-                <button
-                  key={client.id}
-                  type="button"
-                  onClick={() => setSelectedId(client.id)}
-                  className="group flex w-full items-center gap-4 px-4 py-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-600/10">
-                      <Building2 className="size-4 text-sky-600 dark:text-sky-400" />
+            <div className="divide-y">
+              {rows.map((client) => {
+                const last = lastServiceDate(client)
+                return (
+                  <button
+                    key={client.id}
+                    type="button"
+                    onClick={() => setSelectedId(client.id)}
+                    className="group flex w-full items-center gap-4 px-4 py-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-600/10">
+                        <Building2 className="size-4 text-sky-600 dark:text-sky-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm leading-tight font-medium">
+                          {client.name}
+                        </p>
+                        <p className="truncate font-mono text-xs text-muted-foreground">
+                          {client.tin ?? "No TIN"}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm leading-tight font-medium">
-                        {client.name}
-                      </p>
-                      <p className="truncate font-mono text-xs text-muted-foreground">
-                        {client.tin ?? "No TIN"}
-                      </p>
-                    </div>
-                  </div>
 
-                  <span className="hidden truncate text-sm text-muted-foreground md:block">
-                    {client.address}
-                  </span>
-
-                  <span className="hidden md:block">
-                    <Badge className={locationBadgeClass(client)}>
-                      {locationLabel(client)}
-                    </Badge>
-                  </span>
-
-                  <span className="hidden text-right text-sm font-medium tabular-nums md:block">
-                    {client.contacts.length}
-                  </span>
-
-                  <span className="flex shrink-0 items-center justify-end gap-2 md:w-24">
-                    <span className="text-xs text-muted-foreground">
-                      {last ? shortDate(last) : "—"}
+                    <span className="hidden truncate text-sm text-muted-foreground md:block">
+                      {client.address}
                     </span>
-                    <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                  </span>
-                </button>
-              )
-            })}
+
+                    <span className="hidden md:block">
+                      <Badge className={locationBadgeClass(client)}>
+                        {locationLabel(client)}
+                      </Badge>
+                    </span>
+
+                    <span className="hidden text-right text-sm font-medium tabular-nums md:block">
+                      {client.contacts.length}
+                    </span>
+
+                    <span className="flex shrink-0 items-center justify-end gap-2 md:w-24">
+                      <span className="text-xs text-muted-foreground">
+                        {last ? shortDate(last) : "—"}
+                      </span>
+                      <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
+
+          <Pager
+            page={at}
+            pages={pages}
+            total={visible.length}
+            noun="clients"
+            pageSize={PAGE_SIZE}
+            onPage={setPage}
+          />
+        </>
       )}
     </div>
   )

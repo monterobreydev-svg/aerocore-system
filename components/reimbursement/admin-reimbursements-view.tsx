@@ -18,7 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { FileLink } from "@/components/reimbursement/file-upload"
-import { ClaimRows, Pager } from "@/components/reimbursement/claim-table"
+import { Pager } from "@/components/ui/pager"
+import { ClaimRows } from "@/components/reimbursement/claim-table"
 import {
   CLAIM_PAGE_SIZE,
   type AdminClaim,
@@ -193,6 +194,7 @@ export function AdminReimbursementsView({
                 pages={queuePages}
                 total={visible.length}
                 noun="awaiting a decision"
+                pageSize={CLAIM_PAGE_SIZE}
                 onPage={setQueuePage}
               />
             </>
@@ -344,6 +346,7 @@ export function AdminReimbursementsView({
                   pages={paging.releasePages}
                   total={paging.releaseTotal}
                   noun="releases"
+                  pageSize={CLAIM_PAGE_SIZE}
                   hrefFor={releaseHref}
                 />
               </>
