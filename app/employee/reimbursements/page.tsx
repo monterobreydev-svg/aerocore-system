@@ -43,7 +43,11 @@ export default async function EmployeeExpensesPage() {
           },
         },
       },
-      orderBy: { expenseDate: "desc" },
+      // Newest filing first, not newest expense date: filing a late receipt is
+      // exactly when someone goes looking for it, and sorting by the day of the
+      // spend buried it under liquidations submitted weeks earlier. Matches the
+      // order the same history appears in on the staff record.
+      orderBy: [{ submittedAt: "desc" }, { expenseDate: "desc" }],
     }),
     prisma.client.findMany({
       select: { id: true, name: true },
