@@ -2,7 +2,14 @@
 
 import Link from "next/link"
 import { useOptimistic, useTransition } from "react"
-import { Bell, CalendarClock, Receipt, Trash2, Wallet } from "lucide-react"
+import {
+  Bell,
+  CalendarClock,
+  Receipt,
+  Timer,
+  Trash2,
+  Wallet,
+} from "lucide-react"
 import type { NotificationType } from "@/app/generated/prisma/client"
 import {
   NOTIFICATION_ACCENT,
@@ -27,6 +34,7 @@ const ICONS: Record<NotificationType, typeof Bell> = {
   SCHEDULE_ASSIGNED: CalendarClock,
   LIQUIDATION_SUBMITTED: Receipt,
   FUND_RELEASED: Wallet,
+  OVERTIME_REQUESTED: Timer,
 }
 
 // Stable identity so the optimistic reducer's initial state never re-renders

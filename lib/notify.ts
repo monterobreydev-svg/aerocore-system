@@ -13,7 +13,7 @@ import { isAdminPathAllowedForRole, isAdminSideRole } from "@/lib/roles"
 // /employee/* and employees off /admin/*, so a single hardcoded href sends half
 // the recipients to a redirect — the notification disappears and they end up
 // back on their own dashboard, which reads as a broken link.
-type Destination = "schedule" | "reimbursements"
+type Destination = "schedule" | "reimbursements" | "attendance"
 
 const ROUTES: Record<Destination, { admin: string; employee: string }> = {
   schedule: { admin: "/admin/schedules", employee: "/employee/schedule" },
@@ -21,6 +21,7 @@ const ROUTES: Record<Destination, { admin: string; employee: string }> = {
     admin: "/admin/reimbursements",
     employee: "/employee/reimbursements",
   },
+  attendance: { admin: "/admin/attendance", employee: "/employee/attendance" },
 }
 
 // Derived from the same predicates the proxy uses, so this can't drift from what

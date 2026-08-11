@@ -56,6 +56,11 @@ export const ALLOWED_UPLOAD_TYPES = [
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
+// The prefixes uploads are filed under. Each one has its own rules about what's
+// allowed in it — receipts are PDF-only, a punch selfie is an image by
+// definition — enforced by the action that mints the URL.
+export type UploadFolder = "receipts" | "funding-proof" | "attendance"
+
 export function isAllowedUploadType(type: string) {
   return (ALLOWED_UPLOAD_TYPES as readonly string[]).includes(type)
 }
@@ -97,7 +102,7 @@ export function buildObjectKey({
   label,
   filename,
 }: {
-  folder: "receipts" | "funding-proof"
+  folder: UploadFolder
   /** Uploader's first name; becomes the folder under the prefix. */
   owner: string
   /** YYYY-MM-DD — the day the money moved, not necessarily today. */

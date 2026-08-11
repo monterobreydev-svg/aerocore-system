@@ -29,6 +29,8 @@ export function FileUpload({
   className,
   context,
   accept = "image/jpeg,image/png,image/webp,image/heic,application/pdf",
+  upload,
+  resolveUrl,
 }: {
   folder: "receipts" | "funding-proof"
   value: UploadedFile | null
@@ -40,6 +42,20 @@ export function FileUpload({
   context?: UploadContext
   /** Receipts are PDF-only; the server enforces the same thing. */
   accept?: string
+  /**
+   * Which server action mints the upload ticket. Defaults to the reimbursement
+   * one; attendance passes its own so a report lands in the attendance prefix
+   * and is checked by the rules that own it.
+   */
+  upload?: (
+    filename: string,
+    contentType: string,
+    size: number
+  ) => Promise<
+    { ok: true; url: string; key: string } | { ok: false; message: string }
+  >
+  /** Matching reader, so the "view" link works for whatever wrote the file. */
+  resolveUrl?: (key: string) => Promise<string | null>
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -60,13 +76,9 @@ export function FileUpload({
         )
       }
 
-      const ticket = await createUploadUrl(
-        folder,
-        file.name,
-        file.type,
-        file.size,
-        context
-      )
+      const ticket = upload
+        ? await upload(file.name, file.type, file.size)
+        : await createUploadUrl(folder, file.name, file.type, file.size, context)
       if (!ticket.ok) {
         setError(ticket.message)
         return
@@ -115,7 +127,7 @@ export function FileUpload({
         <button
           type="button"
           onClick={async () => {
-            const url = await getFileUrl(value.key)
+            const url = await (resolveUrl ?? getFileUrl)(value.key)
             if (url) window.open(url, "_blank", "noopener,noreferrer")
           }}
           className="min-w-0 flex-1 truncate text-left text-xs text-sky-700 underline-offset-2 outline-none hover:underline dark:text-sky-400"

@@ -66,6 +66,8 @@ model Employee {
   scheduleAssignments ScheduleAssignment[] @relation("EmployeeScheduleAssignments")
   reimbursements      Reimbursement[]      @relation("EmployeeReimbursements")
   fundReleases        FundRelease[]        @relation("EmployeeFundReleases")
+  attendance          Attendance[]         @relation("EmployeeAttendance")
+  overtimeRequests    OvertimeRequest[]    @relation("EmployeeOvertime")
 }
 
 model UserAccount {
@@ -86,12 +88,13 @@ model UserAccount {
   // instead of surviving until the 7-day token expires.
   sessionsRevokedAt   DateTime?
 
-  createdEmployees     Employee[]      @relation("EmployeeCreatedBy")
-  staffEdits           StaffEditLog[]  @relation("StaffEditsMade")
-  createdSchedules     Schedule[]      @relation("ScheduleCreatedBy")
-  reimbursementReviews Reimbursement[] @relation("ReimbursementReviewedBy")
-  fundReleases         FundRelease[]   @relation("FundReleasedBy")
-  notifications        Notification[]  @relation("NotificationRecipient")
+  createdEmployees     Employee[]        @relation("EmployeeCreatedBy")
+  staffEdits           StaffEditLog[]    @relation("StaffEditsMade")
+  createdSchedules     Schedule[]        @relation("ScheduleCreatedBy")
+  reimbursementReviews Reimbursement[]   @relation("ReimbursementReviewedBy")
+  fundReleases         FundRelease[]     @relation("FundReleasedBy")
+  notifications        Notification[]    @relation("NotificationRecipient")
+  overtimeReviews      OvertimeRequest[] @relation("OvertimeReviewedBy")
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +105,7 @@ enum NotificationType {
   SCHEDULE_ASSIGNED
   LIQUIDATION_SUBMITTED
   FUND_RELEASED
+  OVERTIME_REQUESTED
 }
 
 // Addressed to a UserAccount rather than an Employee: an inbox only means
@@ -368,4 +372,86 @@ model FundRelease {
   releasedAt   DateTime    @default(now())
 
   @@index([employeeId])
+}
+
+// ---------------------------------------------------------------------------
+// Attendance
+//
+// One row per employee per working day. Timing in and out both capture a live
+// selfie and a GPS fix, because the whole point of the record is that somebody
+// was at a client's site at a particular hour -- a bare timestamp proves only
+// that a phone was unlocked.
+//
+// The photograph and the coordinates are frozen evidence: they are written once
+// with the punch and never edited afterwards. If a punch is wrong, the office
+// corrects it on the record, and the original stays.
+// ---------------------------------------------------------------------------
+
+model Attendance {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation("EmployeeAttendance", fields: [employeeId], references: [id])
+  // Local midnight of the day being worked, so one punch-in per person per day
+  // regardless of what hour the shift starts.
+  date       DateTime
+
+  timeIn          DateTime
+  timeInSelfieKey String
+  timeInLatitude  Float
+  timeInLongitude Float
+  // Metres of uncertainty the device reported. Kept because a fix accurate to
+  // 2km says something very different from one accurate to 8m.
+  timeInAccuracy  Float?
+
+  timeOut          DateTime?
+  timeOutSelfieKey String?
+  timeOutLatitude  Float?
+  timeOutLongitude Float?
+  timeOutAccuracy  Float?
+
+  // Optional end-of-day report, attached when timing out. It belongs to the
+  // punch rather than to a page of its own -- it is written about that shift and
+  // read alongside it.
+  reportKey  String?
+  reportName String?
+  reportNote String?
+
+  createdAt DateTime @default(now())
+
+  overtime OvertimeRequest?
+
+  @@unique([employeeId, date])
+  @@index([employeeId, date])
+}
+
+enum OvertimeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Asking to keep working past the shift that was scheduled. Tied to the day's
+// attendance row, so a request can't exist without the punch it extends.
+model OvertimeRequest {
+  id           String     @id @default(uuid())
+  attendanceId String     @unique
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee   @relation("EmployeeOvertime", fields: [employeeId], references: [id])
+
+  hours  Decimal
+  reason String
+
+  // Frozen at request time. The schedule it was measured against can be edited
+  // later, and "was this filed inside the window?" has to stay answerable.
+  shiftEndsAt DateTime
+  requestedAt DateTime @default(now())
+
+  status       OvertimeStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   UserAccount?   @relation("OvertimeReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  @@index([employeeId, status])
 }

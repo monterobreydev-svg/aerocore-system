@@ -18,12 +18,13 @@ export type InboxItem = {
   createdAt: string
 }
 
-// One accent per kind, so the three sources are told apart at a glance while
-// staying inside the app's sky/emerald/amber vocabulary.
+// One accent per kind, so the sources are told apart at a glance while staying
+// inside the app's sky/emerald/amber vocabulary.
 export const NOTIFICATION_ACCENT: Record<NotificationType, string> = {
   SCHEDULE_ASSIGNED: "bg-sky-600/10 text-sky-700 dark:text-sky-400",
   LIQUIDATION_SUBMITTED: "bg-amber-600/10 text-amber-700 dark:text-amber-400",
   FUND_RELEASED: "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400",
+  OVERTIME_REQUESTED: "bg-violet-600/10 text-violet-700 dark:text-violet-400",
 }
 
 // "just now", "4m", "3h", "2d", then a plain date. Short because it sits on a
