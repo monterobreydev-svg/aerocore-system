@@ -1,6 +1,13 @@
 "use client"
 
-import { AlertTriangle, FileText, LogIn, LogOut, Timer } from "lucide-react"
+import {
+  AlertTriangle,
+  CalendarClock,
+  FileText,
+  LogIn,
+  LogOut,
+  Timer,
+} from "lucide-react"
 import {
   clockTime,
   COARSE_FIX_METRES,
@@ -13,6 +20,8 @@ import { Badge } from "@/components/ui/badge"
 import {
   grantedHours,
   type AttendanceRow,
+  type ScheduledJob,
+  type StaffDay,
 } from "@/components/attendance/admin-attendance"
 
 const OVERTIME_CHIP: Record<string, string> = {
@@ -48,11 +57,14 @@ export function RosterRow({
   onOpen,
   /** "roster" is a single day and names the person; "record" is one person across days and names the date. */
   variant = "roster",
+  scheduled,
 }: {
   row: AttendanceRow
   now: number
   onOpen: () => void
   variant?: "roster" | "record"
+  /** What the office had assigned that day, shown under the punch. */
+  scheduled?: ScheduledJob[]
 }) {
   const open = !row.timeOut
   const coarse =
@@ -197,8 +209,93 @@ export function RosterRow({
               )}
             </div>
           </div>
+
+          {/* What was planned, under what happened. Context only — the hours
+              above come from the punches and are not measured against this. */}
+          {scheduled && scheduled.length > 0 && (
+            <ScheduleLines jobs={scheduled} />
+          )}
         </div>
       </button>
     </li>
+  )
+}
+
+const SCHEDULE_STATUS: Record<ScheduledJob["status"], string> = {
+  PENDING: "",
+  COMPLETED: "text-emerald-600 dark:text-emerald-400",
+  NEED_TO_RETURN: "text-amber-600 dark:text-amber-400",
+  RESCHEDULED: "text-muted-foreground",
+}
+
+const SCHEDULE_STATUS_LABEL: Record<ScheduledJob["status"], string> = {
+  PENDING: "",
+  COMPLETED: "done",
+  NEED_TO_RETURN: "needs a return visit",
+  RESCHEDULED: "rescheduled",
+}
+
+/**
+ * A day the office assigned that nobody clocked.
+ *
+ * Stated as a fact — "no punch recorded" — and nothing more. Whether that was
+ * leave, a rest day or an absence isn't something this system knows, and
+ * labelling it would be inventing a record.
+ */
+export function UnworkedDayRow({ day }: { day: StaffDay }) {
+  return (
+    <li className="flex items-start gap-3 bg-muted/20 py-3.5 pr-4 pl-4">
+      <span
+        aria-hidden
+        className="mt-0.5 flex size-9 shrink-0 flex-col items-center justify-center rounded-xl bg-muted"
+      >
+        <span className="text-[9px] leading-none font-medium tracking-wide text-muted-foreground uppercase">
+          {new Date(day.date).toLocaleDateString(undefined, { month: "short" })}
+        </span>
+        <span className="mt-0.5 text-sm leading-none font-semibold tabular-nums text-muted-foreground">
+          {new Date(day.date).getDate()}
+        </span>
+      </span>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="min-w-0 truncate text-sm font-medium text-muted-foreground">
+            {dayLabel(day.date, true)}
+          </p>
+          <p className="shrink-0 text-xs text-muted-foreground">
+            no punch recorded
+          </p>
+        </div>
+        <ScheduleLines jobs={day.scheduled} />
+      </div>
+    </li>
+  )
+}
+
+/** The day's assigned jobs, as a short indented list. */
+export function ScheduleLines({ jobs }: { jobs: ScheduledJob[] }) {
+  return (
+    <ul className="flex flex-col gap-1 border-l-2 pl-2.5">
+      {jobs.map((job) => (
+        <li
+          key={job.id}
+          className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground"
+        >
+          <CalendarClock className="size-3 shrink-0 translate-y-0.5" />
+          <span className="min-w-0 truncate font-medium text-foreground/75">
+            {job.clientName}
+            {job.branchName && ` — ${job.branchName}`}
+          </span>
+          <span className="tabular-nums">
+            {clockTime(job.startTime)}–{clockTime(job.endTime)}
+          </span>
+          {job.status !== "PENDING" && (
+            <span className={SCHEDULE_STATUS[job.status]}>
+              {SCHEDULE_STATUS_LABEL[job.status]}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }

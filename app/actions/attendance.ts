@@ -20,6 +20,7 @@ import {
   dayLabel,
   MAX_OVERTIME_HOURS,
   MAX_SHIFT_HOURS,
+  nextDay,
   overtimeGate,
   workedMinutes,
 } from "@/lib/attendance"
@@ -29,7 +30,9 @@ import {
 } from "@/lib/attendance-query"
 import {
   STAFF_ATTENDANCE_PAGE_SIZE,
+  STAFF_DAY_LIMIT,
   STAFF_SUMMARY_DAYS,
+  type ScheduledJob,
   type StaffAttendancePage,
   type StaffAttendanceSummary,
 } from "@/components/attendance/admin-attendance"
@@ -567,6 +570,7 @@ const EMPTY_SUMMARY: StaffAttendanceSummary = {
   overtimeHours: 0,
   firstDay: null,
   lastDay: null,
+  truncated: false,
 }
 
 /**
@@ -582,7 +586,7 @@ export async function listEmployeeAttendance(
 ): Promise<StaffAttendancePage> {
   const session = await requireAdmin()
   const empty = {
-    rows: [],
+    days: [],
     total: 0,
     page: 1,
     pages: 1,
@@ -593,9 +597,25 @@ export async function listEmployeeAttendance(
   const since = new Date()
   since.setDate(since.getDate() - STAFF_SUMMARY_DAYS)
 
-  const [total, spans] = await Promise.all([
-    prisma.attendance.count({ where: { employeeId } }),
-    // Spans only, and capped to a year — the totals are derived here and the
+  // Three narrow reads. The first two are dates only — enough to work out which
+  // days exist and how to page them, without touching the rows behind them.
+  const [punchDates, scheduleDates, spans] = await Promise.all([
+    prisma.attendance.findMany({
+      where: { employeeId },
+      select: { date: true },
+      orderBy: { date: "desc" },
+      take: STAFF_DAY_LIMIT,
+    }),
+    prisma.schedule.findMany({
+      where: {
+        assignments: { some: { employeeId } },
+        status: { not: "CANCELLED" },
+      },
+      select: { date: true },
+      orderBy: { date: "desc" },
+      take: STAFF_DAY_LIMIT,
+    }),
+    // Spans only, capped to a year — the totals are derived here and the
     // browser is sent four numbers, never the rows they came from.
     prisma.attendance.findMany({
       where: { employeeId, date: { gte: since } },
@@ -609,6 +629,17 @@ export async function listEmployeeAttendance(
     }),
   ])
 
+  // A day counts if it was worked *or* assigned. Several jobs on one date
+  // collapse to one day, which is why this is a set.
+  const allDays = [
+    ...new Set(
+      [...punchDates, ...scheduleDates].map((row) =>
+        attendanceDay(row.date).getTime()
+      )
+    ),
+  ].sort((a, b) => b - a)
+
+  const total = allDays.length
   if (total === 0) return empty
 
   const summary = spans.reduce<StaffAttendanceSummary>(
@@ -625,25 +656,90 @@ export async function listEmployeeAttendance(
             : 0),
         firstDay: totals.firstDay ?? span.date.toISOString(),
         lastDay: span.date.toISOString(),
+        truncated: totals.truncated,
       }
     },
     { ...EMPTY_SUMMARY }
   )
   summary.overtimeHours = Math.round(summary.overtimeHours * 100) / 100
 
+  // punchDates is newest-first, so the last one is the earliest punch on
+  // record. If it predates the window, the totals above are a slice of a longer
+  // history and the caption has to say so.
+  const oldestPunch = punchDates.at(-1)?.date
+  summary.truncated = oldestPunch
+    ? attendanceDay(oldestPunch) < attendanceDay(since)
+    : false
+
   const pages = Math.max(1, Math.ceil(total / STAFF_ATTENDANCE_PAGE_SIZE))
   const at = Math.min(Math.max(1, Math.trunc(page)), pages)
 
-  const records = await prisma.attendance.findMany({
-    where: { employeeId },
-    select: ATTENDANCE_DETAIL_SELECT,
-    orderBy: { date: "desc" },
-    skip: (at - 1) * STAFF_ATTENDANCE_PAGE_SIZE,
-    take: STAFF_ATTENDANCE_PAGE_SIZE,
-  })
+  const pageDays = allDays.slice(
+    (at - 1) * STAFF_ATTENDANCE_PAGE_SIZE,
+    at * STAFF_ATTENDANCE_PAGE_SIZE
+  )
+
+  // Bounded by the fifteen days actually on screen, not by the window they sit
+  // in — one long gap between punches would otherwise pull in everything
+  // between the two ends.
+  const from = new Date(pageDays.at(-1)!)
+  const to = nextDay(new Date(pageDays[0]))
+
+  const [records, schedules] = await Promise.all([
+    prisma.attendance.findMany({
+      where: { employeeId, date: { gte: from, lt: to } },
+      select: ATTENDANCE_DETAIL_SELECT,
+      orderBy: { date: "desc" },
+    }),
+    prisma.schedule.findMany({
+      where: {
+        assignments: { some: { employeeId } },
+        status: { not: "CANCELLED" },
+        date: { gte: from, lt: to },
+      },
+      select: {
+        id: true,
+        date: true,
+        startTime: true,
+        endTime: true,
+        status: true,
+        workTypes: true,
+        client: { select: { name: true } },
+        branch: { select: { name: true } },
+      },
+      orderBy: { startTime: "asc" },
+    }),
+  ])
+
+  const punchByDay = new Map(
+    records.map((record) => [attendanceDay(record.date).getTime(), record])
+  )
+  const jobsByDay = new Map<number, ScheduledJob[]>()
+  for (const schedule of schedules) {
+    const key = attendanceDay(schedule.date).getTime()
+    const list = jobsByDay.get(key) ?? []
+    list.push({
+      id: schedule.id,
+      clientName: schedule.client.name,
+      branchName: schedule.branch?.name ?? null,
+      startTime: schedule.startTime.toISOString(),
+      endTime: schedule.endTime.toISOString(),
+      // CANCELLED is filtered out above, so it can't reach the narrower type.
+      status: schedule.status as ScheduledJob["status"],
+      workTypes: schedule.workTypes,
+    })
+    jobsByDay.set(key, list)
+  }
 
   return {
-    rows: records.map(toAttendanceRow),
+    days: pageDays.map((key) => {
+      const record = punchByDay.get(key)
+      return {
+        date: new Date(key).toISOString(),
+        attendance: record ? toAttendanceRow(record) : null,
+        scheduled: jobsByDay.get(key) ?? [],
+      }
+    }),
     total,
     page: at,
     pages,

@@ -7,7 +7,10 @@ import { listEmployeeAttendance } from "@/app/actions/attendance"
 import { dayLabel, decimalHours, minutesLabel } from "@/lib/attendance"
 import { useNow } from "@/lib/use-now"
 import { Pager } from "@/components/ui/pager"
-import { RosterRow } from "@/components/attendance/roster-row"
+import {
+  RosterRow,
+  UnworkedDayRow,
+} from "@/components/attendance/roster-row"
 import {
   STAFF_ATTENDANCE_PAGE_SIZE,
   STAFF_SUMMARY_DAYS,
@@ -72,10 +75,11 @@ export function StaffAttendance({
           <CalendarClock className="size-5 text-muted-foreground" />
         </div>
         <div>
-          <p className="text-sm font-medium">No attendance yet</p>
+          <p className="text-sm font-medium">Nothing on record yet</p>
           <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-            Every day {firstName} times in and out lands here, with the photos,
-            the location each punch was made from and any reports filed.
+            Every day {firstName} is scheduled or times in lands here — the
+            jobs assigned, the photos, the location each punch was made from
+            and any reports filed.
           </p>
         </div>
       </div>
@@ -116,8 +120,8 @@ export function StaffAttendance({
 
       <p className="text-xs text-muted-foreground">
         {summary.firstDay && summary.lastDay
-          ? `${dayLabel(summary.firstDay, true)} — ${dayLabel(summary.lastDay, true)}`
-          : "No punches on record"}
+          ? `Clocked ${dayLabel(summary.firstDay, true)} — ${dayLabel(summary.lastDay, true)}`
+          : "Nothing clocked yet"}
         {summary.openDays > 0 && (
           <span className="text-amber-600 dark:text-amber-400">
             {" "}
@@ -125,20 +129,28 @@ export function StaffAttendance({
             timed out, adding no hours
           </span>
         )}
-        {current.total > summary.days &&
-          ` · totals cover the last ${STAFF_SUMMARY_DAYS} days`}
+        {/* Only when there really is older history behind the window. */}
+        {summary.truncated && ` · totals cover the last ${STAFF_SUMMARY_DAYS} days`}
       </p>
 
+      {/* Listed by day, not by punch: a day the office assigned that nobody
+          clocked has no attendance row to hang off, and is exactly the day
+          worth seeing. */}
       <ul className="divide-y overflow-hidden rounded-xl border">
-        {current.rows.map((row) => (
-          <RosterRow
-            key={row.id}
-            row={row}
-            now={now}
-            variant="record"
-            onOpen={() => setSelected(row)}
-          />
-        ))}
+        {current.days.map((day) =>
+          day.attendance ? (
+            <RosterRow
+              key={day.date}
+              row={day.attendance}
+              now={now}
+              variant="record"
+              scheduled={day.scheduled}
+              onOpen={() => setSelected(day.attendance!)}
+            />
+          ) : (
+            <UnworkedDayRow key={day.date} day={day} />
+          )
+        )}
       </ul>
 
       <Pager

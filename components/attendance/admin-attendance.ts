@@ -155,12 +155,44 @@ export type StaffAttendanceSummary = {
   /** Null when they have never punched. */
   firstDay: string | null
   lastDay: string | null
+  /** True when punches exist older than the summary window, so the totals aren't the whole story. */
+  truncated: boolean
+}
+
+/** One job the office assigned, as shown beside the punch it was worked under. */
+export type ScheduledJob = {
+  id: string
+  clientName: string
+  branchName: string | null
+  startTime: string
+  endTime: string
+  status: "PENDING" | "COMPLETED" | "NEED_TO_RETURN" | "RESCHEDULED"
+  workTypes: string[]
+}
+
+/**
+ * A day on someone's record: what was planned, what actually happened, or
+ * either one alone.
+ *
+ * Keyed by day rather than by punch on purpose. A day the office assigned that
+ * nobody clocked is exactly the day worth seeing, and a list built from
+ * attendance rows can't contain it — the row doesn't exist.
+ */
+export type StaffDay = {
+  date: string
+  attendance: AttendanceRow | null
+  scheduled: ScheduledJob[]
 }
 
 export type StaffAttendancePage = {
-  rows: AttendanceRow[]
+  days: StaffDay[]
   total: number
   page: number
   pages: number
   summary: StaffAttendanceSummary
 }
+
+// A person's whole working life, in days. Dates only at this stage — the rows
+// behind them are fetched a page at a time — but it still gets a ceiling rather
+// than assuming nobody stays fifteen years.
+export const STAFF_DAY_LIMIT = 2000
