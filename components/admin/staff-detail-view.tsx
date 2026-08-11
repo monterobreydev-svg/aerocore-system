@@ -70,6 +70,9 @@ const StaffReimbursements = dynamic(() =>
     (m) => m.StaffReimbursements
   )
 )
+const StaffAttendance = dynamic(() =>
+  import("@/components/admin/staff-attendance").then((m) => m.StaffAttendance)
+)
 
 function initials(firstName: string, lastName: string) {
   return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase()
@@ -349,6 +352,11 @@ export function StaffDetailView({
               {tab.value === "reimbursements" && staff.claimCount > 0 && (
                 <Badge variant="secondary" className="ml-1">
                   {staff.claimCount}
+                </Badge>
+              )}
+              {tab.value === "attendance" && staff.attendanceCount > 0 && (
+                <Badge variant="secondary" className="ml-1">
+                  {staff.attendanceCount}
                 </Badge>
               )}
             </TabsTrigger>
@@ -1043,11 +1051,10 @@ export function StaffDetailView({
         </TabsContent>
 
         <TabsContent value="attendance" className="pt-4">
-          <ComingSoon
-            icon={CalendarClock}
-            title="Attendance history isn't tracked yet"
-            description={`Once the Attendance feature is built, ${e.firstName}'s clock-in/out records will show up here.`}
-          />
+          {/* Only fetched — and only downloaded — once someone opens the tab. */}
+          {activeTab === "attendance" && (
+            <StaffAttendance employeeId={e.id} firstName={e.firstName} />
+          )}
         </TabsContent>
 
         <TabsContent value="payroll" className="pt-4">

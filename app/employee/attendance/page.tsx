@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { getCurrentEmployee } from "@/lib/dal"
 import { isR2Configured } from "@/lib/r2"
-import { attendanceDay } from "@/lib/attendance"
+import { attendanceDay, MAX_SHIFT_HOURS, nextDay } from "@/lib/attendance"
 import {
   AttendanceView,
   type AttendanceDay as HistoryRow,
@@ -18,18 +18,43 @@ export default async function EmployeeAttendancePage() {
 
   const now = new Date()
   const today = attendanceDay(now)
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
   const from = new Date(today)
   from.setDate(from.getDate() - HISTORY_DAYS)
 
+  // The shift someone is currently inside, wherever it began. A 22:00 start is
+  // filed under yesterday, so at 02:00 this is the row that matters — and
+  // asking only for today's would show a Time in button to somebody who has
+  // been on site all night.
+  const openRecord = await prisma.attendance.findFirst({
+    where: {
+      employeeId: employee.id,
+      timeOut: null,
+      timeIn: { gte: new Date(now.getTime() - MAX_SHIFT_HOURS * 3_600_000) },
+    },
+    orderBy: { timeIn: "desc" },
+    select: {
+      id: true,
+      date: true,
+      timeIn: true,
+      timeOut: true,
+      reportNote: true,
+      _count: { select: { reports: true } },
+      overtime: { select: { hours: true, status: true } },
+    },
+  })
+
+  // Whichever day the live punch belongs to is the day whose schedule bounds
+  // it — that's what the overtime window is measured against.
+  const shiftDay = openRecord?.date ?? today
+  const shiftEnd = nextDay(shiftDay)
+
   const [scheduleRecords, todayRecord, historyRecords] = await Promise.all([
-    // Today's assigned work. Attendance is recorded against it, so no schedule
+    // The assigned work. Attendance is recorded against it, so no schedule
     // means no punch — the office assigns the day before it can be worked.
     prisma.schedule.findMany({
       where: {
         assignments: { some: { employeeId: employee.id } },
-        date: { gte: today, lt: tomorrow },
+        date: { gte: shiftDay, lt: shiftEnd },
         status: { not: "CANCELLED" },
       },
       select: {
@@ -40,24 +65,36 @@ export default async function EmployeeAttendancePage() {
       },
       orderBy: { startTime: "asc" },
     }),
-    prisma.attendance.findUnique({
-      where: { employeeId_date: { employeeId: employee.id, date: today } },
-      select: {
-        timeIn: true,
-        timeOut: true,
-        reportKey: true,
-        reportNote: true,
-        overtime: { select: { hours: true, status: true } },
-      },
-    }),
+    openRecord
+      ? Promise.resolve(openRecord)
+      : prisma.attendance.findUnique({
+          where: { employeeId_date: { employeeId: employee.id, date: today } },
+          select: {
+            id: true,
+            date: true,
+            timeIn: true,
+            timeOut: true,
+            reportNote: true,
+            _count: { select: { reports: true } },
+            overtime: { select: { hours: true, status: true } },
+          },
+        }),
     prisma.attendance.findMany({
-      where: { employeeId: employee.id, date: { gte: from, lt: today } },
+      where: {
+        employeeId: employee.id,
+        date: { gte: from, lt: today },
+        // An overnight punch is the *current* shift, not history — it would
+        // otherwise appear twice, once as each.
+        ...(openRecord ? { id: { not: openRecord.id } } : {}),
+      },
       select: {
         id: true,
         date: true,
         timeIn: true,
         timeOut: true,
-        reportKey: true,
+        // A count, not the rows — the history list only shows that reports
+        // exist, and a fortnight of them would be the bulk of this payload.
+        _count: { select: { reports: true } },
         overtime: { select: { hours: true, status: true } },
       },
       orderBy: { date: "desc" },
@@ -92,7 +129,8 @@ export default async function EmployeeAttendancePage() {
     ? {
         timeIn: todayRecord.timeIn.toISOString(),
         timeOut: todayRecord.timeOut?.toISOString() ?? null,
-        hasReport: Boolean(todayRecord.reportKey || todayRecord.reportNote),
+        reportCount: todayRecord._count.reports,
+        hasNote: Boolean(todayRecord.reportNote),
         overtime: todayRecord.overtime
           ? {
               hours: Number(todayRecord.overtime.hours),
@@ -107,7 +145,7 @@ export default async function EmployeeAttendancePage() {
     date: record.date.toISOString(),
     timeIn: record.timeIn.toISOString(),
     timeOut: record.timeOut?.toISOString() ?? null,
-    hasReport: Boolean(record.reportKey),
+    reportCount: record._count.reports,
     overtimeHours: record.overtime ? Number(record.overtime.hours) : null,
     overtimeStatus: record.overtime?.status ?? null,
   }))

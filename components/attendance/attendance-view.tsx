@@ -13,6 +13,8 @@ import {
 } from "lucide-react"
 import {
   clockTime,
+  dayLabel,
+  dayOffset,
   durationLabel,
   overtimeGate,
   OVERTIME_WINDOW_MINUTES,
@@ -21,8 +23,13 @@ import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
+// Two dialogs, not one with a flag: timing out carries the report flow and its
+// three steps, and timing in should not download any of that.
 const PunchDialog = dynamic(() =>
   import("@/components/attendance/punch-dialog").then((m) => m.PunchDialog)
+)
+const TimeOutDialog = dynamic(() =>
+  import("@/components/attendance/time-out-dialog").then((m) => m.TimeOutDialog)
 )
 const OvertimeDialog = dynamic(() =>
   import("@/components/attendance/overtime-dialog").then(
@@ -46,7 +53,9 @@ export type TodayShift = {
 export type TodayPunch = {
   timeIn: string
   timeOut: string | null
-  hasReport: boolean
+  /** How many reports were filed with the time out. */
+  reportCount: number
+  hasNote: boolean
   overtime: { hours: number; status: string } | null
 }
 
@@ -55,7 +64,7 @@ export type AttendanceDay = {
   date: string
   timeIn: string
   timeOut: string | null
-  hasReport: boolean
+  reportCount: number
   overtimeHours: number | null
   overtimeStatus: string | null
 }
@@ -64,14 +73,6 @@ const OVERTIME_CHIP: Record<string, string> = {
   PENDING: "bg-amber-600/10 text-amber-700 dark:text-amber-400",
   APPROVED: "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400",
   REJECTED: "bg-rose-600/10 text-rose-700 dark:text-rose-400",
-}
-
-function dayLabel(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  })
 }
 
 export function AttendanceView({
@@ -137,6 +138,8 @@ export function AttendanceView({
               </p>
               <p className="mt-2 text-sm text-sidebar-foreground/70">
                 {clockTime(punch.timeIn)} — {clockTime(punch.timeOut!)}
+                {dayOffset(punch.timeIn, punch.timeOut!) > 0 &&
+                  ` (${dayLabel(punch.timeOut!)})`}
               </p>
             </>
           ) : shift ? (
@@ -189,7 +192,8 @@ export function AttendanceView({
           ) : done ? (
             <p className="text-center text-xs text-sidebar-foreground/70">
               Timed out at {clockTime(punch!.timeOut!)}
-              {punch?.hasReport && " · report attached"}
+              {punch!.reportCount > 0 &&
+                ` · ${punch!.reportCount} report${punch!.reportCount === 1 ? "" : "s"} filed`}
             </p>
           ) : (
             <Button
@@ -276,10 +280,18 @@ export function AttendanceView({
                       {clockTime(day.timeIn)} —{" "}
                       {day.timeOut ? clockTime(day.timeOut) : "still in"}
                     </span>
-                    {day.hasReport && (
+                    {/* A shift worked through midnight, so the times don't
+                        read as running backwards. */}
+                    {day.timeOut && dayOffset(day.timeIn, day.timeOut) > 0 && (
+                      <span className="text-violet-700 dark:text-violet-400">
+                        next day
+                      </span>
+                    )}
+                    {day.reportCount > 0 && (
                       <span className="inline-flex items-center gap-1">
                         <FileText className="size-3" />
-                        report
+                        {day.reportCount}{" "}
+                        {day.reportCount === 1 ? "report" : "reports"}
                       </span>
                     )}
                   </p>
@@ -309,13 +321,12 @@ export function AttendanceView({
         )}
       </section>
 
-      {punchOpen && (
-        <PunchDialog
-          kind={working ? "time-out" : "time-in"}
-          open
-          onOpenChange={setPunchOpen}
-        />
-      )}
+      {punchOpen &&
+        (working ? (
+          <TimeOutDialog open onOpenChange={setPunchOpen} />
+        ) : (
+          <PunchDialog open onOpenChange={setPunchOpen} />
+        ))}
 
       {overtimeOpen && shift && (
         <OvertimeDialog

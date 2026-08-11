@@ -177,6 +177,7 @@ model Client {
   contacts           ClientContact[]
   schedules          Schedule[]
   reimbursementItems ReimbursementItemClient[] @relation("ClientReimbursementItems")
+  attendanceReports  AttendanceReport[]        @relation("ClientAttendanceReports")
 }
 
 // A client can have any number of people you'd call — accounts payable,
@@ -202,7 +203,8 @@ model Branch {
   clientId  String
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  schedules Schedule[]
+  schedules         Schedule[]
+  attendanceReports AttendanceReport[] @relation("BranchAttendanceReports")
 }
 
 enum WorkType {
@@ -409,19 +411,60 @@ model Attendance {
   timeOutLongitude Float?
   timeOutAccuracy  Float?
 
-  // Optional end-of-day report, attached when timing out. It belongs to the
-  // punch rather than to a page of its own -- it is written about that shift and
-  // read alongside it.
-  reportKey  String?
-  reportName String?
+  // A free-text note about the day as a whole -- anything the office should
+  // know that isn't a filed report.
   reportNote String?
 
   createdAt DateTime @default(now())
 
   overtime OvertimeRequest?
+  // One per site visited. A crew can cover three branches in a day and file a
+  // report for each, so this is a list rather than a column on the punch.
+  reports  AttendanceReport[]
 
   @@unique([employeeId, date])
   @@index([employeeId, date])
+}
+
+// What kind of paperwork a visit produced. PMS is the scheduled preventive
+// maintenance round; SERVICE is a call-out -- a repair, a complaint, an
+// installation. The two are filed on different forms and are chased separately
+// by the office, so the distinction is stored rather than left to the filename.
+enum AttendanceReportType {
+  PMS
+  SERVICE
+}
+
+// One report filed against one site visited during a shift.
+//
+// Attached to the punch that closes the day rather than to a schedule: a crew
+// can be sent to three branches and come back with three reports, and the
+// office needs all of them together with the day they were worked.
+model AttendanceReport {
+  id           String     @id @default(uuid())
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  type AttendanceReportType
+
+  clientId String
+  client   Client  @relation("ClientAttendanceReports", fields: [clientId], references: [id])
+  // Null when the client has no branches at all, which is most of them.
+  branchId String?
+  branch   Branch? @relation("BranchAttendanceReports", fields: [branchId], references: [id])
+
+  // The number printed on the form the technician filled in on site. This is
+  // what the office quotes back to a client, so it is stored as typed.
+  serialNo String
+
+  fileKey  String
+  fileName String
+
+  createdAt DateTime @default(now())
+
+  @@index([attendanceId])
+  @@index([clientId])
+  @@index([serialNo])
 }
 
 enum OvertimeStatus {
@@ -439,8 +482,16 @@ model OvertimeRequest {
   employeeId   String
   employee     Employee   @relation("EmployeeOvertime", fields: [employeeId], references: [id])
 
+  // What the employee asked for. Never rewritten -- the office can grant
+  // fewer hours than were requested, and "what was asked" has to survive that
+  // for the request to still be auditable afterwards.
   hours  Decimal
   reason String
+
+  // What was actually granted, when it differs from what was asked. Null means
+  // the request stood as filed, which is the common case; payroll reads
+  // `approvedHours ?? hours`.
+  approvedHours Decimal?
 
   // Frozen at request time. The schedule it was measured against can be edited
   // later, and "was this filed inside the window?" has to stay answerable.

@@ -52,6 +52,8 @@ export type StaffMember = {
   isActive: boolean
   /** Liquidations on this person's record — one number, not the rows. */
   claimCount: number
+  /** Days clocked. Same reasoning: the rows come when the tab is opened. */
+  attendanceCount: number
   employee: {
     id: string
     firstName: string
