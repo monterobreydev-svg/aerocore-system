@@ -50,25 +50,17 @@ export const EXPENSE_PRESETS = [
   "Delivery",
 ] as const
 
+// Four chips, in the order they bite: file it, attach it, when it's looked at,
+// when the money lands. Each used to carry a paragraph, which on a phone is a
+// screen of text standing between someone and the button they came to press —
+// and it repeated what the filing form already says at the moment it matters:
+// the form asks for the late reason itself and refuses anything that isn't a
+// PDF. Short enough to read without meaning to is the whole requirement here.
 export const REIMBURSEMENT_GUIDELINES = [
-  {
-    title: "Funds released in 1–2 working days",
-    detail:
-      "Approved liquidations are reimbursed within one to two working days of approval.",
-  },
-  {
-    title: `Checked daily until ${CHECKING_CUTOFF}`,
-    detail: `Liquidations submitted before ${CHECKING_CUTOFF} on a weekday are reviewed that same day. Anything later is picked up the next working day.`,
-  },
-  {
-    title: `File receipts within ${LIQUIDATION_WINDOW_DAYS} days`,
-    detail: `A receipt older than ${LIQUIDATION_WINDOW_DAYS} days is outside the window. You can still submit it, but you'll be asked why it's late and an administrator decides whether it's reimbursed.`,
-  },
-  {
-    title: "One PDF for the whole day",
-    detail:
-      "Scan or combine the day's receipts into a single PDF before filing. Any free scanner app on your phone will do it — photos on their own aren't accepted.",
-  },
+  `File within ${LIQUIDATION_WINDOW_DAYS} days`,
+  "One PDF per day",
+  `Same-day review before ${CHECKING_CUTOFF}`,
+  "Paid in 1–2 working days",
 ] as const
 
 function startOfDay(value: Date) {
@@ -223,6 +215,47 @@ export function buildFundContexts(
   }
 
   return contexts
+}
+
+// The same ledger read from the other side: what the balance stood at right
+// after each top-up. An employee looking at their history asks "where did this
+// number come from", and the answer is only legible if the releases carry a
+// running balance too — otherwise the money appears from nowhere between two
+// liquidations.
+//
+// Replays releases oldest-first, retiring every liquidation filed before each
+// one. Rejected claims never retire fund, exactly as in `buildFundContexts`, so
+// the last balance here always equals `released - liquidated`.
+export function buildReleaseBalances(
+  releases: { id: string; amount: number; releasedAt: string }[],
+  claims: { status: ReimbursementStatus; totalAmount: number; submittedAt: string }[]
+): Record<string, number> {
+  const spends = claims
+    .filter((claim) => claim.status !== "REJECTED")
+    .map((claim) => ({ at: claim.submittedAt, amount: claim.totalAmount }))
+    .sort((a, b) => a.at.localeCompare(b.at))
+
+  const ordered = releases
+    .slice()
+    .sort((a, b) => a.releasedAt.localeCompare(b.releasedAt))
+
+  const balances: Record<string, number> = {}
+  let balance = 0
+  let spent = 0
+
+  for (const release of ordered) {
+    // Strictly before: a claim filed at the same instant as a release was
+    // spending money the release hadn't provided, which is how the claim side
+    // admits releases too.
+    while (spent < spends.length && spends[spent].at < release.releasedAt) {
+      balance -= spends[spent].amount
+      spent += 1
+    }
+    balance += release.amount
+    balances[release.id] = balance
+  }
+
+  return balances
 }
 
 // ---------------------------------------------------------------------------

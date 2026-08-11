@@ -136,8 +136,24 @@ export const TIMESHEET_ROW_LIMIT = 5000
 /** Longest timesheet window. A quarter covers any pay period anyone runs. */
 export const MAX_TIMESHEET_DAYS = 92
 
-/** Days per page on a person's own attendance record. */
-export const STAFF_ATTENDANCE_PAGE_SIZE = 15
+/**
+ * A person's own attendance record is paged by payroll cutoff — the 1st–15th
+ * and the 16th to the end of the month — rather than by a fixed row count, so
+ * one page is one pay period. Cutoffs with nothing in them are skipped: paging
+ * through months of blank periods to reach a worked one helps nobody.
+ */
+export type StaffCutoff = {
+  /** Local midnight on the 1st or the 16th. */
+  start: string
+  /** The 15th, or the last day of the month. */
+  end: string
+  /** Days worked inside this cutoff — punched, not merely assigned. */
+  days: number
+  /** Days timed in but never out. They add no hours, and they need chasing. */
+  openDays: number
+  minutes: number
+  overtimeHours: number
+}
 
 /**
  * How far back the totals on a staff record reach. A punch history grows
@@ -186,10 +202,14 @@ export type StaffDay = {
 
 export type StaffAttendancePage = {
   days: StaffDay[]
+  /** Days on record across the whole history, not this cutoff. */
   total: number
+  /** 1 is the most recent cutoff with anything in it. */
   page: number
   pages: number
   summary: StaffAttendanceSummary
+  /** The cutoff this page covers, and what it adds up to. */
+  cutoff: StaffCutoff
 }
 
 // A person's whole working life, in days. Dates only at this stage — the rows

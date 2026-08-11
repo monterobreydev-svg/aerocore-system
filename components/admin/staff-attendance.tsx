@@ -4,7 +4,12 @@ import { useEffect, useState } from "react"
 import dynamic from "next/dynamic"
 import { CalendarClock, Loader2 } from "lucide-react"
 import { listEmployeeAttendance } from "@/app/actions/attendance"
-import { dayLabel, decimalHours, minutesLabel } from "@/lib/attendance"
+import {
+  cutoffLabel,
+  dayLabel,
+  decimalHours,
+  minutesLabel,
+} from "@/lib/attendance"
 import { useNow } from "@/lib/use-now"
 import { Pager } from "@/components/ui/pager"
 import {
@@ -12,7 +17,6 @@ import {
   UnworkedDayRow,
 } from "@/components/attendance/roster-row"
 import {
-  STAFF_ATTENDANCE_PAGE_SIZE,
   STAFF_SUMMARY_DAYS,
   type AttendanceRow,
   type StaffAttendancePage,
@@ -26,12 +30,14 @@ const AttendanceDetailDialog = dynamic(() =>
 )
 
 /**
- * Every day this person has clocked, on their own record.
+ * One payroll cutoff of this person's record at a time.
  *
  * The attendance page answers "who is on site today"; this answers "what has
  * this person actually worked", which is the question asked when a payslip is
- * queried or a contract is reviewed. Same rows, same detail view — fetched only
- * when the tab is opened.
+ * queried or a contract is reviewed. Because that question is always asked of a
+ * pay period, a page here *is* a pay period — the 1st–15th, then the 16th to the
+ * end of the month — and the totals on it are that period's, ready to pay
+ * against. Fetched only when the tab is opened.
  */
 export function StaffAttendance({
   employeeId,
@@ -86,25 +92,46 @@ export function StaffAttendance({
     )
   }
 
-  const { summary } = current
+  const { summary, cutoff } = current
+  const period = cutoffLabel(cutoff.start, cutoff.end)
+  // The pay period we are inside right now, which is the one people mean when
+  // they ask what someone is owed. `useNow` reports 0 until the first client
+  // tick, and 0 is before every cutoff ever recorded, so this simply stays off
+  // rather than flashing the wrong badge.
+  const isCurrent =
+    now >= new Date(cutoff.start).getTime() &&
+    now <= new Date(cutoff.end).setHours(23, 59, 59, 999)
 
   const stats = [
-    { label: "Days worked", value: String(summary.days) },
-    { label: "Total hours", value: minutesLabel(summary.minutes) },
+    { label: "Days worked", value: String(cutoff.days) },
+    { label: "Total hours", value: minutesLabel(cutoff.minutes) },
     {
       label: "Decimal hours",
-      value: decimalHours(summary.minutes).toFixed(2),
+      value: decimalHours(cutoff.minutes).toFixed(2),
     },
     {
       label: "Approved OT",
-      value: summary.overtimeHours > 0 ? `+${summary.overtimeHours}h` : "—",
+      value: cutoff.overtimeHours > 0 ? `+${cutoff.overtimeHours}h` : "—",
     },
   ]
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Totals are for the whole recorded history, not the page being looked
-          at — a per-page total on a paged list is a number nobody can use. */}
+      {/* The cutoff being looked at, named before its figures. These totals are
+          this pay period's and no other — that is the whole point of cutting the
+          record on the 15th and the end of the month rather than every fifteen
+          rows, where a total would span two payslips and mean nothing. */}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h4 className="text-sm font-medium tabular-nums">{period}</h4>
+        {isCurrent ? (
+          <span className="rounded-full bg-sky-600/10 px-2 py-0.5 text-[0.6875rem] font-medium text-sky-700 dark:text-sky-400">
+            Current cutoff
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">pay period</span>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-border sm:grid-cols-4">
         {stats.map((stat) => (
           <div key={stat.label} className="bg-card px-3 py-2.5">
@@ -118,15 +145,29 @@ export function StaffAttendance({
         ))}
       </div>
 
+      {cutoff.openDays > 0 && (
+        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          {cutoff.openDays} day{cutoff.openDays === 1 ? "" : "s"} in this cutoff
+          {cutoff.openDays === 1 ? " was" : " were"} never timed out, so
+          {cutoff.openDays === 1 ? " it adds" : " they add"} no hours to the
+          total above.
+        </p>
+      )}
+
+      {/* The lifetime figures the tab used to lead with, kept as context rather
+          than as the headline: they answer "how long have they been with us",
+          not "what do we pay them this cutoff". */}
       <p className="text-xs text-muted-foreground">
         {summary.firstDay && summary.lastDay
           ? `Clocked ${dayLabel(summary.firstDay, true)} — ${dayLabel(summary.lastDay, true)}`
           : "Nothing clocked yet"}
+        {summary.days > 0 &&
+          ` · ${summary.days} days and ${minutesLabel(summary.minutes)} on record overall`}
         {summary.openDays > 0 && (
           <span className="text-amber-600 dark:text-amber-400">
             {" "}
             · {summary.openDays} day{summary.openDays === 1 ? "" : "s"} never
-            timed out, adding no hours
+            timed out in total
           </span>
         )}
         {/* Only when there really is older history behind the window. */}
@@ -153,12 +194,17 @@ export function StaffAttendance({
         )}
       </ul>
 
+      {/* Stepping back a page steps back a pay period, so it says so. Cutoffs
+          nobody worked are skipped server-side — "cutoff 4 of 9" counts periods
+          with days in them, not every fortnight since they were hired. */}
       <Pager
         page={current.page}
         pages={current.pages}
         total={current.total}
         noun="days"
-        pageSize={STAFF_ATTENDANCE_PAGE_SIZE}
+        pageSize={current.days.length}
+        unit="Cutoff"
+        label={`${current.days.length} day${current.days.length === 1 ? "" : "s"} on record this cutoff`}
         onPage={setPage}
       />
 

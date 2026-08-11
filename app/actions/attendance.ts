@@ -17,6 +17,8 @@ import {
 import {
   attendanceDay,
   clockTime,
+  cutoffEnd,
+  cutoffStart,
   dayLabel,
   MAX_OVERTIME_HOURS,
   MAX_SHIFT_HOURS,
@@ -29,7 +31,6 @@ import {
   toAttendanceRow,
 } from "@/lib/attendance-query"
 import {
-  STAFF_ATTENDANCE_PAGE_SIZE,
   STAFF_DAY_LIMIT,
   STAFF_SUMMARY_DAYS,
   type ScheduledJob,
@@ -574,23 +575,36 @@ const EMPTY_SUMMARY: StaffAttendanceSummary = {
 }
 
 /**
- * Every day this person has clocked, newest first, for their staff record.
+ * One payroll cutoff of this person's record, newest cutoff first.
  *
  * Fetched on demand rather than shipped with the staff list: that list is every
  * employee, and a punch history grows forever — sending both together is the
  * O(employees x days) payload that leaves a phone on a blank screen.
+ *
+ * `page` counts cutoffs that have something in them, not rows: 1 is their most
+ * recent pay period, 2 the one before it. A period is at most sixteen days, so
+ * the payload stays bounded whichever one is asked for.
  */
 export async function listEmployeeAttendance(
   employeeId: string,
   page = 1
 ): Promise<StaffAttendancePage> {
   const session = await requireAdmin()
-  const empty = {
+  const now = new Date()
+  const empty: StaffAttendancePage = {
     days: [],
     total: 0,
     page: 1,
     pages: 1,
     summary: EMPTY_SUMMARY,
+    cutoff: {
+      start: cutoffStart(now).toISOString(),
+      end: cutoffEnd(now).toISOString(),
+      days: 0,
+      openDays: 0,
+      minutes: 0,
+      overtimeHours: 0,
+    },
   }
   if (!session || !employeeId) return empty
 
@@ -671,19 +685,28 @@ export async function listEmployeeAttendance(
     ? attendanceDay(oldestPunch) < attendanceDay(since)
     : false
 
-  const pages = Math.max(1, Math.ceil(total / STAFF_ATTENDANCE_PAGE_SIZE))
+  // The pay periods this person actually has days in, newest first. Built off
+  // the dates already in hand, so knowing how many pages there are costs no
+  // extra query — and a cutoff nobody worked never becomes a page to step past.
+  const periods = [
+    ...new Set(allDays.map((key) => cutoffStart(new Date(key)).getTime())),
+  ].sort((a, b) => b - a)
+
+  const pages = Math.max(1, periods.length)
   const at = Math.min(Math.max(1, Math.trunc(page)), pages)
 
-  const pageDays = allDays.slice(
-    (at - 1) * STAFF_ATTENDANCE_PAGE_SIZE,
-    at * STAFF_ATTENDANCE_PAGE_SIZE
+  const periodStart = new Date(periods[at - 1])
+  const periodEnd = cutoffEnd(periodStart)
+
+  // allDays is newest-first already, so filtering keeps that order.
+  const pageDays = allDays.filter(
+    (key) => key >= periodStart.getTime() && key <= periodEnd.getTime()
   )
 
-  // Bounded by the fifteen days actually on screen, not by the window they sit
-  // in — one long gap between punches would otherwise pull in everything
-  // between the two ends.
-  const from = new Date(pageDays.at(-1)!)
-  const to = nextDay(new Date(pageDays[0]))
+  // The cutoff itself is the window — sixteen days at the outside, however wide
+  // the gaps between punches inside it.
+  const from = periodStart
+  const to = nextDay(periodEnd)
 
   const [records, schedules] = await Promise.all([
     prisma.attendance.findMany({
@@ -731,6 +754,35 @@ export async function listEmployeeAttendance(
     jobsByDay.set(key, list)
   }
 
+  // What this cutoff is worth, added up here rather than in the browser: the
+  // whole reason to cut the record on the 15th and the end of the month is to
+  // read one pay period's hours off it, and that is four numbers, not rows.
+  const cutoff = records.reduce(
+    (totals, record) => {
+      const minutes = workedMinutes(record.timeIn, record.timeOut)
+      return {
+        ...totals,
+        days: totals.days + 1,
+        openDays: totals.openDays + (minutes == null ? 1 : 0),
+        minutes: totals.minutes + (minutes ?? 0),
+        overtimeHours:
+          totals.overtimeHours +
+          (record.overtime?.status === "APPROVED"
+            ? Number(record.overtime.approvedHours ?? record.overtime.hours)
+            : 0),
+      }
+    },
+    {
+      start: periodStart.toISOString(),
+      end: periodEnd.toISOString(),
+      days: 0,
+      openDays: 0,
+      minutes: 0,
+      overtimeHours: 0,
+    }
+  )
+  cutoff.overtimeHours = Math.round(cutoff.overtimeHours * 100) / 100
+
   return {
     days: pageDays.map((key) => {
       const record = punchByDay.get(key)
@@ -744,6 +796,7 @@ export async function listEmployeeAttendance(
     page: at,
     pages,
     summary,
+    cutoff,
   }
 }
 

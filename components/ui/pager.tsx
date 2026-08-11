@@ -15,6 +15,8 @@ export function Pager({
   total,
   noun,
   pageSize,
+  label,
+  unit = "Page",
   hrefFor,
   onPage,
 }: {
@@ -23,6 +25,14 @@ export function Pager({
   total: number
   noun: string
   pageSize: number
+  /**
+   * Replaces the "1–15 of 90" range. Pages that aren't a fixed number of rows —
+   * a payroll cutoff, say — can't be described by an offset, so they say what
+   * they cover instead.
+   */
+  label?: string
+  /** What a page *is*, when it isn't a page. */
+  unit?: string
   hrefFor?: (page: number) => string
   onPage?: (page: number) => void
 }) {
@@ -79,11 +89,11 @@ export function Pager({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-xs text-muted-foreground tabular-nums">
-        {first}–{last} of {total} {noun}
+        {label ?? `${first}–${last} of ${total} ${noun}`}
       </p>
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground tabular-nums">
-          Page {page} of {pages}
+          {unit} {page} of {pages}
         </span>
         {step("prev")}
         {step("next")}

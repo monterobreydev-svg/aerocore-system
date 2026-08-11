@@ -207,6 +207,50 @@ export function dayLabel(value: string | Date, withYear = false) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Payroll cutoffs
+// ---------------------------------------------------------------------------
+//
+// Pay here runs twice a month: the 1st–15th, then the 16th to whatever the last
+// day of the month happens to be. Attendance is read a cutoff at a time because
+// that is the unit it gets checked in — an arbitrary fifteen *rows* straddles
+// two pay periods and makes the one question anybody asks of this screen ("what
+// do we pay them for this cutoff") impossible to answer without a calculator.
+
+/** Local midnight on the 1st or the 16th, whichever cutoff the day falls in. */
+export function cutoffStart(value: Date) {
+  const day = attendanceDay(value)
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate() <= 15 ? 1 : 16)
+}
+
+/** The 15th, or the last day of the month — day 0 of the next one. */
+export function cutoffEnd(value: Date) {
+  const day = attendanceDay(value)
+  return day.getDate() <= 15
+    ? new Date(day.getFullYear(), day.getMonth(), 15)
+    : new Date(day.getFullYear(), day.getMonth() + 1, 0)
+}
+
+/**
+ * "Aug 1 – 15, 2026". Both ends sit in one month by construction, so only the
+ * opening date carries it.
+ *
+ * The closing day and year are written out rather than formatted: asking
+ * `toLocaleDateString` for a day and a year with no month gives back
+ * "2026 (day: 15)" under ICU, which is correct and unreadable.
+ */
+export function cutoffLabel(start: string | Date, end: string | Date) {
+  const from = new Date(start)
+  const to = new Date(end)
+
+  const opening = from.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  })
+
+  return `${opening} – ${to.getDate()}, ${to.getFullYear()}`
+}
+
 /** Coordinates to something a person can read back over the phone. */
 export function coordinateLabel(latitude: number, longitude: number) {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
