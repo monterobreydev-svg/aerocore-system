@@ -84,7 +84,16 @@ export function AttendanceView({
   punch: TodayPunch | null
   history: AttendanceDay[]
 }) {
-  const [punchOpen, setPunchOpen] = useState(false)
+  // Which punch dialog is open, rather than whether one is — and it is chosen
+  // when the button is pressed, not re-derived on every render.
+  //
+  // Deriving it from `working` meant timing in swapped the dialog underneath
+  // itself: saving the punch revalidates the page, `working` turns true, and
+  // that render replaced the time-in dialog with the time-out one. The time-in
+  // dialog closes itself in an effect, and effects don't run for a component
+  // that has already been unmounted — so nothing ever closed it and the
+  // employee was left staring at a Time out screen they hadn't asked for.
+  const [punchMode, setPunchMode] = useState<"in" | "out" | null>(null)
   const [overtimeOpen, setOvertimeOpen] = useState(false)
 
   // The overtime window opens on a clock, not on a page load. Without a tick the
@@ -199,7 +208,7 @@ export function AttendanceView({
             <Button
               type="button"
               size="lg"
-              onClick={() => setPunchOpen(true)}
+              onClick={() => setPunchMode(working ? "out" : "in")}
               className="h-12 w-full bg-brand text-brand-foreground hover:bg-brand-strong"
             >
               {working ? <LogOut /> : <LogIn />}
@@ -321,12 +330,14 @@ export function AttendanceView({
         )}
       </section>
 
-      {punchOpen &&
-        (working ? (
-          <TimeOutDialog open onOpenChange={setPunchOpen} />
-        ) : (
-          <PunchDialog open onOpenChange={setPunchOpen} />
-        ))}
+      {/* Keyed off the mode the button chose, so a punch saving mid-dialog
+          can't swap one of these for the other under the employee's hands. */}
+      {punchMode === "out" && (
+        <TimeOutDialog open onOpenChange={() => setPunchMode(null)} />
+      )}
+      {punchMode === "in" && (
+        <PunchDialog open onOpenChange={() => setPunchMode(null)} />
+      )}
 
       {overtimeOpen && shift && (
         <OvertimeDialog
