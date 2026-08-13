@@ -69,7 +69,6 @@ export async function loadFunders(releaseIds: string[]) {
       id: true,
       amount: true,
       method: true,
-      reference: true,
       proofKey: true,
       proofName: true,
       releasedAt: true,
@@ -85,7 +84,6 @@ export async function loadFunders(releaseIds: string[]) {
       releasedAt: release.releasedAt.toISOString(),
       releasedByName: `${release.releasedBy.employee.firstName} ${release.releasedBy.employee.lastName}`,
       method: release.method,
-      reference: release.reference,
       proofKey: release.proofKey,
       proofName: release.proofName,
     })

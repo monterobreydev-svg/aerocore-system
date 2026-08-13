@@ -27,7 +27,6 @@ export type ClaimFunder = {
   releasedAt: string
   releasedByName: string
   method: string | null
-  reference: string | null
   proofKey: string | null
   proofName: string | null
 }
@@ -76,7 +75,6 @@ export type FundLedgerRow = {
   employeeName: string
   amount: number
   method: string | null
-  reference: string | null
   note: string | null
   proofKey: string | null
   proofName: string | null

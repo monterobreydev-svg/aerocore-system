@@ -74,7 +74,6 @@ export type FundRelease = {
   amount: number
   releasedAt: string
   method: string | null
-  reference: string | null
   note: string | null
   proofKey: string | null
   proofName: string | null
@@ -186,7 +185,7 @@ function FundTrail({ claim }: { claim: Claim }) {
 // Money in. Deliberately the lighter card of the two: it carries an amount, a
 // balance and the proof, and nothing to open.
 function ReleaseCard({ release }: { release: FundRelease }) {
-  const detail = [release.method, release.reference].filter(Boolean).join(" · ")
+  const detail = release.method
 
   return (
     <div className="rounded-xl bg-emerald-600/[0.04] p-3 ring-1 ring-emerald-600/20">

@@ -16,6 +16,7 @@ import {
 } from "@/lib/r2"
 import {
   buildFundContexts,
+  FUND_RELEASE_METHODS,
   isLateExpense,
   nextReferenceNo,
   peso,
@@ -59,8 +60,8 @@ export type UploadTicket =
 export type UploadContext = {
   /** Receipts: the day being liquidated (YYYY-MM-DD). */
   expenseDate?: string
-  /** Funding proof: the transfer reference the administrator typed. */
-  reference?: string
+  /** Funding proof: who the money is going to, which is what names the file. */
+  employeeId?: string
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
@@ -102,8 +103,12 @@ export async function createUploadUrl(
     if (contentType !== "application/pdf") {
       return { ok: false, message: "Receipts have to be a single PDF file." }
     }
-  } else if (!isAllowedUploadType(contentType)) {
-    return { ok: false, message: "Upload a JPG, PNG, WEBP, HEIC or PDF." }
+  } else if (!contentType.startsWith("image/") || !isAllowedUploadType(contentType)) {
+    // Proof of a transfer is a screenshot. Images only, and not merely as a
+    // convention: an image is resized and re-encoded in the browser before it
+    // is sent, which a PDF can't be, so this is also what keeps the upload
+    // small on a phone.
+    return { ok: false, message: "Attach a screenshot — JPG, PNG, WEBP or HEIC." }
   }
   if (!Number.isFinite(size) || size <= 0 || size > MAX_UPLOAD_BYTES) {
     return { ok: false, message: "Files must be smaller than 10 MB." }
@@ -118,12 +123,11 @@ export async function createUploadUrl(
   const { date, label } =
     folder === "receipts"
       ? await receiptNaming(session.employeeId, owner, context.expenseDate)
-      : // Proof of a transfer is filed the day it's sent, under the reference
-        // the administrator can look up in the banking app.
-        {
-          date: dateOnly(new Date()),
-          label: `${dateOnly(new Date())}_${keySegment(context.reference ?? "", "no-reference")}`,
-        }
+      : // Proof of a transfer is filed under the day it was sent and the person
+        // it went to. That used to be the reference number the administrator
+        // typed; with the number gone, the recipient is what anybody looking
+        // for a particular transfer actually remembers.
+        await fundingProofNaming(context.employeeId)
 
   const key = await uniqueObjectKey(
     buildObjectKey({ folder, owner, date, label, filename })
@@ -160,6 +164,25 @@ async function receiptNaming(
     date,
     label: `${date}_${keySegment(firstName, "unknown")}_${filed + 1}`,
   }
+}
+
+// "2026-08-12_Juan-Dela-Cruz" — the day the transfer was sent and who received
+// it. The name is read from the row rather than taken from the request, so a
+// tampered id can at worst produce a proof filed under "unknown".
+async function fundingProofNaming(employeeId: string | undefined) {
+  const recipient = employeeId
+    ? await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { firstName: true, lastName: true },
+      })
+    : null
+
+  const date = dateOnly(new Date())
+  const name = recipient
+    ? `${recipient.firstName}-${recipient.lastName}`
+    : "unknown"
+
+  return { date, label: `${date}_${keySegment(name, "unknown")}` }
 }
 
 // Signed view URL, minted per request. The bucket stays private, so this is
@@ -546,7 +569,12 @@ export async function reviewLiquidation(
 
 export type FundingState =
   | {
-      errors?: { amount?: string[]; proof?: string[]; employeeId?: string[] }
+      errors?: {
+        amount?: string[]
+        proof?: string[]
+        employeeId?: string[]
+        method?: string[]
+      }
       message?: string
       success?: boolean
     }
@@ -567,8 +595,13 @@ export async function releaseFund(
   const schema = z.object({
     employeeId: z.string().min(1, "Pick an employee."),
     amount: z.coerce.number().positive("Enter an amount greater than zero."),
-    method: z.string().trim().max(60).optional(),
-    reference: z.string().trim().max(120).optional(),
+    // One of the five channels the office actually pays through. Free text here
+    // collected four spellings of GCash, and this string is quoted straight
+    // back to the employee in the notification they check their account
+    // against.
+    method: z.enum(FUND_RELEASE_METHODS, {
+      message: "Pick how the money was sent.",
+    }),
     note: z.string().trim().max(1000).optional(),
     proofKey: z.string().trim().optional(),
     proofName: z.string().trim().optional(),
@@ -579,7 +612,6 @@ export async function releaseFund(
     employeeId: formData.get("employeeId"),
     amount: formData.get("amount"),
     method: formData.get("method"),
-    reference: formData.get("reference"),
     note: formData.get("note"),
     proofKey: formData.get("proofKey"),
     proofName: formData.get("proofName"),
@@ -589,7 +621,7 @@ export async function releaseFund(
     return { errors: validated.error.flatten().fieldErrors }
   }
 
-  const { employeeId, amount, method, reference, note, proofKey, proofName, proofType } =
+  const { employeeId, amount, method, note, proofKey, proofName, proofType } =
     validated.data
 
   // Proof is the whole point of the release log -- a transfer with nothing
@@ -608,8 +640,11 @@ export async function releaseFund(
     data: {
       employeeId,
       amount,
-      method: method || null,
-      reference: reference || null,
+      method,
+      // The column stays for the releases already recorded against a typed
+      // reference; nothing writes to it now that the proof screenshot carries
+      // the transaction detail.
+      reference: null,
       note: note || null,
       proofKey,
       proofName: proofName || null,
@@ -623,9 +658,7 @@ export async function releaseFund(
   await notifyEmployee(employeeId, {
     type: "FUND_RELEASED",
     title: "Working fund released",
-    body: method
-      ? `${peso(amount)} was released to you via ${method}.`
-      : `${peso(amount)} was released to you.`,
+    body: `${peso(amount)} was released to you via ${method}.`,
     destination: "reimbursements",
   })
 

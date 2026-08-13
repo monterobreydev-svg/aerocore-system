@@ -199,11 +199,6 @@ function FundedBy({ funder }: { funder: ClaimFunder | null }) {
           <span className="truncate">
             {funder.method ?? "Method not recorded"}
           </span>
-          {funder.reference && (
-            <span className="min-w-0 truncate font-mono">
-              {funder.reference}
-            </span>
-          )}
         </div>
         {funder.proofKey && funder.proofName && (
           <FileLink fileKey={funder.proofKey} name={funder.proofName} />

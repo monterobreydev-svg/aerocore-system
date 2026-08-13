@@ -84,6 +84,28 @@ export function isLateExpense(expenseDate: string | Date, now: Date = new Date()
 }
 
 // ---------------------------------------------------------------------------
+// How a fund actually reaches someone
+// ---------------------------------------------------------------------------
+
+// A fixed list rather than a free-text box. Typed by hand this field collected
+// "gcash", "GCash", "G-cash" and "gc" for one payment channel, which makes it
+// useless for the one thing it is for: the employee checking the right account.
+// It is also what the release notification quotes back to them, so it has to
+// read the same way every time.
+export const FUND_RELEASE_METHODS = [
+  "GCash",
+  "GoTyme",
+  "CASH",
+  "BDO",
+] as const
+
+export type FundReleaseMethod = (typeof FUND_RELEASE_METHODS)[number]
+
+export function isFundReleaseMethod(value: string): value is FundReleaseMethod {
+  return (FUND_RELEASE_METHODS as readonly string[]).includes(value)
+}
+
+// ---------------------------------------------------------------------------
 // Working fund balance
 // ---------------------------------------------------------------------------
 

@@ -84,13 +84,12 @@ export default async function EmployeeExpensesPage() {
         select: { id: true, status: true, totalAmount: true, submittedAt: true },
       }),
       // The releases actually rendered â€” this week's â€” with the detail that makes
-      // a top-up verifiable: how it was sent, its reference, and the proof.
+      // a top-up verifiable: how it was sent and the proof of it.
       prisma.fundRelease.findMany({
         where: { employeeId: employee.id, releasedAt: thisWeek },
         select: {
           id: true,
           method: true,
-          reference: true,
           note: true,
           proofKey: true,
           proofName: true,
@@ -135,7 +134,6 @@ export default async function EmployeeExpensesPage() {
         amount: release.amount,
         releasedAt: release.releasedAt,
         method: detail.method,
-        reference: detail.reference,
         note: detail.note,
         proofKey: detail.proofKey,
         proofName: detail.proofName,

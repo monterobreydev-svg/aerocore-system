@@ -3,10 +3,17 @@
 import { useActionState, useEffect, useState } from "react"
 import { Plus } from "lucide-react"
 import { releaseFund, type FundingState } from "@/app/actions/reimbursements"
-import { peso } from "@/lib/reimbursement"
+import { FUND_RELEASE_METHODS, peso } from "@/lib/reimbursement"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -39,8 +46,6 @@ export function ReleaseFundDialog({
   // these initial values — nothing to reset in an effect.
   const [employeeId, setEmployeeId] = useState(presetEmployeeId ?? "")
   const [proof, setProof] = useState<UploadedFile | null>(null)
-  // Controlled because the stored proof is named after it.
-  const [reference, setReference] = useState("")
 
   useEffect(() => {
     if (state?.success) onOpenChange(false)
@@ -126,48 +131,50 @@ export function ReleaseFundDialog({
               />
             </Field>
 
-            <Field>
+            <Field data-invalid={!!state?.errors?.method}>
               <FieldLabel htmlFor="release-method" className="text-xs">
                 Method
               </FieldLabel>
-              <Input
-                id="release-method"
+              <Select
                 name="method"
-                placeholder="GCash, cash, transfer"
+                defaultValue=""
                 disabled={pending}
+                items={Object.fromEntries(
+                  FUND_RELEASE_METHODS.map((method) => [method, method])
+                )}
+              >
+                <SelectTrigger id="release-method" className="w-full">
+                  <SelectValue placeholder="How it was sent" />
+                </SelectTrigger>
+                <SelectContent>
+                  {FUND_RELEASE_METHODS.map((method) => (
+                    <SelectItem key={method} value={method}>
+                      {method}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldError
+                errors={state?.errors?.method?.map((message) => ({ message }))}
               />
             </Field>
           </div>
-
-          <Field>
-            <FieldLabel htmlFor="release-ref" className="text-xs">
-              Reference number
-            </FieldLabel>
-            <Input
-              id="release-ref"
-              name="reference"
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              placeholder="Transaction / voucher number"
-              disabled={pending}
-            />
-            <p className="text-[11px] text-muted-foreground">
-              The proof file is stored under this number — fill it in before
-              attaching.
-            </p>
-          </Field>
 
           <Field data-invalid={!!state?.errors?.proof}>
             <FieldLabel className="text-xs">
               Proof of transfer <span className="text-destructive">*</span>
             </FieldLabel>
+            {/* Screenshots only. Proof of a transfer is what someone holds up
+                on a phone — a PDF of one is a step nobody was taking, and
+                images are compressed on the way out where a PDF can't be. */}
             <FileUpload
               folder="funding-proof"
               value={proof}
               onChange={setProof}
               disabled={pending}
-              label="Attach screenshot or voucher"
-              context={{ reference }}
+              label="Attach a screenshot"
+              accept="image/jpeg,image/png,image/webp,image/heic"
+              context={{ employeeId }}
             />
             <FieldError
               errors={state?.errors?.proof?.map((message) => ({ message }))}

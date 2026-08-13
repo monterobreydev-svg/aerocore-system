@@ -311,12 +311,7 @@ export function AdminReimbursementsView({
                             {peso(release.amount)}
                           </TableCell>
                           <TableCell className="text-sm">
-                            <div>{release.method ?? "—"}</div>
-                            {release.reference && (
-                              <div className="font-mono text-xs text-muted-foreground">
-                                {release.reference}
-                              </div>
-                            )}
+                            {release.method ?? "—"}
                           </TableCell>
                           <TableCell>
                             {release.proofKey && release.proofName ? (
