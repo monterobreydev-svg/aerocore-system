@@ -2,10 +2,16 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ChevronDown, KeyRound, LogOut, Settings } from "lucide-react"
+import {
+  ChevronDown,
+  KeyRound,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+} from "lucide-react"
 import { logout } from "@/app/actions/auth"
 import type { Role } from "@/app/generated/prisma/client"
-import { roleLabel } from "@/lib/roles"
+import { isAdminSideRole, roleLabel } from "@/lib/roles"
 import type { InboxItem } from "@/lib/notifications"
 import { NotificationBell } from "@/components/dashboard/notification-bell"
 import { Button } from "@/components/ui/button"
@@ -75,6 +81,30 @@ export function EmployeeHeader({
       </div>
 
       <div className="ml-auto flex items-center gap-1">
+        {/* The way back for someone who came from the admin console. The
+            employee nav has no admin link anywhere else — tab bar and top nav
+            are both the same five fixed items — so without this an admin who
+            crosses over can only get back by editing the URL. Label collapses
+            to the icon on a phone, where the header is already full. */}
+        {isAdminSideRole(role) && (
+          <Button
+            variant="ghost"
+            size="lg"
+            // It renders as an <a>, so Base UI must not assume native button
+            // semantics — otherwise it adds the button role and key handling
+            // on top of the link's own, and warns about exactly that.
+            nativeButton={false}
+            className="gap-1.5 px-2 text-muted-foreground"
+            render={
+              <Link href="/admin">
+                <LayoutDashboard />
+                <span className="hidden sm:inline">Admin console</span>
+                <span className="sr-only sm:hidden">Admin console</span>
+              </Link>
+            }
+          />
+        )}
+
         <NotificationBell items={notifications} pendingCount={pendingCount} />
 
         <DropdownMenu>

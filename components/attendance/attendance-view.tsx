@@ -79,10 +79,18 @@ export function AttendanceView({
   shift,
   punch,
   history,
+  scheduleOptional = false,
 }: {
   shift: TodayShift | null
   punch: TodayPunch | null
   history: AttendanceDay[]
+  /**
+   * Whether this person may time in on a day with nothing scheduled — true for
+   * admin-side staff, who work office hours nobody dispatches. The server
+   * decides the same thing from the same rule (canPunchWithoutSchedule); this
+   * only keeps the button from offering something that would be refused.
+   */
+  scheduleOptional?: boolean
 }) {
   // Which punch dialog is open, rather than whether one is — and it is chosen
   // when the button is pressed, not re-derived on every render.
@@ -162,7 +170,14 @@ export function AttendanceView({
               </p>
             </>
           ) : (
-            <p className="mt-2 text-lg font-medium">No shift scheduled</p>
+            <>
+              <p className="mt-2 text-lg font-medium">No shift scheduled</p>
+              {scheduleOptional && (
+                <p className="mt-1 text-sm text-sidebar-foreground/70">
+                  Office hours — time in when you start.
+                </p>
+              )}
+            </>
           )}
 
           {shift && (
@@ -192,17 +207,19 @@ export function AttendanceView({
         </div>
 
         <div className="border-t border-white/10 bg-black/15 p-4">
-          {!shift ? (
-            <p className="flex items-start gap-2 text-xs text-sidebar-foreground/70">
-              <CalendarX2 className="mt-0.5 size-3.5 shrink-0" />
-              You can only time in on a day the office has scheduled you.
-              Contact them if today should have a shift.
-            </p>
-          ) : done ? (
+          {/* Done first: a shift cancelled after the punch shouldn't turn a
+              finished day back into "you can't time in today". */}
+          {done ? (
             <p className="text-center text-xs text-sidebar-foreground/70">
               Timed out at {clockTime(punch!.timeOut!)}
               {punch!.reportCount > 0 &&
                 ` · ${punch!.reportCount} report${punch!.reportCount === 1 ? "" : "s"} filed`}
+            </p>
+          ) : !shift && !scheduleOptional ? (
+            <p className="flex items-start gap-2 text-xs text-sidebar-foreground/70">
+              <CalendarX2 className="mt-0.5 size-3.5 shrink-0" />
+              You can only time in on a day the office has scheduled you.
+              Contact them if today should have a shift.
             </p>
           ) : (
             <Button

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ChevronDown, KeyRound, LogOut, Settings } from "lucide-react"
+import { ChevronDown, KeyRound, LogOut, Settings, UserRound } from "lucide-react"
 import { logout } from "@/app/actions/auth"
 import type { Role } from "@/app/generated/prisma/client"
 import { roleLabel } from "@/lib/roles"
@@ -129,6 +129,18 @@ export function DashboardHeader({
                 <Link href="/admin/settings?tab=security">
                   <KeyRound />
                   Change password
+                </Link>
+              }
+            />
+            <DropdownMenuSeparator />
+            {/* Admins are employees too, on the same single account — this is
+                where they go to file their own claims and read their own
+                payslips, rather than being issued a second login. */}
+            <DropdownMenuItem
+              render={
+                <Link href="/employee">
+                  <UserRound />
+                  My employee portal
                 </Link>
               }
             />

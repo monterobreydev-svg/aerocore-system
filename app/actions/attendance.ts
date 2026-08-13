@@ -22,6 +22,7 @@ import {
 } from "@/lib/documents"
 import {
   attendanceDay,
+  canPunchWithoutSchedule,
   clockTime,
   cutoffEnd,
   cutoffStart,
@@ -498,9 +499,10 @@ export async function timeIn(
 
   // Blocked without a schedule, by decision: attendance is recorded against
   // work the office assigned, and a punch with no shift behind it has nothing
-  // to check against.
+  // to check against. Admin-side roles are exempt — see
+  // canPunchWithoutSchedule for why office hours can't work that way.
   const shift = await shiftForDay(session.employeeId, day)
-  if (!shift) {
+  if (!shift && !canPunchWithoutSchedule(session.role)) {
     return {
       message:
         "You have no shift scheduled today, so you can't time in. Contact the office if that's wrong.",

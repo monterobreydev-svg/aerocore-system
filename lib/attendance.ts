@@ -5,6 +5,25 @@
 // and the check that actually runs can't disagree about what the rules are.
 // ---------------------------------------------------------------------------
 
+import type { Role } from "@/app/generated/prisma/client"
+import { isAdminSideRole } from "@/lib/roles"
+
+/**
+ * Whether this person may punch on a day with nothing scheduled.
+ *
+ * A field employee's attendance is recorded against work the office assigned —
+ * no shift means no punch, which is what keeps every punch answerable to a job.
+ *
+ * Admin-side staff aren't dispatched anywhere. They keep office hours that
+ * nobody writes a schedule for, so the same rule would mean an Administrator
+ * has to schedule themselves every morning before they're allowed to time in.
+ * Their punch stands on its own; the day log doesn't measure hours against the
+ * schedule anyway.
+ */
+export function canPunchWithoutSchedule(role: Role) {
+  return isAdminSideRole(role)
+}
+
 // Overtime is asked for at the end of the shift it extends, not at the start of
 // the day: an hour before knocking off, you know whether the job will overrun.
 export const OVERTIME_WINDOW_MINUTES = 60

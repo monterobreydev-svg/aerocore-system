@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/prisma"
 import { getCurrentEmployee } from "@/lib/dal"
 import { isR2Configured } from "@/lib/r2"
-import { attendanceDay, MAX_SHIFT_HOURS, nextDay } from "@/lib/attendance"
+import {
+  attendanceDay,
+  canPunchWithoutSchedule,
+  MAX_SHIFT_HOURS,
+  nextDay,
+} from "@/lib/attendance"
 import {
   AttendanceView,
   type AttendanceDay as HistoryRow,
@@ -49,8 +54,10 @@ export default async function EmployeeAttendancePage() {
   const shiftEnd = nextDay(shiftDay)
 
   const [scheduleRecords, todayRecord, historyRecords] = await Promise.all([
-    // The assigned work. Attendance is recorded against it, so no schedule
-    // means no punch — the office assigns the day before it can be worked.
+    // The assigned work. Attendance is recorded against it, so for a field
+    // employee no schedule means no punch — the office assigns the day before
+    // it can be worked. Admin-side staff are the exception; see
+    // canPunchWithoutSchedule.
     prisma.schedule.findMany({
       where: {
         assignments: { some: { employeeId: employee.id } },
@@ -167,7 +174,12 @@ export default async function EmployeeAttendancePage() {
         </p>
       )}
 
-      <AttendanceView shift={shift} punch={punch} history={history} />
+      <AttendanceView
+        shift={shift}
+        punch={punch}
+        history={history}
+        scheduleOptional={canPunchWithoutSchedule(employee.role)}
+      />
     </div>
   )
 }

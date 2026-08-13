@@ -34,9 +34,12 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL("/admin", request.url))
     }
 
-    if (isEmployeeRoute && isAdminSideRole(session.role)) {
-      return NextResponse.redirect(new URL("/admin", request.url))
-    }
+    // /employee is deliberately open to admin-side roles. A Director or
+    // Engineer is still an employee with one account, one Employee row and
+    // their own timesheet, payslips and claims — the portal is where they
+    // file those. `homeRouteForRole` still lands them on /admin at login;
+    // they cross over via the switcher in the header. Every /employee page
+    // is scoped to session.employeeId, so this grants no one else's data.
   }
 
   return NextResponse.next()
