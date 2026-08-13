@@ -59,7 +59,11 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 // The prefixes uploads are filed under. Each one has its own rules about what's
 // allowed in it — receipts are PDF-only, a punch selfie is an image by
 // definition — enforced by the action that mints the URL.
-export type UploadFolder = "receipts" | "funding-proof" | "attendance"
+export type UploadFolder =
+  | "receipts"
+  | "funding-proof"
+  | "attendance"
+  | "reports"
 
 export function isAllowedUploadType(type: string) {
   return (ALLOWED_UPLOAD_TYPES as readonly string[]).includes(type)
@@ -115,6 +119,56 @@ export function buildObjectKey({
   // The label is already three sanitised fields joined by underscores, so it
   // gets more room than a single name would.
   return `${folder}/${keySegment(owner, "unknown", 40)}/${date}/${keySegment(label, "unnamed", 120)}.${extensionOf(filename)}`
+}
+
+/**
+ * Where a filed report lives, which is the same tree the Documents tab shows:
+ *
+ *   reports/2026/PMS/AEON-CREDIT-SERVICE/MAKATI/08-August/PMS-1042_ACS_MAKATI.pdf
+ *
+ * The branch segment is skipped for a client that has none, so a single-site
+ * client's months sit directly under its own folder rather than under an empty
+ * one. Every segment is composed by the caller from database rows — see
+ * `lib/documents.ts` — so the bucket can be opened directly and read like a
+ * filing cabinet, which is eventually what somebody does.
+ */
+export function buildReportKey({
+  year,
+  typeFolder,
+  clientName,
+  branchName,
+  monthFolder,
+  fileName,
+}: {
+  year: number
+  typeFolder: string
+  clientName: string
+  branchName: string | null
+  monthFolder: string
+  /** Already composed and extension-bearing. */
+  fileName: string
+}) {
+  // Sanitised either side of the dot, never across it: `keySegment` turns every
+  // non-word character into a hyphen, and run over a whole filename it would
+  // quietly eat the extension separator and leave "...MAKATI-pdf".
+  const dot = fileName.lastIndexOf(".")
+  const stem = dot > 0 ? fileName.slice(0, dot) : fileName
+  const extension = dot > 0 ? fileName.slice(dot + 1) : ""
+  const leaf = extension
+    ? `${keySegment(stem, "report", 120)}.${keySegment(extension, "bin", 8)}`
+    : keySegment(stem, "report", 120)
+
+  const segments = [
+    "reports",
+    String(year),
+    keySegment(typeFolder, "report", 32),
+    keySegment(clientName, "client", 64),
+    ...(branchName ? [keySegment(branchName, "branch", 64)] : []),
+    keySegment(monthFolder, "month", 16),
+    leaf,
+  ]
+
+  return segments.join("/")
 }
 
 // Two people with the same first name, or a second attempt at the same

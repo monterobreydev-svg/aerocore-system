@@ -11,6 +11,13 @@ import {
   startOfMonth,
   startOfWeek,
 } from "@/lib/schedule"
+import {
+  HOLIDAY_CELL,
+  HOLIDAY_CELL_MUTED,
+  HOLIDAY_PAY_NOTE,
+  HOLIDAY_TEXT,
+  holidayOn,
+} from "@/lib/holidays"
 import { cn } from "@/lib/utils"
 import type { ScheduleRecord } from "@/components/admin/schedule-types"
 
@@ -55,6 +62,7 @@ export function ScheduleMonthView({
         {days.map((day, index) => {
           const inMonth = day.getMonth() === cursor.getMonth()
           const dayIsToday = isSameDay(day, today)
+          const holiday = holidayOn(day)
           const daySchedules = schedules
             .filter((schedule) => isSameDay(new Date(schedule.date), day))
             .sort((a, b) => a.startTime.localeCompare(b.startTime))
@@ -68,20 +76,49 @@ export function ScheduleMonthView({
                 "flex min-h-[4.5rem] flex-col gap-0.5 border-b border-l p-1 sm:min-h-[7rem] sm:gap-1 sm:p-1.5",
                 index % 7 === 0 && "border-l-0",
                 index >= 35 && "border-b-0",
-                !inMonth && "bg-muted/20"
+                // One background per cell, chosen rather than layered: two
+                // competing `bg-` utilities resolve by stylesheet order, which
+                // is not something to leave to chance.
+                holiday
+                  ? inMonth
+                    ? HOLIDAY_CELL
+                    : HOLIDAY_CELL_MUTED
+                  : !inMonth && "bg-muted/20"
               )}
             >
-              <button
-                type="button"
-                onClick={() => onOpenDay(day)}
-                className={cn(
-                  "flex size-5 shrink-0 items-center justify-center self-start rounded-full text-xs font-medium outline-none hover:bg-muted",
-                  !inMonth && "text-muted-foreground/50",
-                  dayIsToday && "bg-sky-600 text-white hover:bg-sky-600"
+              {/* The date and the holiday's name on one line. Stacked, the
+                  name sat where the job chips sit and read as something
+                  scheduled that day; beside the number it reads as a label on
+                  the date itself, which is what it is. What the day is worth —
+                  200% for the first eight hours — is stated once in the key
+                  above the grid rather than in all forty-two cells. */}
+              <div className="flex min-w-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onOpenDay(day)}
+                  className={cn(
+                    "flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-medium outline-none hover:bg-muted",
+                    !inMonth && "text-muted-foreground/50",
+                    holiday && inMonth && !dayIsToday && HOLIDAY_TEXT,
+                    dayIsToday && "bg-sky-600 text-white hover:bg-sky-600"
+                  )}
+                >
+                  {day.getDate()}
+                </button>
+
+                {holiday && (
+                  <p
+                    title={`${holiday} — regular holiday. ${HOLIDAY_PAY_NOTE}.`}
+                    className={cn(
+                      "min-w-0 truncate text-[10px] leading-tight font-medium sm:text-[11px]",
+                      HOLIDAY_TEXT,
+                      !inMonth && "opacity-60"
+                    )}
+                  >
+                    {holiday}
+                  </p>
                 )}
-              >
-                {day.getDate()}
-              </button>
+              </div>
 
               <div className="flex min-w-0 flex-col gap-0.5 sm:gap-1">
                 {visible.map((schedule) => {

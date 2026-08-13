@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/auth"
 import {
   buildObjectKey,
+  buildReportKey,
   isAllowedUploadType,
   isR2Configured,
   keySegment,
@@ -14,6 +15,11 @@ import {
   presignUpload,
   uniqueObjectKey,
 } from "@/lib/r2"
+import {
+  monthFolder,
+  REPORT_TYPE_FOLDER,
+  reportFileName,
+} from "@/lib/documents"
 import {
   attendanceDay,
   clockTime,
@@ -33,6 +39,7 @@ import {
 import {
   STAFF_DAY_LIMIT,
   STAFF_SUMMARY_DAYS,
+  type ReportType,
   type ScheduledJob,
   type StaffAttendancePage,
   type StaffAttendanceSummary,
@@ -134,6 +141,108 @@ async function shiftForDay(employeeId: string, day: Date) {
 export type UploadTicket =
   | { ok: true; url: string; key: string }
   | { ok: false; message: string }
+
+/** A report ticket also says what the file has been renamed to. */
+export type ReportUploadTicket =
+  | { ok: true; url: string; key: string; fileName: string }
+  | { ok: false; message: string }
+
+/**
+ * A short-lived URL to PUT one filed report into storage, under the name and in
+ * the folder the office will look for it in.
+ *
+ * Separate from the selfie ticket below because a report needs four more facts
+ * to file itself, and every one of them is re-read from the database here
+ * rather than trusted from the browser. The phone sends ids; the name on the
+ * file and the path it lands on are composed from the rows those ids point at,
+ * so a tampered request can't file a report under a client it wasn't for.
+ */
+export async function createReportUploadUrl(input: {
+  type: ReportType
+  clientId: string
+  branchId: string | null
+  serialNo: string
+  filename: string
+  contentType: string
+  size: number
+}): Promise<ReportUploadTicket> {
+  const session = await verifySession()
+  if (!session) return { ok: false, message: "Sign in again to upload." }
+
+  if (!isR2Configured()) {
+    return {
+      ok: false,
+      message: "File storage isn't configured yet. Ask IT to set up R2.",
+    }
+  }
+  if (!isAllowedUploadType(input.contentType)) {
+    return { ok: false, message: "Upload a JPG, PNG, WEBP, HEIC or PDF." }
+  }
+  if (
+    !Number.isFinite(input.size) ||
+    input.size <= 0 ||
+    input.size > MAX_UPLOAD_BYTES
+  ) {
+    return { ok: false, message: "Files must be smaller than 10 MB." }
+  }
+
+  const serialNo = input.serialNo.trim()
+  if (!serialNo) {
+    return { ok: false, message: "Enter the report's serial number first." }
+  }
+
+  const client = await prisma.client.findUnique({
+    where: { id: input.clientId },
+    select: { id: true, name: true },
+  })
+  if (!client) {
+    return { ok: false, message: "That client is no longer on file." }
+  }
+
+  let branchName: string | null = null
+  if (input.branchId) {
+    const branch = await prisma.branch.findUnique({
+      where: { id: input.branchId },
+      select: { name: true, clientId: true },
+    })
+    // A branch belonging to a different client would file the report in the
+    // wrong cabinet, so it's rejected rather than quietly ignored.
+    if (!branch || branch.clientId !== client.id) {
+      return { ok: false, message: "That branch isn't part of this client." }
+    }
+    branchName = branch.name
+  }
+
+  const fileName = reportFileName({
+    serialNo,
+    clientName: client.name,
+    branchName,
+    sourceName: input.filename,
+  })
+
+  // Filed under the day the work was done. A shift that ends after midnight is
+  // punched under the day it began, and `attendanceDay` is what decides that,
+  // so the report lands in the same month as the punch that carries it.
+  const day = attendanceDay(new Date())
+
+  const key = await uniqueObjectKey(
+    buildReportKey({
+      year: day.getFullYear(),
+      typeFolder: REPORT_TYPE_FOLDER[input.type],
+      clientName: client.name,
+      branchName,
+      monthFolder: monthFolder(day.getMonth()),
+      fileName,
+    })
+  )
+
+  return {
+    ok: true,
+    url: await presignUpload(key, input.contentType),
+    key,
+    fileName,
+  }
+}
 
 /**
  * A short-lived URL to PUT one punch selfie — or the optional end-of-day report
@@ -492,6 +601,12 @@ export async function timeOut(
   // branch has to actually belong to the client it's filed under — otherwise a
   // report can be attributed to a site that pairing never existed at, and the
   // office would chase the wrong client for it.
+  // Names to rebuild each report's filename from, filled in by the validation
+  // pass below. The browser sends one too, but it is a label for the list on
+  // the way out — what gets stored is composed here, from the rows.
+  let clientNames = new Map<string, string>()
+  let branchNames = new Map<string, string>()
+
   if (reports.length > 0) {
     const clientIds = [...new Set(reports.map((report) => report.clientId))]
     const branchIds = [
@@ -501,12 +616,12 @@ export async function timeOut(
     const [clients, branches] = await Promise.all([
       prisma.client.findMany({
         where: { id: { in: clientIds } },
-        select: { id: true },
+        select: { id: true, name: true },
       }),
       branchIds.length
         ? prisma.branch.findMany({
             where: { id: { in: branchIds } },
-            select: { id: true, clientId: true },
+            select: { id: true, name: true, clientId: true },
           })
         : Promise.resolve([]),
     ])
@@ -515,6 +630,8 @@ export async function timeOut(
     const branchOwner = new Map(
       branches.map((branch) => [branch.id, branch.clientId])
     )
+    clientNames = new Map(clients.map((client) => [client.id, client.name]))
+    branchNames = new Map(branches.map((branch) => [branch.id, branch.name]))
 
     for (const report of reports) {
       if (!knownClients.has(report.clientId)) {
@@ -544,15 +661,31 @@ export async function timeOut(
       },
     }),
     prisma.attendanceReport.createMany({
-      data: reports.map((report) => ({
-        attendanceId: existing.id,
-        type: report.type,
-        clientId: report.clientId,
-        branchId: report.branchId || null,
-        serialNo: report.serialNo,
-        fileKey: report.fileKey,
-        fileName: report.fileName,
-      })),
+      data: reports.map((report) => {
+        const branchId = report.branchId || null
+        const clientName = clientNames.get(report.clientId)
+        const branchName = branchId ? (branchNames.get(branchId) ?? null) : null
+
+        return {
+          attendanceId: existing.id,
+          type: report.type,
+          clientId: report.clientId,
+          branchId,
+          serialNo: report.serialNo,
+          fileKey: report.fileKey,
+          // Recomposed from the client and branch rows rather than taken from
+          // the request. The upload was named the same way, so these agree —
+          // but only one of the two is a fact the browser can't rewrite.
+          fileName: clientName
+            ? reportFileName({
+                serialNo: report.serialNo,
+                clientName,
+                branchName,
+                sourceName: report.fileName,
+              })
+            : report.fileName,
+        }
+      }),
     }),
   ])
 

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { ArrowLeft, Loader2, Plus } from "lucide-react"
 import {
-  createAttendanceUploadUrl,
+  createReportUploadUrl,
   getAttendanceFileUrl,
   type ReportClient,
 } from "@/app/actions/attendance"
@@ -49,9 +49,19 @@ export function ReportForm({
   const [loadingBranches, setLoadingBranches] = useState(false)
   const [serialNo, setSerialNo] = useState("")
   const [file, setFile] = useState<UploadedFile | null>(null)
+  // What the server renamed the upload to. Kept because the office finds a
+  // report by its serial, never by whatever the scanner app called it.
+  const [savedAs, setSavedAs] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const client = clients.find((option) => option.id === clientId) ?? null
+
+  // The filename is built from the type, the client, the branch and the serial,
+  // so the file can't be sent until all four are settled — uploading first and
+  // typing the serial afterwards would store it under a name nobody searches.
+  const ready = Boolean(
+    type && client && serialNo.trim() && (!client.hasBranches || branchId)
+  )
 
   // Fetched when a client is picked, not with the page: every client's branches
   // at once is the payload AGENTS.md rules out, and only one client's are ever
@@ -91,7 +101,9 @@ export function ReportForm({
       branchName: branches.find((b) => b.id === branchId)?.name ?? null,
       serialNo: serialNo.trim(),
       fileKey: file.key,
-      fileName: file.name,
+      // The composed name, not the phone's. Only a label for the list on the
+      // way out — the punch recomposes it from the database when it files.
+      fileName: savedAs ?? file.name,
     })
   }
 
@@ -209,27 +221,48 @@ export function ReportForm({
 
       <Field>
         <FieldLabel className="text-xs">Soft copy</FieldLabel>
+        {!ready && (
+          <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+            Fill in the details above first — the file is renamed and filed
+            using them.
+          </p>
+        )}
         <FileUpload
           folder="receipts"
           value={file}
+          disabled={!ready}
           onChange={(next) => {
             setFile(next)
+            if (!next) setSavedAs(null)
             setError(null)
           }}
           label="Attach the report file"
-          // Filed under attendance with the serial in its name, and read back
-          // by the rule that owns attendance evidence.
-          upload={(filename, contentType, size) =>
-            createAttendanceUploadUrl(
-              "report",
+          // The server names the file and picks its folder from the client and
+          // branch rows these ids point at, so what comes back is the name the
+          // office will search for.
+          upload={async (filename, contentType, size) => {
+            const ticket = await createReportUploadUrl({
+              type: type as DraftReport["type"],
+              clientId,
+              branchId: branchId || null,
+              serialNo: serialNo.trim(),
               filename,
               contentType,
               size,
-              serialNo.trim() || undefined
-            )
-          }
+            })
+            setSavedAs(ticket.ok ? ticket.fileName : null)
+            return ticket
+          }}
           resolveUrl={getAttendanceFileUrl}
         />
+        {savedAs && (
+          <p className="text-xs text-muted-foreground">
+            Filed as{" "}
+            <span className="font-mono break-all text-foreground">
+              {savedAs}
+            </span>
+          </p>
+        )}
       </Field>
 
       {error && (

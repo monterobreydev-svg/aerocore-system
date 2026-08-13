@@ -10,6 +10,12 @@ import {
   minutesIntoDay,
   packOverlapping,
 } from "@/lib/schedule"
+import {
+  HOLIDAY_CELL,
+  HOLIDAY_PAY_NOTE,
+  HOLIDAY_TEXT,
+  holidayOn,
+} from "@/lib/holidays"
 import { cn } from "@/lib/utils"
 import type { ScheduleRecord } from "@/components/admin/schedule-types"
 
@@ -221,13 +227,17 @@ export function ScheduleTimeGrid({
             <div className="w-12 shrink-0 sm:w-14" />
             {days.map((day) => {
               const isToday = isSameDay(day, today)
+              const holiday = holidayOn(day)
               const count = visible.filter((schedule) =>
                 isSameDay(new Date(schedule.date), day)
               ).length
               return (
                 <div
                   key={day.toISOString()}
-                  className="min-w-0 flex-1 border-l px-1 py-1.5 text-center"
+                  className={cn(
+                    "min-w-0 flex-1 border-l px-1 py-1.5 text-center",
+                    holiday && HOLIDAY_CELL
+                  )}
                 >
                   <p className="truncate text-[11px] text-muted-foreground sm:text-xs">
                     {day.toLocaleDateString(undefined, { weekday: "short" })}
@@ -235,11 +245,26 @@ export function ScheduleTimeGrid({
                   <p
                     className={cn(
                       "mx-auto mt-0.5 flex size-6 items-center justify-center rounded-full text-sm font-medium",
+                      holiday && !isToday && HOLIDAY_TEXT,
                       isToday && "bg-sky-600 text-white"
                     )}
                   >
                     {day.getDate()}
                   </p>
+                  {/* Under the number rather than beside it here — a column
+                      head is already a stack, and the name has the full width
+                      of the column to itself. */}
+                  {holiday && (
+                    <p
+                      title={`${holiday} — regular holiday. ${HOLIDAY_PAY_NOTE}.`}
+                      className={cn(
+                        "truncate text-[10px] leading-tight font-medium sm:text-[11px]",
+                        HOLIDAY_TEXT
+                      )}
+                    >
+                      {holiday}
+                    </p>
+                  )}
                   {count > 0 && (
                     <p className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
                       {count} {count === 1 ? "job" : "jobs"}

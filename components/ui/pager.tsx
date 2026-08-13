@@ -18,6 +18,8 @@ export function Pager({
   label,
   unit = "Page",
   hrefFor,
+  prevHref,
+  nextHref,
   onPage,
 }: {
   page: number
@@ -33,7 +35,14 @@ export function Pager({
   label?: string
   /** What a page *is*, when it isn't a page. */
   unit?: string
+  /**
+   * Link builder, for a client component that pages by URL. A *server*
+   * component can't pass this — a function doesn't cross the boundary — so it
+   * passes the two links it would have produced instead.
+   */
   hrefFor?: (page: number) => string
+  prevHref?: string
+  nextHref?: string
   onPage?: (page: number) => void
 }) {
   if (total === 0) return null
@@ -59,7 +68,10 @@ export function Pager({
       </>
     )
 
-    if (disabled || !hrefFor) {
+    const href =
+      hrefFor?.(target) ?? (direction === "prev" ? prevHref : nextHref)
+
+    if (disabled || !href) {
       return (
         <Button
           type="button"
@@ -78,7 +90,7 @@ export function Pager({
       <Button
         variant="outline"
         size="sm"
-        render={<Link href={hrefFor(target)} scroll={false} />}
+        render={<Link href={href} scroll={false} />}
         aria-label={`${text} page`}
       >
         {body}

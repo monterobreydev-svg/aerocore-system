@@ -23,12 +23,39 @@ import {
   startOfMonth,
   startOfWeek,
 } from "@/lib/schedule"
+import {
+  HOLIDAY_CELL,
+  HOLIDAY_NOTE,
+  HOLIDAY_PAY_NOTE,
+  HOLIDAY_TEXT,
+  holidayOn,
+} from "@/lib/holidays"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { ScheduleRecord } from "@/components/admin/schedule-types"
 
 const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"]
+
+// The holiday, named, with what it's worth to the person reading it. On the
+// employee side that second half is the whole point: a shaded square tells you
+// a day is different, this tells you it pays double to work it.
+function HolidayNote({ day }: { day: Date }) {
+  const holiday = holidayOn(day)
+  if (!holiday) return null
+
+  return (
+    <p
+      className={cn(
+        "mt-1 inline-flex flex-wrap items-center gap-x-1.5 rounded-lg px-2 py-1 text-xs",
+        HOLIDAY_NOTE
+      )}
+    >
+      <span className="font-medium">{holiday}</span>
+      <span className="opacity-80">· {HOLIDAY_PAY_NOTE}</span>
+    </p>
+  )
+}
 
 function byStartTime(a: ScheduleRecord, b: ScheduleRecord) {
   return a.startTime.localeCompare(b.startTime)
@@ -226,12 +253,14 @@ function MonthGrid({
           ).length
           const isSelected = isSameDay(day, selected)
           const isToday = isSameDay(day, today)
+          const holiday = holidayOn(day)
 
           return (
             <button
               key={day.toISOString()}
               type="button"
               onClick={() => onSelectDay(day)}
+              title={holiday ? `${holiday} — ${HOLIDAY_PAY_NOTE}` : undefined}
               className={cn(
                 "flex aspect-square flex-col items-center justify-center gap-1 rounded-xl text-sm transition-colors outline-none",
                 !inMonth && "text-muted-foreground/40",
@@ -239,7 +268,14 @@ function MonthGrid({
                   ? "bg-sky-600 font-semibold text-white"
                   : isToday
                     ? "bg-sky-600/10 font-semibold text-sky-700 dark:text-sky-400"
-                    : "hover:bg-muted"
+                    : holiday
+                      ? cn(HOLIDAY_CELL, HOLIDAY_TEXT, "font-semibold")
+                      : "hover:bg-muted",
+                // A ring rather than a fill, so a holiday that is also today or
+                // the selected day still says so instead of losing to the blue.
+                // These squares are too small for a name — it goes under the
+                // grid, on the day that's open.
+                holiday && "ring-1 ring-red-500/40 ring-inset"
               )}
             >
               <span className="leading-none">{day.getDate()}</span>
@@ -353,6 +389,7 @@ export function EmployeeScheduleView({
                 ? "Nothing scheduled"
                 : `${todayCount} ${todayCount === 1 ? "job" : "jobs"}`}
             </p>
+            <HolidayNote day={today} />
           </div>
 
           <DayAgenda
@@ -472,6 +509,7 @@ export function EmployeeScheduleView({
                 day: "numeric",
               })}
             </p>
+            <HolidayNote day={selectedDay} />
             <DayAgenda
               day={selectedDay}
               schedules={schedules}

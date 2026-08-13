@@ -15,6 +15,7 @@ import {
   startOfWeek,
   type EmployeeBusyBlock,
 } from "@/lib/schedule"
+import { HOLIDAY_PAY_NOTE } from "@/lib/holidays"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import dynamic from "next/dynamic"
@@ -256,6 +257,14 @@ export function SchedulesView({
               {WORK_TYPE_LABELS[type]}
             </span>
           ))}
+
+          {/* What the amber days mean. Said once here so the cells only have to
+              carry the holiday's name, and said at all because the rate is the
+              reason anyone cares which days those are. */}
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400">
+            <span className="size-2 rounded-full bg-red-500" />
+            Regular holiday — {HOLIDAY_PAY_NOTE.toLowerCase()}
+          </span>
         </div>
       )}
 
