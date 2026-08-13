@@ -250,17 +250,17 @@ export function StaffCards({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {summary.map((stat) => (
           <Card key={stat.label} className="shadow-sm" size="sm">
-            <CardContent className="flex items-center gap-3">
+            <CardContent className="flex items-center gap-2.5 sm:gap-3">
               <div
                 className={cn(
-                  "flex size-10 shrink-0 items-center justify-center rounded-lg",
+                  "flex size-8 shrink-0 items-center justify-center rounded-lg sm:size-10",
                   stat.bg
                 )}
               >
-                <stat.icon className={cn("size-5", stat.color)} />
+                <stat.icon className={cn("size-4 sm:size-5", stat.color)} />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl leading-none font-semibold tabular-nums">
+                <p className="text-xl leading-none font-semibold tabular-nums sm:text-2xl">
                   {stat.value}
                 </p>
                 <p className="mt-1.5 truncate text-xs text-muted-foreground">

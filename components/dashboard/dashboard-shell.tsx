@@ -29,7 +29,10 @@ export async function DashboardShell({
             notifications={items}
             pendingCount={pendingCount}
           />
-          <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+          {/* Gutters scale with the screen. 16px each side of a 360px phone is
+              9% of the width spent on nothing — noticeable when the content is
+              a table of figures. */}
+          <div className="flex flex-1 flex-col gap-4 p-3 sm:p-4 md:p-6">
             {children}
           </div>
         </SidebarInset>

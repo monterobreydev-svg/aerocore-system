@@ -29,9 +29,11 @@ export function StatsSkeleton({ count = 4 }: { count?: number }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {Array.from({ length: count }).map((_, index) => (
-        <div key={index} className="rounded-xl border p-3">
+        <div key={index} className="rounded-xl border p-2.5 sm:p-3">
           <Skeleton className="h-3 w-16" />
-          <Skeleton className="mt-2.5 h-6 w-12" />
+          {/* Steps with the real figure it stands in for — a skeleton that
+              doesn't match its content jolts the page when the data lands. */}
+          <Skeleton className="mt-2.5 h-5 w-12 sm:h-6" />
         </div>
       ))}
     </div>
@@ -54,7 +56,7 @@ export function TableSkeleton({
       {Array.from({ length: rows }).map((_, row) => (
         <div
           key={row}
-          className="flex items-center gap-3 border-b p-3 last:border-b-0"
+          className="flex items-center gap-2.5 border-b p-2.5 last:border-b-0 sm:gap-3 sm:p-3"
           // Each row a little fainter than the last, so the list reads as
           // receding into the fold rather than as eight identical bars.
           style={{ opacity: 1 - row * (0.5 / rows) }}

@@ -1176,9 +1176,59 @@ export function ClientDetailView({
               </div>
 
               {/* A read-only ledger of every schedule created for this client.
-                  Scrolls sideways rather than collapsing on small screens —
-                  the columns only make sense read across as one row. */}
-              <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
+                  On a phone each job stacks into a card — six columns dragged
+                  sideways is not a way to read a service history — and the
+                  table returns from `md` up, where all six fit at once. */}
+              <div className="divide-y overflow-hidden rounded-xl ring-1 ring-foreground/10 md:hidden">
+                {client.jobs.map((job) => (
+                  <div key={job.id} className="flex flex-col gap-2 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {formatScheduleDate(job.date)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatTimeRange(job.startTime, job.endTime)}
+                        </p>
+                      </div>
+                      <Badge
+                        className={cn("shrink-0", SCHEDULE_STATUS_CHIP[job.status])}
+                      >
+                        {SCHEDULE_STATUS_LABELS[job.status]}
+                      </Badge>
+                    </div>
+
+                    {job.workTypes.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {job.workTypes.map((workType) => (
+                          <Badge
+                            key={workType}
+                            className={WORK_TYPE_SOLID[workType]}
+                          >
+                            {WORK_TYPE_LABELS[workType]}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <MapPin className="mt-0.5 size-3.5 shrink-0" />
+                      <span className="min-w-0">
+                        {job.branchName ?? "Head office"}
+                      </span>
+                    </p>
+
+                    <p className="text-xs text-muted-foreground">
+                      {job.employees.length > 0
+                        ? job.employees.join(", ")
+                        : "Unassigned"}
+                      {job.createdByName && ` · booked by ${job.createdByName}`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto rounded-xl ring-1 ring-foreground/10 md:block">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 hover:bg-muted/40">

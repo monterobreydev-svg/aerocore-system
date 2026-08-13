@@ -89,7 +89,7 @@ export function CreateScheduleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] gap-3 sm:max-w-xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] gap-3 sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Create schedule</DialogTitle>
           <DialogDescription className="text-xs">
@@ -101,7 +101,7 @@ export function CreateScheduleDialog({
         <form
           action={action}
           id="create-schedule-form"
-          className="-mx-1 max-h-[65vh] overflow-y-auto px-1 py-0.5"
+          className="-mx-1 max-h-[65dvh] overflow-y-auto px-1 py-0.5"
         >
           <ScheduleFormFields
             key={formKey}

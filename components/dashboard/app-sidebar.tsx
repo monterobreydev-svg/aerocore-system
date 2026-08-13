@@ -18,6 +18,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
   Collapsible,
@@ -83,6 +84,23 @@ function isPathActive(url: string, pathname: string) {
   )
 }
 
+/**
+ * Dismiss the sidebar after tapping a link — on a phone only.
+ *
+ * On a phone the sidebar is a sheet covering the page, so leaving it open after
+ * a tap hides the very thing that was just navigated to: the page loads behind
+ * a panel, and it looks like nothing happened until you find the scrim and
+ * dismiss it yourself. On a desktop the rail is permanent furniture and closing
+ * it on every click would be maddening, which is why this checks.
+ */
+function useCloseOnNavigate() {
+  const { isMobile, setOpenMobile } = useSidebar()
+
+  return () => {
+    if (isMobile) setOpenMobile(false)
+  }
+}
+
 function CollapsibleNavEntry({
   entry,
   pathname,
@@ -90,6 +108,7 @@ function CollapsibleNavEntry({
   entry: NavCollapsible
   pathname: string
 }) {
+  const closeOnNavigate = useCloseOnNavigate()
   const isChildActive = entry.items.some((child) =>
     isPathActive(child.url, pathname)
   )
@@ -138,7 +157,7 @@ function CollapsibleNavEntry({
                   isActive={isPathActive(child.url, pathname)}
                   className={subNavButtonClassName}
                   render={
-                    <Link href={child.url}>
+                    <Link href={child.url} onClick={closeOnNavigate}>
                       <child.icon />
                       <span>{child.title}</span>
                       <LinkPending className="ml-auto" />
@@ -161,6 +180,8 @@ function NavMenuEntry({
   entry: NavEntry
   pathname: string
 }) {
+  const closeOnNavigate = useCloseOnNavigate()
+
   if (isNavCollapsible(entry)) {
     return <CollapsibleNavEntry entry={entry} pathname={pathname} />
   }
@@ -174,7 +195,7 @@ function NavMenuEntry({
         tooltip={entry.title}
         className={navButtonClassName}
         render={
-          <Link href={entry.url}>
+          <Link href={entry.url} onClick={closeOnNavigate}>
             <entry.icon />
             <span>{entry.title}</span>
             {/* A prefetched route skips the pending phase entirely, so this

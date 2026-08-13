@@ -182,7 +182,7 @@ export function TimeOutDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[94dvh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0 sm:max-w-lg">
+      <DialogContent className="grid max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0 sm:max-w-lg">
         <DialogHeader className="gap-3 border-b p-4 pr-12">
           <div>
             <DialogTitle>Time out</DialogTitle>

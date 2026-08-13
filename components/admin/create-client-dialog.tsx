@@ -104,7 +104,7 @@ export function CreateClientDialog() {
         <form
           action={action}
           id="create-client-form"
-          className="-mx-1 max-h-[60vh] overflow-y-auto px-1 py-1"
+          className="-mx-1 max-h-[60dvh] overflow-y-auto px-1 py-1"
         >
           <div className="flex flex-col gap-6">
             <Section

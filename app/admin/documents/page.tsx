@@ -112,7 +112,7 @@ function SummaryCards({
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {cards.map((card) => (
-        <div key={card.label} className="rounded-xl border p-3">
+        <div key={card.label} className="rounded-xl border p-2.5 sm:p-3">
           <div className="flex items-center gap-2">
             <span
               className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${card.tone}`}
@@ -123,7 +123,7 @@ function SummaryCards({
               {card.label}
             </p>
           </div>
-          <p className="mt-2 text-2xl leading-none font-semibold tabular-nums">
+          <p className="mt-2 text-xl leading-none font-semibold tabular-nums sm:text-2xl">
             {card.value.toLocaleString()}
           </p>
           <p className="mt-1 truncate text-[11px] text-muted-foreground">
@@ -164,7 +164,7 @@ function FolderTile({ href, folder }: { href: string; folder: DocumentFolder }) 
 
 function Empty({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center sm:p-12">
       <div className="flex size-12 items-center justify-center rounded-full bg-muted">
         <FolderOpen className="size-5 text-muted-foreground" />
       </div>

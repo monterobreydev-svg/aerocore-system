@@ -94,7 +94,7 @@ function CommandBar({
 
   return (
     <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-sidebar to-[color-mix(in_oklab,var(--sidebar)_78%,var(--brand))] text-sidebar-foreground ring-1 ring-foreground/10">
-      <div className="flex flex-wrap items-end justify-between gap-4 p-5">
+      <div className="flex flex-wrap items-end justify-between gap-3 p-4 sm:gap-4 sm:p-5">
         <div className="min-w-0">
           <p className="text-[0.6875rem] font-medium tracking-[0.16em] text-sidebar-foreground/55 uppercase">
             {paging.tab === "day"
@@ -105,7 +105,7 @@ function CommandBar({
                 ? "Pay period"
                 : "Awaiting a decision"}
           </p>
-          <h3 className="font-heading mt-1.5 text-2xl leading-none font-semibold tracking-tight">
+          <h3 className="font-heading mt-1.5 text-xl leading-none font-semibold tracking-tight sm:text-2xl">
             {paging.tab === "day"
               ? viewing.toLocaleDateString(undefined, {
                   day: "numeric",
@@ -124,7 +124,7 @@ function CommandBar({
       {stats.length > 0 && (
         <dl className="grid grid-cols-2 divide-x divide-y divide-white/10 border-t border-white/10 bg-black/15 sm:grid-cols-4 sm:divide-y-0">
           {stats.map((stat) => (
-            <div key={stat.label} className="px-4 py-3">
+            <div key={stat.label} className="px-3 py-2.5 sm:px-4 sm:py-3">
               <dd
                 className={cn(
                   "text-lg leading-none font-semibold tabular-nums",
@@ -325,7 +325,7 @@ export function AdminAttendanceView({
         )}
 
         {paging.tab === "overtime" && (
-          <p className="text-3xl leading-none font-semibold tabular-nums">
+          <p className="text-2xl leading-none font-semibold tabular-nums sm:text-3xl">
             {pendingOvertime}
           </p>
         )}
@@ -442,7 +442,80 @@ export function AdminAttendanceView({
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto rounded-2xl border">
+              {/* A seven-column payroll grid is unreadable on a phone, so it
+                  becomes one card per person: the payable figure — the number
+                  the whole period is run for — leads, with the days and hours
+                  it was built from underneath. */}
+              <div className="divide-y overflow-hidden rounded-2xl border md:hidden">
+                {timesheet.map((row) => (
+                  <div key={row.employeeId} className="flex flex-col gap-2 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {row.employeeName}
+                        </p>
+                        {row.employeeNo && (
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {row.employeeNo}
+                          </p>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-base font-semibold tabular-nums">
+                          {(
+                            decimalHours(row.minutes) + row.overtimeHours
+                          ).toFixed(2)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          payable hours
+                        </p>
+                      </div>
+                    </div>
+
+                    <div
+                      className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                      role="presentation"
+                    >
+                      <div
+                        className="h-full rounded-full bg-brand"
+                        style={{
+                          width: `${Math.round((row.minutes / peakMinutes) * 100)}%`,
+                        }}
+                      />
+                    </div>
+
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {row.days} {row.days === 1 ? "day" : "days"}
+                      {row.openDays > 0 && (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          {" "}
+                          +{row.openDays} open
+                        </span>
+                      )}{" "}
+                      · {minutesLabel(row.minutes)} ·{" "}
+                      {decimalHours(row.minutes).toFixed(2)}h
+                      {row.overtimeHours > 0 && (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          {" "}
+                          +{row.overtimeHours.toFixed(2)} OT
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                ))}
+
+                <div className="flex items-baseline justify-between gap-3 bg-muted/40 p-3">
+                  <span className="text-sm font-semibold">Total</span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {(decimalHours(grand.minutes) + grand.overtimeHours).toFixed(
+                      2
+                    )}{" "}
+                    h
+                  </span>
+                </div>
+              </div>
+
+              <div className="hidden overflow-x-auto rounded-2xl border md:block">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">

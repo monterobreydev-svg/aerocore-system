@@ -115,7 +115,7 @@ export function PunchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[94dvh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0 sm:max-w-md">
+      <DialogContent className="grid max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0 sm:max-w-md">
         <DialogHeader className="border-b p-4 pr-12">
           <DialogTitle>Time in</DialogTitle>
           <DialogDescription className="text-xs">

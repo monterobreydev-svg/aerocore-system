@@ -320,7 +320,7 @@ export function CreateStaffDialog({
       {/* Header, stepper and footer stay put while only the fields scroll —
           on a phone the whole dialog scrolling means Continue sits below
           every field, so the primary action is never in reach. */}
-      <DialogContent className="flex max-h-[90vh] flex-col gap-4 overflow-hidden sm:max-w-3xl">
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-600/10">

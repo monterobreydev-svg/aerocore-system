@@ -211,7 +211,62 @@ export function AdminReimbursementsView({
                 No funds have been released yet.
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
+              <>
+              {/* On a phone the four money columns become a stacked card: the
+                  balance is the headline, the two figures it is made of sit
+                  under it, and Top up is a full-width tap target rather than a
+                  button you have to drag the table sideways to reach. */}
+              <div className="divide-y overflow-hidden rounded-xl ring-1 ring-foreground/10 md:hidden">
+                {activeBalances.map((balance) => {
+                  const onHand = balance.released - balance.liquidated
+                  return (
+                    <div key={balance.id} className="flex flex-col gap-2 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {balance.name}
+                          </p>
+                          {balance.employeeNo && (
+                            <p className="font-mono text-xs text-muted-foreground">
+                              {balance.employeeNo}
+                            </p>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p
+                            className={cn(
+                              "text-sm font-semibold tabular-nums",
+                              onHand < 0 && "text-destructive"
+                            )}
+                          >
+                            {peso(onHand)}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            on hand
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        {peso(balance.released)} released ·{" "}
+                        {peso(balance.liquidated)} liquidated
+                      </p>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => openRelease(balance.id)}
+                      >
+                        Top up
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="hidden overflow-x-auto rounded-xl ring-1 ring-foreground/10 md:block">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -268,6 +323,7 @@ export function AdminReimbursementsView({
                   </TableBody>
                 </Table>
               </div>
+              </>
             )}
           </div>
 
@@ -281,7 +337,33 @@ export function AdminReimbursementsView({
               </p>
             ) : (
               <>
-                <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
+                <div className="divide-y overflow-hidden rounded-xl ring-1 ring-foreground/10 md:hidden">
+                  {releases.map((release) => (
+                    <div key={release.id} className="flex flex-col gap-1.5 p-3">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="min-w-0 truncate text-sm font-medium">
+                          {release.employeeName}
+                        </p>
+                        <p className="shrink-0 text-sm font-semibold tabular-nums">
+                          {peso(release.amount)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {shortDate(release.releasedAt)} ·{" "}
+                        {release.method ?? "method not recorded"} · by{" "}
+                        {release.releasedByName}
+                      </p>
+                      {release.proofKey && release.proofName && (
+                        <FileLink
+                          fileKey={release.proofKey}
+                          name={release.proofName}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="hidden overflow-x-auto rounded-xl ring-1 ring-foreground/10 md:block">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 hover:bg-muted/40">

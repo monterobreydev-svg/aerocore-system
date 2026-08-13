@@ -179,7 +179,7 @@ export default async function SchedulesPage({
                 <stat.icon className={cn("size-5", stat.color)} />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl leading-none font-semibold tabular-nums">
+                <p className="text-xl leading-none font-semibold tabular-nums sm:text-2xl">
                   {stat.value}
                 </p>
                 <p className="mt-1.5 truncate text-xs text-muted-foreground">
