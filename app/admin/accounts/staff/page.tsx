@@ -3,6 +3,16 @@ import { requireManager } from "@/lib/auth"
 import { nextEmployeeNo } from "@/lib/employee"
 import { StaffCards, type StaffMember } from "@/components/admin/staff-cards"
 
+/**
+ * Edits shown per person, newest first.
+ *
+ * The panel they sit in is collapsed by default and scrolls at 20rem, so it was
+ * never going to show more than a couple of dozen anyway — the only thing an
+ * unbounded query bought was a page that got slower every time somebody
+ * corrected a phone number.
+ */
+const STAFF_EDIT_LOG_LIMIT = 25
+
 export default async function StaffPage() {
   const session = await requireManager()
 
@@ -36,20 +46,62 @@ export default async function StaffPage() {
     attendanceCounts.map((row) => [row.employeeId, row._count._all])
   )
 
+  // Named field by field rather than `include`d.
+  //
+  // The nested `include` this replaces pulled every column of UserAccount for
+  // every account — `passwordHash` among them — plus every column of Employee,
+  // plus the *entire* edit history of each person with no ceiling, and then the
+  // mapper below threw most of it away. A password hash should never be read
+  // into a page's memory to render a name, and an audit log that grows forever
+  // is the unbounded relation AGENTS.md rules out.
   const accounts = await prisma.userAccount.findMany({
-    include: {
+    select: {
+      id: true,
+      username: true,
+      role: true,
+      isActive: true,
       employee: {
-        include: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          middleName: true,
+          phoneNo: true,
+          email: true,
+          birthDate: true,
+          civilStatus: true,
+          address: true,
+          employeeNo: true,
+          position: true,
+          employmentType: true,
+          dateHired: true,
+          hourlyRate: true,
+          allowancePerCutoff: true,
+          skills: true,
+          emergencyContactPerson: true,
+          emergencyContactNo: true,
+          emergencyContactRelationship: true,
+          tinNo: true,
+          sssNo: true,
+          philhealthNo: true,
+          pagibigNo: true,
+          createdAt: true,
           createdBy: {
-            include: {
+            select: {
               employee: { select: { firstName: true, lastName: true } },
             },
           },
           editLogs: {
             orderBy: { createdAt: "desc" },
-            include: {
+            take: STAFF_EDIT_LOG_LIMIT,
+            select: {
+              id: true,
+              field: true,
+              oldValue: true,
+              newValue: true,
+              createdAt: true,
               editedBy: {
-                include: {
+                select: {
                   employee: { select: { firstName: true, lastName: true } },
                 },
               },

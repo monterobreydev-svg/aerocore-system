@@ -150,6 +150,9 @@ model StaffEditLog {
   oldValue   String?
   newValue   String?
   createdAt  DateTime    @default(now())
+
+  // Always read as "this person's edits, newest first", on the staff record.
+  @@index([employeeId, createdAt])
 }
 
 // How the client is registered with the BIR — drives how their invoices
@@ -252,6 +255,16 @@ model Schedule {
   createdBy     UserAccount?   @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
 
   assignments ScheduleAssignment[]
+
+  // The calendar reads a month at a time and the day view reads one day, so
+  // every query here starts by narrowing on the date. Without this the grid is
+  // a sequential scan that grows with every job ever booked.
+  @@index([date])
+  // "What has this client had done" — the service history on the client record.
+  @@index([clientId, date])
+  // The dashboard counts jobs still to run; status alone is low-cardinality, so
+  // it is paired with the date that always accompanies it.
+  @@index([status, date])
 }
 
 // Join table: which employees are assigned to a given schedule. Drives the
@@ -265,6 +278,10 @@ model ScheduleAssignment {
   createdAt  DateTime @default(now())
 
   @@unique([scheduleId, employeeId])
+  // The unique above indexes (scheduleId, employeeId) and so can serve a lookup
+  // by schedule — but not one by employee, which is how an employee's own
+  // schedule and every "is this person busy" check reads it.
+  @@index([employeeId])
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +327,10 @@ model Reimbursement {
   items ReimbursementItem[]
 
   @@index([employeeId, status])
+  // The employee's own history and the week window on it both order by filing
+  // time; the admin queue reads every pending claim in that order too.
+  @@index([employeeId, submittedAt])
+  @@index([status, submittedAt])
 }
 
 // One receipt: what was bought, for which client, on which S.O., how much,
@@ -424,6 +445,10 @@ model Attendance {
 
   @@unique([employeeId, date])
   @@index([employeeId, date])
+  // The admin day view asks "everyone who punched on this date", with no
+  // employee to lead on. A composite starting with employeeId can't serve that
+  // — Postgres would scan the table — so the date needs an index of its own.
+  @@index([date])
 }
 
 // What kind of paperwork a visit produced. PMS is the scheduled preventive
@@ -465,6 +490,10 @@ model AttendanceReport {
   @@index([attendanceId])
   @@index([clientId])
   @@index([serialNo])
+  // The Documents tree narrows by type first, then groups by client and branch
+  // inside it — every level of the folder browser starts from this pair.
+  @@index([type, clientId])
+  @@index([branchId])
 }
 
 enum OvertimeStatus {
