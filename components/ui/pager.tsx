@@ -4,6 +4,7 @@ import Link from "next/link"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { LinkPending } from "@/components/ui/link-pending"
 
 // Two modes on purpose. A server-paged list arrives as links, because the next
 // page of rows has to be fetched. A list already in the browser pages with state
@@ -86,6 +87,8 @@ export function Pager({
       )
     }
 
+    // A link-paged list waits on the server for the next page, and there is no
+    // route change to trigger a `loading.tsx` — so the button says so itself.
     return (
       <Button
         variant="outline"
@@ -94,6 +97,7 @@ export function Pager({
         aria-label={`${text} page`}
       >
         {body}
+        <LinkPending />
       </Button>
     )
   }

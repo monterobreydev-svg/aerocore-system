@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -33,6 +33,7 @@ import {
 } from "@/components/dashboard/nav-items"
 import type { Role } from "@/app/generated/prisma/client"
 import { isAdminPathAllowedForRole } from "@/lib/roles"
+import { LinkPending } from "@/components/ui/link-pending"
 
 function filterGroupsForRole(groups: NavGroup[], role: Role): NavGroup[] {
   return groups
@@ -97,9 +98,17 @@ function CollapsibleNavEntry({
   // Auto-expand when navigation lands on one of this section's own pages
   // (e.g. following a link straight to /admin/accounts/staff). Doesn't
   // force-close when navigating away — that stays under the user's control.
-  useEffect(() => {
+  //
+  // Adjusted during render rather than in an effect: the effect version ran a
+  // second render on every navigation into the section and tripped the lint
+  // rule against synchronous setState in an effect. Tracking the previous value
+  // is what makes this fire on the *transition* into active, not on every
+  // render while active — which is what would fight the user's own collapse.
+  const [wasChildActive, setWasChildActive] = useState(isChildActive)
+  if (isChildActive !== wasChildActive) {
+    setWasChildActive(isChildActive)
     if (isChildActive) setOpen(true)
-  }, [isChildActive])
+  }
 
   return (
     <Collapsible
@@ -132,6 +141,7 @@ function CollapsibleNavEntry({
                     <Link href={child.url}>
                       <child.icon />
                       <span>{child.title}</span>
+                      <LinkPending className="ml-auto" />
                     </Link>
                   }
                 />
@@ -167,6 +177,9 @@ function NavMenuEntry({
           <Link href={entry.url}>
             <entry.icon />
             <span>{entry.title}</span>
+            {/* A prefetched route skips the pending phase entirely, so this
+                only ever shows when the navigation is genuinely waiting. */}
+            <LinkPending className="ml-auto" />
           </Link>
         }
       />

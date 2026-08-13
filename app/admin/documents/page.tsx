@@ -21,6 +21,7 @@ import {
   type TreePath,
 } from "@/lib/document-tree"
 import type { ReportType } from "@/components/attendance/admin-attendance"
+import { LinkPending } from "@/components/ui/link-pending"
 import { Pager } from "@/components/ui/pager"
 import { DocumentSearch } from "@/components/documents/document-search"
 import { ReportFileRow } from "@/components/documents/report-file-row"
@@ -154,6 +155,9 @@ function FolderTile({ href, folder }: { href: string; folder: DocumentFolder }) 
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
         {folder.count}
       </span>
+      {/* Opening a folder is a query change, not a route change, so no
+          `loading.tsx` fires — the tile has to show its own wait. */}
+      <LinkPending className="ml-1 text-muted-foreground" />
     </Link>
   )
 }
