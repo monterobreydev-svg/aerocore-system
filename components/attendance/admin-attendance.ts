@@ -26,12 +26,10 @@ export type OvertimeSummary = {
 }
 
 /** The hours that actually count — what was granted, falling back to what was asked. */
-export function grantedHours(overtime: {
-  hours: number
-  approvedHours: number | null
-}) {
-  return overtime.approvedHours ?? overtime.hours
-}
+// Re-exported rather than defined here: it used to live in this file, which is
+// admin-only, so the employee side quietly grew a second, wrong answer to the
+// same question. One definition, in the shared rules module.
+export { grantedHours } from "@/lib/attendance"
 
 export type ReportType = "PMS" | "SERVICE"
 

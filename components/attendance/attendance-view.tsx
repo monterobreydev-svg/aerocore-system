@@ -56,7 +56,13 @@ export type TodayPunch = {
   /** How many reports were filed with the time out. */
   reportCount: number
   hasNote: boolean
-  overtime: { hours: number; status: string } | null
+  overtime: {
+    /** What was asked for. */
+    hours: number
+    /** What was granted, when that differs from what was asked. */
+    approvedHours: number | null
+    status: string
+  } | null
 }
 
 export type AttendanceDay = {
@@ -73,6 +79,29 @@ const OVERTIME_CHIP: Record<string, string> = {
   PENDING: "bg-amber-600/10 text-amber-700 dark:text-amber-400",
   APPROVED: "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400",
   REJECTED: "bg-rose-600/10 text-rose-700 dark:text-rose-400",
+}
+
+/**
+ * What happened to the request, in the employee's own terms.
+ *
+ * The reduction is the case that has to be spelled out. An approval for fewer
+ * hours than were asked for used to show the requested figure beside an
+ * "Approved" chip, so someone who asked for four and was granted one read it
+ * as four approved — and only found out at payday. The two numbers are named
+ * together, in the same sentence, whenever they differ.
+ */
+function overtimeSummary(overtime: NonNullable<TodayPunch["overtime"]>) {
+  if (overtime.status === "REJECTED") {
+    return `Your ${overtime.hours}h request was turned down.`
+  }
+
+  if (overtime.status === "APPROVED") {
+    return overtime.approvedHours == null
+      ? `Approved for ${overtime.hours}h.`
+      : `Approved for ${overtime.approvedHours}h of the ${overtime.hours}h you asked for.`
+  }
+
+  return `You asked for ${overtime.hours}h. Waiting on the office.`
 }
 
 export function AttendanceView({
@@ -249,7 +278,7 @@ export function AttendanceView({
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {gate.state === "requested" && punch?.overtime
-                ? `You asked for ${punch.overtime.hours}h.`
+                ? overtimeSummary(punch.overtime)
                 : gate.state === "open"
                   ? `The window closes in ${gate.minutesLeft} min, when your shift ends.`
                   : gate.state === "early"

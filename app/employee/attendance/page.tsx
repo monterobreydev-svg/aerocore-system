@@ -4,6 +4,7 @@ import { isR2Configured } from "@/lib/r2"
 import {
   attendanceDay,
   canPunchWithoutSchedule,
+  grantedHours,
   MAX_SHIFT_HOURS,
   nextDay,
 } from "@/lib/attendance"
@@ -44,7 +45,7 @@ export default async function EmployeeAttendancePage() {
       timeOut: true,
       reportNote: true,
       _count: { select: { reports: true } },
-      overtime: { select: { hours: true, status: true } },
+      overtime: { select: { hours: true, approvedHours: true, status: true } },
     },
   })
 
@@ -83,7 +84,7 @@ export default async function EmployeeAttendancePage() {
             timeOut: true,
             reportNote: true,
             _count: { select: { reports: true } },
-            overtime: { select: { hours: true, status: true } },
+            overtime: { select: { hours: true, approvedHours: true, status: true } },
           },
         }),
     prisma.attendance.findMany({
@@ -102,7 +103,7 @@ export default async function EmployeeAttendancePage() {
         // A count, not the rows — the history list only shows that reports
         // exist, and a fortnight of them would be the bulk of this payload.
         _count: { select: { reports: true } },
-        overtime: { select: { hours: true, status: true } },
+        overtime: { select: { hours: true, approvedHours: true, status: true } },
       },
       orderBy: { date: "desc" },
     }),
@@ -138,9 +139,16 @@ export default async function EmployeeAttendancePage() {
         timeOut: todayRecord.timeOut?.toISOString() ?? null,
         reportCount: todayRecord._count.reports,
         hasNote: Boolean(todayRecord.reportNote),
+        // Both figures: what was asked for, and what came back. The card needs
+        // the pair to say "1h of the 4h you asked for" rather than quietly
+        // showing one number and letting the reader assume it's the other.
         overtime: todayRecord.overtime
           ? {
               hours: Number(todayRecord.overtime.hours),
+              approvedHours:
+                todayRecord.overtime.approvedHours == null
+                  ? null
+                  : Number(todayRecord.overtime.approvedHours),
               status: todayRecord.overtime.status,
             }
           : null,
@@ -153,7 +161,17 @@ export default async function EmployeeAttendancePage() {
     timeIn: record.timeIn.toISOString(),
     timeOut: record.timeOut?.toISOString() ?? null,
     reportCount: record._count.reports,
-    overtimeHours: record.overtime ? Number(record.overtime.hours) : null,
+    // The badge on a past day shows the hours that stand, not the hours that
+    // were asked for — an approved day reduced from 4h to 1h reads "+1h".
+    overtimeHours: record.overtime
+      ? grantedHours({
+          hours: Number(record.overtime.hours),
+          approvedHours:
+            record.overtime.approvedHours == null
+              ? null
+              : Number(record.overtime.approvedHours),
+        })
+      : null,
     overtimeStatus: record.overtime?.status ?? null,
   }))
 

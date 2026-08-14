@@ -36,6 +36,27 @@ export const COARSE_FIX_METRES = 200
 export const MAX_OVERTIME_HOURS = 8
 
 /**
+ * The hours that actually count for an overtime request.
+ *
+ * `approvedHours` is only written when the office granted something other than
+ * what was asked for, so null means "as requested" rather than "nothing" —
+ * which makes `approvedHours ?? hours` the answer for every status, including
+ * a request still waiting on a decision.
+ *
+ * This lives here, beside the other attendance rules, because both sides of
+ * the app have to agree on it. It didn't: the admin screens had their own copy
+ * and the employee's own attendance page had none, so a request for four hours
+ * that was cut to one still read as "4h" to the person who filed it — approved,
+ * apparently in full, for hours they were never going to be paid.
+ */
+export function grantedHours(overtime: {
+  hours: number
+  approvedHours: number | null
+}) {
+  return overtime.approvedHours ?? overtime.hours
+}
+
+/**
  * How long a punch may stay open before timing out is no longer plausible.
  *
  * A shift that runs past midnight is ordinary — 22:00 to 06:00 is one shift,
