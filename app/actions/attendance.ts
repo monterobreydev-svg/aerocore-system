@@ -37,6 +37,7 @@ import {
   ATTENDANCE_DETAIL_SELECT,
   toAttendanceRow,
 } from "@/lib/attendance-query"
+import { reverseGeocode } from "@/lib/geocode"
 import {
   STAFF_DAY_LIMIT,
   STAFF_SUMMARY_DAYS,
@@ -346,6 +347,49 @@ export async function getAttendanceFileUrl(key: string) {
   }
 
   return presignDownload(key)
+}
+
+/**
+ * The place names for a punch's two positions.
+ *
+ * Asked for separately from the record itself, and only when the detail dialog
+ * is opened: the day log is a list of everyone who punched, and resolving two
+ * addresses per row would turn opening it into dozens of outbound calls for
+ * addresses nobody asked to see. Cached in the database after the first look
+ * — see lib/geocode.
+ *
+ * Admin-side only, matching where this dialog is used. An address is a
+ * meaningfully softer piece of information than a coordinate — "Brgy. San
+ * Isidro, Cabuyao" is legible to anyone, where a lat/long is not — so it is
+ * gated at least as tightly as the punch it describes.
+ */
+export async function getPunchPlaces(
+  points: { latitude: number; longitude: number }[]
+): Promise<(string | null)[]> {
+  const session = await verifySession()
+  if (session.role !== "DIRECTOR" && session.role !== "ADMINISTRATOR") {
+    return points.map(() => null)
+  }
+
+  // Two per punch. A caller asking for more than a handful is not the dialog.
+  if (points.length === 0 || points.length > 4) return points.map(() => null)
+
+  const valid = points.every(
+    (point) =>
+      Number.isFinite(point.latitude) &&
+      Number.isFinite(point.longitude) &&
+      Math.abs(point.latitude) <= 90 &&
+      Math.abs(point.longitude) <= 180
+  )
+  if (!valid) return points.map(() => null)
+
+  try {
+    return await reverseGeocode(points)
+  } catch {
+    // The address is a convenience laid over the coordinates; never a reason
+    // for the dialog to fail.
+    return points.map(() => null)
+  }
 }
 
 // ---------------------------------------------------------------------------

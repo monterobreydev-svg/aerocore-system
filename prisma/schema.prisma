@@ -484,6 +484,28 @@ model Attendance {
   @@index([date])
 }
 
+// A coordinate pair turned into words, remembered so it is only ever asked
+// once.
+//
+// Reverse geocoding is an outbound call to somebody else's service, and a punch
+// carries two positions. Crews return to the same sites week after week, so the
+// key is the coordinate rounded to four decimals — about 11 metres, which is
+// finer than the GPS fixes being looked up and coarse enough that the whole
+// company converges on a handful of rows. Without this, opening the same day
+// twice would ask twice.
+//
+// `label` null means the lookup ran and the provider had nothing for that spot
+// — cached deliberately, so a blank patch of map isn't re-asked on every view.
+// A failed request caches nothing and is simply retried next time.
+model GeocodedPlace {
+  id        String   @id @default(uuid())
+  // "14.2385,121.1648" — rounded, and a string rather than two floats because
+  // this is an equality lookup and float keys don't compare reliably.
+  key       String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+}
+
 // What kind of paperwork a visit produced. PMS is the scheduled preventive
 // maintenance round; SERVICE is a call-out -- a repair, a complaint, an
 // installation. The two are filed on different forms and are chased separately

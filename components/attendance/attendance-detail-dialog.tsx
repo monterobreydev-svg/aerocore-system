@@ -10,7 +10,10 @@ import {
   LogOut,
   MapPin,
 } from "lucide-react"
-import { getAttendanceFileUrl } from "@/app/actions/attendance"
+import {
+  getAttendanceFileUrl,
+  getPunchPlaces,
+} from "@/app/actions/attendance"
 import {
   clockTime,
   COARSE_FIX_METRES,
@@ -91,12 +94,15 @@ function PunchCard({
   fix,
   selfieUrl,
   loading,
+  place,
 }: {
   kind: "in" | "out"
   at: string | null
   fix: PunchFix | null
   selfieUrl: string | null
   loading: boolean
+  /** Resolved address, or null while it's being looked up or if it can't be. */
+  place: string | null
 }) {
   const coarse = fix?.accuracy != null && fix.accuracy > COARSE_FIX_METRES
   const Icon = kind === "in" ? LogIn : LogOut
@@ -185,6 +191,18 @@ function PunchCard({
               {coordinateLabel(fix.latitude, fix.longitude)}
             </span>
           </a>
+
+          {/* The coordinate says where with precision; this says where in
+              words. Only rendered once it resolves — a "Looking up…" line that
+              often ends in nothing would be worse than the address simply
+              appearing a moment later. Two lines at most, so a long provincial
+              address can't stretch the card. */}
+          {place && (
+            <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+              {place}
+            </p>
+          )}
+
           <span
             title={
               coarse ? "Too rough to place at a site" : "Reported accuracy"
@@ -252,6 +270,10 @@ export function AttendanceDetailDialog({
     out: null,
   })
   const [loading, setLoading] = useState(true)
+  const [places, setPlaces] = useState<{
+    in: string | null
+    out: string | null
+  }>({ in: null, out: null })
 
   // Signed at open time, not baked into the page: nothing in the bucket is
   // public, and a URL minted when the table rendered would be stale — or worse,
@@ -275,6 +297,42 @@ export function AttendanceDetailDialog({
       cancelled = true
     }
   }, [row.timeInSelfieKey, row.timeOutSelfieKey])
+
+  // Addresses, in their own request and deliberately after the photographs.
+  // A cache miss means waiting on somebody else's geocoder, and the evidence
+  // shouldn't sit behind that — the coordinates are already on screen, and the
+  // place name drops in when it arrives.
+  const timeInPoint = row.timeInFix
+  const timeOutPoint = row.timeOutFix
+
+  useEffect(() => {
+    let cancelled = false
+
+    const points = [timeInPoint, timeOutPoint].filter(
+      (point): point is PunchFix => point != null
+    )
+    if (points.length === 0) return
+
+    void (async () => {
+      const labels = await getPunchPlaces(
+        points.map((point) => ({
+          latitude: point.latitude,
+          longitude: point.longitude,
+        }))
+      )
+      if (cancelled) return
+      // Mapped back by position: the out fix is only in the request when it
+      // exists, so its label is the second entry only when it was sent.
+      setPlaces({
+        in: timeInPoint ? labels[0] : null,
+        out: timeOutPoint ? labels[timeInPoint ? 1 : 0] : null,
+      })
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [timeInPoint, timeOutPoint])
 
   const overtime = row.overtime
   const working = !row.timeOut
@@ -383,6 +441,7 @@ export function AttendanceDetailDialog({
                   fix={row.timeInFix}
                   selfieUrl={urls.in}
                   loading={loading}
+                  place={places.in}
                 />
                 <PunchCard
                   kind="out"
@@ -390,6 +449,7 @@ export function AttendanceDetailDialog({
                   fix={row.timeOutFix}
                   selfieUrl={urls.out}
                   loading={loading}
+                  place={places.out}
                 />
               </div>
 
