@@ -5,7 +5,9 @@ import type { ScheduleStatus } from "@/app/generated/prisma/client"
 import {
   AlertTriangle,
   CalendarDays,
+  ChevronDown,
   Clock,
+  History,
   MapPin,
   Pencil,
   Phone,
@@ -17,10 +19,18 @@ import {
 } from "lucide-react"
 import {
   deleteSchedule,
+  listScheduleHistory,
   updateScheduleStatus,
   updateSchedule,
+  type ScheduleHistoryEntry,
   type UpdateScheduleState,
 } from "@/app/actions/schedules"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { Spinner } from "@/components/ui/spinner"
 import {
   SCHEDULE_STATUSES,
   SCHEDULE_STATUS_CHIP,
@@ -67,6 +77,111 @@ function DetailRow({
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
+  )
+}
+
+// The words for each logged field. The log stores the key so the wording can
+// change without rewriting rows that were already written.
+const FIELD_LABELS: Record<string, string> = {
+  client: "the client",
+  branch: "the branch",
+  date: "the date",
+  startTime: "the start time",
+  endTime: "the end time",
+  status: "the status",
+  workTypes: "the work types",
+  assigned: "the crew",
+  contactPerson: "the on-site contact",
+  contactNumber: "the contact number",
+  remarks: "the remarks",
+}
+
+/** An empty side of a change reads as a dash, not as nothing at all. */
+function historyValue(value: string | null) {
+  return value && value.trim() !== "" ? value : "—"
+}
+
+/**
+ * Who changed what, since the job was booked.
+ *
+ * Fetched when the panel is opened rather than with the calendar: history is
+ * per-job and grows forever, so shipping it with every schedule on screen is
+ * the payload that scales with two things at once. Re-read on each open rather
+ * than cached — a status chip one tap away can change it at any moment, and a
+ * stale history is worse than a half-second wait.
+ */
+function ScheduleHistory({ scheduleId }: { scheduleId: string }) {
+  const [open, setOpen] = useState(false)
+  const [entries, setEntries] = useState<ScheduleHistoryEntry[] | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function handleOpenChange(next: boolean) {
+    setOpen(next)
+    if (!next) return
+
+    setLoading(true)
+    try {
+      setEntries(await listScheduleHistory(scheduleId))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={handleOpenChange}
+      className="group/history rounded-lg border p-3"
+    >
+      <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium outline-none">
+        <span className="flex items-center gap-2.5">
+          <History className="size-4 text-muted-foreground" />
+          Edit history
+        </span>
+        <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[panel-open]/history:rotate-180" />
+      </CollapsibleTrigger>
+
+      <CollapsibleContent className="mt-3">
+        {loading && entries === null ? (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Spinner className="size-3.5" />
+            Loading…
+          </span>
+        ) : entries && entries.length > 0 ? (
+          <div className="flex max-h-64 flex-col gap-3 overflow-y-auto pr-1">
+            {entries.map((entry) => (
+              <div key={entry.id} className="flex gap-2.5 text-sm">
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-sky-500" />
+                <div className="min-w-0">
+                  <p>
+                    <span className="font-medium">{entry.editedByName}</span>{" "}
+                    changed{" "}
+                    <span className="font-medium">
+                      {FIELD_LABELS[entry.field] ?? entry.field}
+                    </span>{" "}
+                    from{" "}
+                    <Badge variant="outline">
+                      {historyValue(entry.oldValue)}
+                    </Badge>{" "}
+                    to{" "}
+                    <Badge variant="outline">
+                      {historyValue(entry.newValue)}
+                    </Badge>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Nothing has been changed since this job was created.
+          </p>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -220,6 +335,9 @@ function ScheduleSummary({
             </span>
           </DetailRow>
         </div>
+
+        {/* And who changed it since. Second question after "who made this". */}
+        <ScheduleHistory scheduleId={schedule.id} />
 
         {confirmDelete && (
           <div className="flex flex-col gap-3 rounded-lg bg-destructive/10 p-3 text-sm">

@@ -223,10 +223,20 @@ export function ScheduleEmployeePicker({
           const matches = matchById[employee.id]
 
           return (
+            // `relative` is load-bearing, not styling. The input below is
+            // `sr-only`, which is `position: absolute` — so without a
+            // positioned ancestor here its containing block becomes the
+            // *dialog panel* (the nearest positioned ancestor, being
+            // `fixed`). Eight hidden inputs then anchor to the panel at their
+            // static positions, inflating its scrollable area far past its
+            // own content, and clicking a row near the bottom of this list
+            // makes the browser scroll that phantom overflow into view: the
+            // form jumps back to the top and the panel slides up leaving a
+            // band of empty white under the footer.
             <label
               key={employee.id}
               className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted",
+                "relative flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted",
                 isChecked && "bg-sky-600/5",
                 disabled && "pointer-events-none opacity-60"
               )}

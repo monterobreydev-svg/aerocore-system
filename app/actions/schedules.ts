@@ -4,8 +4,14 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/auth"
-import { dateKey } from "@/lib/schedule"
+import {
+  dateKey,
+  SCHEDULE_STATUS_LABELS,
+  toTimeInputValue,
+  WORK_TYPE_LABELS,
+} from "@/lib/schedule"
 import { notifyEmployees } from "@/lib/notify"
+import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
 
 async function requireScheduleAccess() {
   const session = await verifySession()
@@ -21,6 +27,81 @@ async function requireScheduleAccess() {
 
 function combineDateAndTime(date: string, time: string) {
   return new Date(`${date}T${time}:00`)
+}
+
+// ---------------------------------------------------------------------------
+// Edit history
+//
+// One row per field that actually moved, holding both sides in the words the
+// office uses — client and branch by name, status and work types by label, the
+// crew by who was on it. The point of the log is that somebody reads it weeks
+// later and understands what happened without opening anything else, so the
+// values are resolved here rather than stored as ids to be joined back later.
+// ---------------------------------------------------------------------------
+
+type ScheduleSnapshot = {
+  client: string
+  branch: string | null
+  date: string
+  startTime: string
+  endTime: string
+  status: ScheduleStatus
+  workTypes: WorkType[]
+  contactPerson: string | null
+  contactNumber: string | null
+  remarks: string | null
+  assigned: string[]
+}
+
+const timeOf = (value: Date) => toTimeInputValue(value.toISOString())
+const dateKeyOf = (value: Date) => dateKey(value)
+
+// Sorted, so re-saving the same crew or the same work types in a different
+// order isn't recorded as a change that never happened.
+function listOf(values: readonly string[]) {
+  return [...values].sort().join(", ")
+}
+
+function diffSchedule(before: ScheduleSnapshot, after: ScheduleSnapshot) {
+  const changes: { field: string; oldValue: string; newValue: string }[] = []
+
+  function put(field: string, oldValue: string | null, newValue: string | null) {
+    if ((oldValue ?? "") !== (newValue ?? "")) {
+      changes.push({
+        field,
+        oldValue: oldValue ?? "",
+        newValue: newValue ?? "",
+      })
+    }
+  }
+
+  put("client", before.client, after.client)
+  // A job with no branch is at the client's head office, which is what the
+  // form calls it — so that is what the history should call it too.
+  put("branch", before.branch ?? "Head office", after.branch ?? "Head office")
+  put("date", before.date, after.date)
+  put("startTime", before.startTime, after.startTime)
+  put("endTime", before.endTime, after.endTime)
+  put(
+    "status",
+    SCHEDULE_STATUS_LABELS[before.status],
+    SCHEDULE_STATUS_LABELS[after.status]
+  )
+  put(
+    "workTypes",
+    listOf(before.workTypes.map((type) => WORK_TYPE_LABELS[type])),
+    listOf(after.workTypes.map((type) => WORK_TYPE_LABELS[type]))
+  )
+  put(
+    "assigned",
+    listOf(before.assigned) || "Nobody",
+    listOf(after.assigned) || "Nobody"
+  )
+  put("contactPerson", before.contactPerson, after.contactPerson)
+  put("contactNumber", before.contactNumber, after.contactNumber)
+  put("remarks", before.remarks, after.remarks)
+
+  return changes
 }
 
 function shortTime(value: Date) {
@@ -125,8 +206,7 @@ const WORK_TYPE_VALUES = [
   "MAINTENANCE",
   "CLEANING",
   "INSPECTION",
-  "SURVEY",
-  "TROUBLESHOOT",
+  "BACKJOB",
 ] as const
 
 const STATUS_VALUES = [
@@ -378,12 +458,32 @@ export async function updateSchedule(
     // Read before the wipe: editing a job re-writes every assignment, so
     // "who is new to this job" can only be answered from what was there
     // first. Without it, saving a remarks change would re-notify the whole
-    // crew.
-    const previous = await tx.scheduleAssignment.findMany({
-      where: { scheduleId },
-      select: { employeeId: true },
+    // crew — and the history below would have nothing to compare against.
+    //
+    // Names, not ids: a log entry reading "clientId a3f1… → b8c2…" is a row
+    // nobody can act on months later.
+    const prior = await tx.schedule.findUniqueOrThrow({
+      where: { id: scheduleId },
+      select: {
+        date: true,
+        startTime: true,
+        endTime: true,
+        contactPerson: true,
+        contactNumber: true,
+        remarks: true,
+        workTypes: true,
+        status: true,
+        client: { select: { name: true } },
+        branch: { select: { name: true } },
+        assignments: {
+          select: {
+            employeeId: true,
+            employee: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
     })
-    const before = new Set(previous.map((row) => row.employeeId))
+    const before = new Set(prior.assignments.map((row) => row.employeeId))
 
     const updated = await tx.schedule.update({
       where: { id: scheduleId },
@@ -414,6 +514,64 @@ export async function updateSchedule(
       await tx.scheduleAssignment.createMany({
         data: employeeIds.map((employeeId) => ({ scheduleId, employeeId })),
         skipDuplicates: true,
+      })
+    }
+
+    // In the same transaction as the change it describes: a history that can
+    // survive a failed write is a history nobody can trust.
+    //
+    // Names for whoever is on the job now. The people already on it came back
+    // with `prior`; this covers the ones just added.
+    const named = await tx.employee.findMany({
+      where: { id: { in: employeeIds } },
+      select: { id: true, firstName: true, lastName: true },
+    })
+    const nameById = new Map(
+      named.map((row) => [row.id, `${row.firstName} ${row.lastName}`])
+    )
+    const assignedAfter = employeeIds.map(
+      (id) => nameById.get(id) ?? "Unknown employee"
+    )
+    const changes = diffSchedule(
+      {
+        client: prior.client.name,
+        branch: prior.branch?.name ?? null,
+        date: dateKeyOf(prior.date),
+        startTime: timeOf(prior.startTime),
+        endTime: timeOf(prior.endTime),
+        status: prior.status,
+        workTypes: prior.workTypes,
+        contactPerson: prior.contactPerson,
+        contactNumber: prior.contactNumber,
+        remarks: prior.remarks,
+        assigned: prior.assignments.map(
+          (row) => `${row.employee.firstName} ${row.employee.lastName}`
+        ),
+      },
+      {
+        client: updated.client.name,
+        branch: updated.branch?.name ?? null,
+        date,
+        startTime,
+        endTime,
+        status,
+        workTypes,
+        contactPerson: contactPerson || null,
+        contactNumber: contactNumber || null,
+        remarks: remarks || null,
+        assigned: assignedAfter,
+      }
+    )
+
+    if (changes.length > 0) {
+      await tx.scheduleEditLog.createMany({
+        data: changes.map((change) => ({
+          scheduleId,
+          editedById: session.accountId,
+          field: change.field,
+          oldValue: change.oldValue,
+          newValue: change.newValue,
+        })),
       })
     }
 
@@ -453,13 +611,89 @@ export async function updateScheduleStatus(
   const parsed = z.enum(STATUS_VALUES).safeParse(status)
   if (!parsed.success) throw new Error("Unknown status.")
 
-  await prisma.schedule.update({
-    where: { id: scheduleId },
-    data: { status: parsed.data },
+  await prisma.$transaction(async (tx) => {
+    const prior = await tx.schedule.findUniqueOrThrow({
+      where: { id: scheduleId },
+      select: { status: true },
+    })
+
+    await tx.schedule.update({
+      where: { id: scheduleId },
+      data: { status: parsed.data },
+    })
+
+    // Closing a job out from the calendar is an edit like any other, and it's
+    // the one that gets queried afterwards — "who marked this completed when
+    // the crew says they never went". Re-selecting the status it already has
+    // is not a change and doesn't earn a row.
+    if (prior.status !== parsed.data) {
+      await tx.scheduleEditLog.create({
+        data: {
+          scheduleId,
+          editedById: session.accountId,
+          field: "status",
+          oldValue: SCHEDULE_STATUS_LABELS[prior.status],
+          newValue: SCHEDULE_STATUS_LABELS[parsed.data],
+        },
+      })
+    }
   })
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
+}
+
+// The history for one job, fetched when its detail sheet opens rather than
+// shipped with the calendar.
+//
+// Every schedule on screen × every edit ever made to it is the payload that
+// grows with two things at once — the calendar would get heavier every time
+// anyone touched a job. Capped as well: a sheet shows what happened recently,
+// and forty entries is already more than anyone reads.
+//
+// Not exported: a "use server" module may only export async functions, and a
+// stray `export const` here takes down every route that imports the file.
+const SCHEDULE_HISTORY_LIMIT = 40
+
+export type ScheduleHistoryEntry = {
+  id: string
+  field: string
+  oldValue: string | null
+  newValue: string | null
+  createdAt: string
+  editedByName: string
+}
+
+export async function listScheduleHistory(
+  scheduleId: string
+): Promise<ScheduleHistoryEntry[]> {
+  const session = await requireScheduleAccess()
+  if (!session || !scheduleId) return []
+
+  const rows = await prisma.scheduleEditLog.findMany({
+    where: { scheduleId },
+    select: {
+      id: true,
+      field: true,
+      oldValue: true,
+      newValue: true,
+      createdAt: true,
+      editedBy: {
+        select: { employee: { select: { firstName: true, lastName: true } } },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: SCHEDULE_HISTORY_LIMIT,
+  })
+
+  return rows.map((row) => ({
+    id: row.id,
+    field: row.field,
+    oldValue: row.oldValue,
+    newValue: row.newValue,
+    createdAt: row.createdAt.toISOString(),
+    editedByName: `${row.editedBy.employee.firstName} ${row.editedBy.employee.lastName}`,
+  }))
 }
 
 // Branches are fetched for one client at a time, on demand.

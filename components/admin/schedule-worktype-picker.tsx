@@ -28,10 +28,14 @@ export function ScheduleWorkTypePicker({
       {WORK_TYPES.map((type) => {
         const checked = selected.includes(type)
         return (
+          // `relative` keeps the sr-only input below anchored to its own chip.
+          // Absolutely positioned with no positioned ancestor it would attach
+          // to the dialog panel instead and drag its scroll area with it —
+          // see the same note in schedule-employee-picker.
           <label
             key={type}
             className={cn(
-              "inline-flex cursor-pointer items-center rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+              "relative inline-flex cursor-pointer items-center rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
               checked
                 ? WORK_TYPE_SOLID[type]
                 : "bg-muted/60 text-muted-foreground hover:bg-muted",

@@ -89,7 +89,20 @@ export function CreateScheduleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] gap-3 sm:max-w-xl">
+      {/* One scroll region, not two. DialogContent became a scroll container
+          itself (max-height + overflow-y-auto on the popup), and this dialog
+          still had its own capped, scrolling form inside it — so the panel got
+          a second scrollbar beside the first, the employee picker's made a
+          third, and the popup could still end up taller than the screen with
+          the footer stranded mid-panel.
+
+          Rows instead: header and footer size to their content, the form takes
+          whatever is left and scrolls on its own. `overflow-hidden` on the
+          popup is what stops it scrolling as well, and `minmax(0, 1fr)` is what
+          lets the middle row shrink below its content instead of pushing the
+          footer off the bottom. Same shape as the liquidation and claim
+          dialogs. */}
+      <DialogContent className="grid max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Create schedule</DialogTitle>
           <DialogDescription className="text-xs">
@@ -101,7 +114,7 @@ export function CreateScheduleDialog({
         <form
           action={action}
           id="create-schedule-form"
-          className="-mx-1 max-h-[65dvh] overflow-y-auto px-1 py-0.5"
+          className="-mx-1 min-h-0 overflow-y-auto px-1 py-0.5"
         >
           <ScheduleFormFields
             key={formKey}

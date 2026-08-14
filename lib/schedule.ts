@@ -6,8 +6,7 @@ export const WORK_TYPES: WorkType[] = [
   "MAINTENANCE",
   "CLEANING",
   "INSPECTION",
-  "SURVEY",
-  "TROUBLESHOOT",
+  "BACKJOB",
 ]
 
 export const WORK_TYPE_LABELS: Record<WorkType, string> = {
@@ -16,8 +15,7 @@ export const WORK_TYPE_LABELS: Record<WorkType, string> = {
   MAINTENANCE: "Maintenance",
   CLEANING: "Cleaning",
   INSPECTION: "Inspection",
-  SURVEY: "Survey",
-  TROUBLESHOOT: "Troubleshoot",
+  BACKJOB: "Backjob",
 }
 
 // bg + text pairing per work type, used as a small colored chip next to the
@@ -30,8 +28,7 @@ export const WORK_TYPE_CHIP: Record<WorkType, string> = {
   MAINTENANCE: "bg-sky-600/10 text-sky-700 dark:text-sky-400",
   CLEANING: "bg-teal-600/10 text-teal-700 dark:text-teal-400",
   INSPECTION: "bg-violet-600/10 text-violet-700 dark:text-violet-400",
-  SURVEY: "bg-lime-600/10 text-lime-700 dark:text-lime-400",
-  TROUBLESHOOT: "bg-rose-600/10 text-rose-700 dark:text-rose-400",
+  BACKJOB: "bg-rose-600/10 text-rose-700 dark:text-rose-400",
 }
 
 // Solid fills for calendar entries, Google-Calendar style — the whole block
@@ -49,9 +46,7 @@ export const WORK_TYPE_SOLID: Record<WorkType, string> = {
   CLEANING: "bg-teal-100 text-teal-900 dark:bg-teal-400/25 dark:text-teal-50",
   INSPECTION:
     "bg-violet-100 text-violet-900 dark:bg-violet-400/25 dark:text-violet-50",
-  SURVEY: "bg-lime-100 text-lime-900 dark:bg-lime-400/25 dark:text-lime-50",
-  TROUBLESHOOT:
-    "bg-rose-100 text-rose-900 dark:bg-rose-400/25 dark:text-rose-50",
+  BACKJOB: "bg-rose-100 text-rose-900 dark:bg-rose-400/25 dark:text-rose-50",
 }
 
 // Left-border accent per work type, used on calendar chips.
@@ -61,8 +56,7 @@ export const WORK_TYPE_BORDER: Record<WorkType, string> = {
   MAINTENANCE: "border-l-sky-500",
   CLEANING: "border-l-teal-500",
   INSPECTION: "border-l-violet-500",
-  SURVEY: "border-l-lime-500",
-  TROUBLESHOOT: "border-l-rose-500",
+  BACKJOB: "border-l-rose-500",
 }
 
 export const WORK_TYPE_DOT: Record<WorkType, string> = {
@@ -71,8 +65,7 @@ export const WORK_TYPE_DOT: Record<WorkType, string> = {
   MAINTENANCE: "bg-sky-500",
   CLEANING: "bg-teal-500",
   INSPECTION: "bg-violet-500",
-  SURVEY: "bg-lime-500",
-  TROUBLESHOOT: "bg-rose-500",
+  BACKJOB: "bg-rose-500",
 }
 
 // PENDING is the only "upcoming" state — the rest are outcomes recorded

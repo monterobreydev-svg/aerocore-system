@@ -54,17 +54,24 @@ export const SKILL_OPTIONS = [
 export type Skill = (typeof SKILL_OPTIONS)[number]
 
 // Which capability a job's work type calls for, so the employee picker can
-// float the people who can actually do it to the top. Seven of the eight skills map
-// onto a WorkType; "Testing & Commissioning" has no matching job type yet, so
-// it never promotes anyone — worth revisiting if that work gets scheduled.
+// float the people who can actually do it to the top.
+//
+// Five of the eight skills map onto a WorkType. "Testing & Commissioning"
+// never had a matching job type; "Survey" and "Troubleshooting" stopped having
+// one when those work types were retired in favour of BACKJOB. All three are
+// kept as skills — people genuinely have them, and deleting them would erase
+// that from staff records — they simply don't promote anyone any more.
+//
+// BACKJOB maps to Repair: a backjob is a return visit to redo work, so the
+// people to float up are the ones who could have done it the first time. Point
+// it at a "Backjob" skill of its own if that turns out to be too broad.
 export const WORK_TYPE_SKILL: Record<WorkType, Skill> = {
   INSTALLATION: "Installation",
   REPAIR: "Repair",
   MAINTENANCE: "Maintenance",
   CLEANING: "Cleaning",
   INSPECTION: "Inspection",
-  SURVEY: "Survey",
-  TROUBLESHOOT: "Troubleshooting",
+  BACKJOB: "Repair",
 }
 
 // How many of the job's work types a person is actually qualified for.

@@ -91,6 +91,7 @@ model UserAccount {
   createdEmployees     Employee[]        @relation("EmployeeCreatedBy")
   staffEdits           StaffEditLog[]    @relation("StaffEditsMade")
   createdSchedules     Schedule[]        @relation("ScheduleCreatedBy")
+  scheduleEdits        ScheduleEditLog[] @relation("ScheduleEditsMade")
   reimbursementReviews Reimbursement[]   @relation("ReimbursementReviewedBy")
   fundReleases         FundRelease[]     @relation("FundReleasedBy")
   notifications        Notification[]    @relation("NotificationRecipient")
@@ -210,14 +211,19 @@ model Branch {
   attendanceReports AttendanceReport[] @relation("BranchAttendanceReports")
 }
 
+// BACKJOB replaced SURVEY and TROUBLESHOOT — a return visit to redo work
+// already billed, which is the distinction the office actually tracks.
+// Postgres can't drop an enum value, so the type was rebuilt and any rows
+// carrying the retired two were moved onto BACKJOB by
+// prisma/worktype-backjob.mts. Run that rather than `db push` if this enum
+// ever needs values removed again.
 enum WorkType {
   INSTALLATION
   REPAIR
   MAINTENANCE
   CLEANING
   INSPECTION
-  SURVEY
-  TROUBLESHOOT
+  BACKJOB
 }
 
 // PENDING is the only "upcoming" state — everything else is an outcome
@@ -255,6 +261,7 @@ model Schedule {
   createdBy     UserAccount?   @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
 
   assignments ScheduleAssignment[]
+  editLogs    ScheduleEditLog[]
 
   // The calendar reads a month at a time and the day view reads one day, so
   // every query here starts by narrowing on the date. Without this the grid is
@@ -265,6 +272,32 @@ model Schedule {
   // The dashboard counts jobs still to run; status alone is low-cardinality, so
   // it is paired with the date that always accompanies it.
   @@index([status, date])
+}
+
+// Who changed what on a job after it was booked.
+//
+// The same shape as StaffEditLog, and for the same reason: a schedule is an
+// instruction to send people somewhere, so "the time moved" and "they were
+// stood down" are questions that get asked afterwards, sometimes weeks later
+// by someone who wasn't there. One row per changed field, holding both sides
+// of the change — a single row saying "edited" answers nothing.
+//
+// Deleting the job takes its history with it: the log is context for a
+// schedule, not an independent audit trail, and an orphaned "start time
+// changed" belonging to nothing is worse than no row at all.
+model ScheduleEditLog {
+  id         String      @id @default(uuid())
+  scheduleId String
+  schedule   Schedule    @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  editedById String
+  editedBy   UserAccount @relation("ScheduleEditsMade", fields: [editedById], references: [id])
+  field      String
+  oldValue   String?
+  newValue   String?
+  createdAt  DateTime    @default(now())
+
+  // Always read as "this job's history, newest first", on the detail sheet.
+  @@index([scheduleId, createdAt])
 }
 
 // Join table: which employees are assigned to a given schedule. Drives the
