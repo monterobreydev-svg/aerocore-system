@@ -2,6 +2,7 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
+import type { Role } from "@/app/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/auth"
 import {
@@ -32,6 +33,7 @@ import {
   nextDay,
   overtimeGate,
   workedMinutes,
+  type OvertimeGate,
 } from "@/lib/attendance"
 import {
   ATTENDANCE_DETAIL_SELECT,
@@ -168,9 +170,25 @@ export async function createReportUploadUrl(input: {
   contentType: string
   size: number
 }): Promise<ReportUploadTicket> {
-  const session = await verifySession()
-  if (!session) return { ok: false, message: "Sign in again to upload." }
+  await verifySession()
+  return reportTicket(input)
+}
 
+/**
+ * The report ticket itself, for a caller that has already established who is
+ * asking. Nothing in the key depends on *which* person filed it — a report is
+ * filed under the client, the branch and the month it belongs to — so the only
+ * thing the session was ever doing here was the door check.
+ */
+async function reportTicket(input: {
+  type: ReportType
+  clientId: string
+  branchId: string | null
+  serialNo: string
+  filename: string
+  contentType: string
+  size: number
+}): Promise<ReportUploadTicket> {
   if (!isR2Configured()) {
     return {
       ok: false,
@@ -265,6 +283,18 @@ export async function createAttendanceUploadUrl(
   serialNo?: string
 ): Promise<UploadTicket> {
   const session = await verifySession()
+  return uploadTicketFor(session.employeeId, kind, filename, contentType, size, serialNo)
+}
+
+/** The ticket itself, for whoever has already been identified. */
+async function uploadTicketFor(
+  employeeId: string,
+  kind: "time-in" | "time-out" | "report",
+  filename: string,
+  contentType: string,
+  size: number,
+  serialNo?: string
+): Promise<UploadTicket> {
 
   if (!isR2Configured()) {
     return {
@@ -294,7 +324,7 @@ export async function createAttendanceUploadUrl(
   }
 
   const employee = await prisma.employee.findUnique({
-    where: { id: session.employeeId },
+    where: { id: employeeId },
     select: { firstName: true },
   })
   const owner = employee?.firstName ?? "unknown"
@@ -414,7 +444,11 @@ export type ReportClient = {
  */
 export async function listReportClients(): Promise<ReportClient[]> {
   await verifySession()
+  return listClientsForReports()
+}
 
+/** The list itself, for a caller that has already checked who is asking. */
+async function listClientsForReports(): Promise<ReportClient[]> {
   const clients = await prisma.client.findMany({
     select: {
       id: true,
@@ -435,7 +469,10 @@ export async function listReportClients(): Promise<ReportClient[]> {
 export async function listReportBranches(clientId: string) {
   await verifySession()
   if (!clientId) return []
+  return branchesForClient(clientId)
+}
 
+async function branchesForClient(clientId: string) {
   return prisma.branch.findMany({
     where: { clientId },
     select: { id: true, name: true, address: true },
@@ -519,12 +556,27 @@ export type PunchState =
   | { message?: string; success?: boolean; at?: string }
   | undefined
 
-export async function timeIn(
-  _state: PunchState,
+/**
+ * Whoever the punch is being recorded for.
+ *
+ * A punch can arrive two ways: from someone signed into their own account, or
+ * from the shared phone on the kiosk where a person typed their username. Both
+ * end here, with the same rules applied to the same fields — the difference is
+ * only in how the person was identified, which is settled before this runs.
+ */
+export type PunchActor = { employeeId: string; role: Role }
+
+/**
+ * The time-in rule, once.
+ *
+ * Deliberately not reading the session: it is called both by the signed-in
+ * action below and by the kiosk. Two copies of "may this person punch" is how
+ * the two screens end up disagreeing about somebody's day.
+ */
+async function punchIn(
+  actor: PunchActor,
   formData: FormData
 ): Promise<PunchState> {
-  const session = await verifySession()
-
   const validated = PunchSchema.safeParse({
     selfieKey: formData.get("selfieKey"),
     latitude: numberField(formData.get("latitude")),
@@ -545,8 +597,8 @@ export async function timeIn(
   // work the office assigned, and a punch with no shift behind it has nothing
   // to check against. Admin-side roles are exempt — see
   // canPunchWithoutSchedule for why office hours can't work that way.
-  const shift = await shiftForDay(session.employeeId, day)
-  if (!shift && !canPunchWithoutSchedule(session.role)) {
+  const shift = await shiftForDay(actor.employeeId, day)
+  if (!shift && !canPunchWithoutSchedule(actor.role)) {
     return {
       message:
         "You have no shift scheduled today, so you can't time in. Contact the office if that's wrong.",
@@ -554,12 +606,12 @@ export async function timeIn(
   }
 
   const existing = await prisma.attendance.findUnique({
-    where: { employeeId_date: { employeeId: session.employeeId, date: day } },
+    where: { employeeId_date: { employeeId: actor.employeeId, date: day } },
     select: { id: true, timeIn: true },
   })
   if (existing) {
     return {
-      message: `You already timed in today at ${clockTime(existing.timeIn)}.`,
+      message: `Already timed in today at ${clockTime(existing.timeIn)}.`,
     }
   }
 
@@ -567,7 +619,7 @@ export async function timeIn(
 
   await prisma.attendance.create({
     data: {
-      employeeId: session.employeeId,
+      employeeId: actor.employeeId,
       date: day,
       timeIn: now,
       timeInSelfieKey: selfieKey,
@@ -579,6 +631,13 @@ export async function timeIn(
 
   revalidateAll()
   return { success: true, at: now.toISOString() }
+}
+
+export async function timeIn(
+  _state: PunchState,
+  formData: FormData
+): Promise<PunchState> {
+  return punchIn(await verifySession(), formData)
 }
 
 // A day can cover several sites, so a report is a row rather than a column.
@@ -610,12 +669,13 @@ function parseReports(value: FormDataEntryValue | null) {
   }
 }
 
-export async function timeOut(
-  _state: PunchState,
+/**
+ * The time-out rule, once — see punchIn for why this doesn't read the session.
+ */
+async function punchOut(
+  actor: PunchActor,
   formData: FormData
 ): Promise<PunchState> {
-  const session = await verifySession()
-
   const validated = TimeOutSchema.safeParse({
     selfieKey: formData.get("selfieKey"),
     latitude: numberField(formData.get("latitude")),
@@ -637,7 +697,7 @@ export async function timeOut(
 
   const now = new Date()
 
-  const existing = await openPunch(session.employeeId, now)
+  const existing = await openPunch(actor.employeeId, now)
   if (!existing.ok) return { message: existing.message }
 
   const { selfieKey, latitude, longitude, accuracy, reportNote, reports } =
@@ -737,6 +797,231 @@ export async function timeOut(
 
   revalidateAll()
   return { success: true, at: now.toISOString() }
+}
+
+export async function timeOut(
+  _state: PunchState,
+  formData: FormData
+): Promise<PunchState> {
+  return punchOut(await verifySession(), formData)
+}
+
+// ---------------------------------------------------------------------------
+// The shared phone
+//
+// Most of the crew never sign in. One person carries a phone to the site, and
+// everybody punches on it by typing their username — no password, because a
+// password on a borrowed phone is either shared or forgotten, and neither is
+// worth the friction for people whose real proof is standing in front of the
+// camera.
+//
+// What actually establishes who punched is the same as it has always been: a
+// photograph taken by the app at that moment, and the position the device
+// reported. A username is how the record is addressed, not how it is proven —
+// which is why this is safe to leave open, and why the rules below are the
+// same ones the signed-in path runs.
+// ---------------------------------------------------------------------------
+
+/** What the kiosk knows about a person after they type their name. */
+export type KioskWho =
+  | { ok: false; message: string }
+  | {
+      ok: true
+      name: string
+      /** Where they are in the day, so the kiosk shows one button, not three. */
+      state: "out" | "in" | "done"
+      timeIn: string | null
+      timeOut: string | null
+      shiftEndsAt: string | null
+      /** Whether an overtime request may be filed right now, and why not. */
+      overtime: OvertimeGate
+      overtimeRequested: boolean
+    }
+
+/**
+ * Resolve a typed username to the person it belongs to.
+ *
+ * Exact match, case included: the column is unique and Postgres compares
+ * case-sensitively, so "JuanD" and "juand" are different people as far as this
+ * is concerned. Mobile keyboards capitalise the first letter by default, which
+ * is why the field that feeds this turns autocapitalise off.
+ *
+ * A deactivated account is refused in the same words as a wrong name. Someone
+ * dismissed on Friday should not be able to confirm they still exist in the
+ * system by typing their name into a phone at the gate.
+ */
+async function resolveUsername(raw: FormDataEntryValue | null) {
+  const username = typeof raw === "string" ? raw.trim() : ""
+  if (!username) {
+    return { ok: false as const, message: "Type your username first." }
+  }
+
+  const account = await prisma.userAccount.findUnique({
+    where: { username },
+    select: {
+      isActive: true,
+      employeeId: true,
+      role: true,
+      employee: { select: { firstName: true, lastName: true } },
+    },
+  })
+
+  if (!account || !account.isActive) {
+    return {
+      ok: false as const,
+      message: `No active account for "${username}". Check the spelling — capitals count.`,
+    }
+  }
+
+  return {
+    ok: true as const,
+    employeeId: account.employeeId,
+    role: account.role,
+    name: `${account.employee.firstName} ${account.employee.lastName}`,
+  }
+}
+
+/**
+ * Who this is and what they can do right now.
+ *
+ * Everything the kiosk needs to decide which single button to show, so the
+ * person in front of it is never asked to work out whether they are timing in
+ * or out.
+ */
+export async function kioskWhoIs(username: string): Promise<KioskWho> {
+  const who = await resolveUsername(username)
+  if (!who.ok) return who
+
+  const now = new Date()
+  const day = attendanceDay(now)
+
+  const [open, todayRow, shift] = await Promise.all([
+    prisma.attendance.findFirst({
+      where: {
+        employeeId: who.employeeId,
+        timeOut: null,
+        timeIn: { gte: new Date(now.getTime() - MAX_SHIFT_HOURS * 3_600_000) },
+      },
+      orderBy: { timeIn: "desc" },
+      select: { timeIn: true, date: true, overtime: { select: { id: true } } },
+    }),
+    prisma.attendance.findUnique({
+      where: { employeeId_date: { employeeId: who.employeeId, date: day } },
+      select: { timeIn: true, timeOut: true, overtime: { select: { id: true } } },
+    }),
+    shiftForDay(who.employeeId, day),
+  ])
+
+  // An overnight shift is filed under the day it began, so the live punch —
+  // not today's row — is what says whether somebody is still on the clock.
+  const state = open ? "in" : todayRow?.timeOut ? "done" : "out"
+  const shiftEnd = open
+    ? (await shiftForDay(who.employeeId, open.date))?.endsAt ?? null
+    : (shift?.endsAt ?? null)
+  const requested = Boolean(open?.overtime ?? todayRow?.overtime)
+
+  return {
+    ok: true,
+    name: who.name,
+    state,
+    timeIn: (open?.timeIn ?? todayRow?.timeIn)?.toISOString() ?? null,
+    timeOut: todayRow?.timeOut?.toISOString() ?? null,
+    shiftEndsAt: shiftEnd?.toISOString() ?? null,
+    overtime: overtimeGate({
+      shiftEndsAt: shiftEnd,
+      now,
+      isWorking: state === "in",
+      alreadyRequested: requested,
+    }),
+    overtimeRequested: requested,
+  }
+}
+
+/** The selfie upload ticket, for someone identified by username. */
+export async function kioskUploadUrl(
+  username: string,
+  kind: "time-in" | "time-out",
+  filename: string,
+  contentType: string,
+  size: number
+): Promise<UploadTicket> {
+  const who = await resolveUsername(username)
+  if (!who.ok) return { ok: false, message: who.message }
+
+  return uploadTicketFor(who.employeeId, kind, filename, contentType, size)
+}
+
+export async function kioskTimeIn(
+  _state: PunchState,
+  formData: FormData
+): Promise<PunchState> {
+  const who = await resolveUsername(formData.get("username"))
+  if (!who.ok) return { message: who.message }
+
+  return punchIn({ employeeId: who.employeeId, role: who.role }, formData)
+}
+
+export async function kioskTimeOut(
+  _state: PunchState,
+  formData: FormData
+): Promise<PunchState> {
+  const who = await resolveUsername(formData.get("username"))
+  if (!who.ok) return { message: who.message }
+
+  return punchOut({ employeeId: who.employeeId, role: who.role }, formData)
+}
+
+export async function kioskRequestOvertime(
+  _state: OvertimeState,
+  formData: FormData
+): Promise<OvertimeState> {
+  const who = await resolveUsername(formData.get("username"))
+  if (!who.ok) return { message: who.message }
+
+  return fileOvertime(who.employeeId, formData)
+}
+
+/**
+ * Filing the day's paperwork from the shared phone.
+ *
+ * The crew that did the work is the crew holding this handset, and the report
+ * is part of timing out — leaving it to whoever signs in later means it gets
+ * filed from memory, or not at all. Keyed by username like every other kiosk
+ * call, so an anonymous request can't mint an upload URL.
+ */
+export async function kioskReportUploadUrl(
+  username: string,
+  input: {
+    type: ReportType
+    clientId: string
+    branchId: string | null
+    serialNo: string
+    filename: string
+    contentType: string
+    size: number
+  }
+): Promise<ReportUploadTicket> {
+  const who = await resolveUsername(username)
+  if (!who.ok) return { ok: false, message: who.message }
+
+  return reportTicket(input)
+}
+
+/** The sites a report can be filed against, for the kiosk's report form. */
+export async function kioskReportClients(
+  username: string
+): Promise<ReportClient[]> {
+  const who = await resolveUsername(username)
+  if (!who.ok) return []
+
+  return listClientsForReports()
+}
+
+export async function kioskReportBranches(username: string, clientId: string) {
+  const who = await resolveUsername(username)
+  if (!who.ok || !clientId) return []
+
+  return branchesForClient(clientId)
 }
 
 // ---------------------------------------------------------------------------
@@ -992,7 +1277,17 @@ export async function requestOvertime(
   formData: FormData
 ): Promise<OvertimeState> {
   const session = await verifySession()
+  return fileOvertime(session.employeeId, formData)
+}
 
+/**
+ * Filing the request, once — shared with the kiosk, so the window that decides
+ * whether overtime may be asked for is the same one on both.
+ */
+async function fileOvertime(
+  employeeId: string,
+  formData: FormData
+): Promise<OvertimeState> {
   const schema = z.object({
     hours: z.coerce
       .number()
@@ -1019,7 +1314,7 @@ export async function requestOvertime(
   // Same reason as timing out: at 05:30 on a shift that began at 22:00 the row
   // is filed under yesterday, and the last hour of that shift is exactly when
   // this is meant to be reachable.
-  const open = await openPunch(session.employeeId, now)
+  const open = await openPunch(employeeId, now)
   if (!open.ok) return { message: open.message }
 
   const attendance = await prisma.attendance.findUnique({
@@ -1030,7 +1325,7 @@ export async function requestOvertime(
 
   // Measured against the day the shift *started*, so an overnight shift's end
   // time is still found after midnight.
-  const shift = await shiftForDay(session.employeeId, open.date)
+  const shift = await shiftForDay(employeeId, open.date)
 
   // The window is re-checked here rather than trusted from the browser. A
   // disabled button is a courtesy; this is the rule.
@@ -1058,7 +1353,7 @@ export async function requestOvertime(
   await prisma.overtimeRequest.create({
     data: {
       attendanceId: attendance.id,
-      employeeId: session.employeeId,
+      employeeId: employeeId,
       hours,
       reason,
       shiftEndsAt: shift!.endsAt,
@@ -1066,7 +1361,7 @@ export async function requestOvertime(
   })
 
   const employee = await prisma.employee.findUnique({
-    where: { id: session.employeeId },
+    where: { id: employeeId },
     select: { firstName: true, lastName: true },
   })
 

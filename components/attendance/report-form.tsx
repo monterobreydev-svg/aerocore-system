@@ -36,11 +36,20 @@ export function ReportForm({
   loadBranches,
   onAdd,
   onCancel,
+  /**
+   * How this form gets an upload URL and reads a file back. Both default to
+   * the signed-in actions; the kiosk passes username-keyed versions, because
+   * the crew filing the report from the shared phone has no session.
+   */
+  uploadReport = createReportUploadUrl,
+  resolveFileUrl = getAttendanceFileUrl,
 }: {
   clients: ReportClient[]
   loadBranches: (clientId: string) => Promise<Branch[]>
   onAdd: (draft: Omit<DraftReport, "id">) => void
   onCancel: () => void
+  uploadReport?: typeof createReportUploadUrl
+  resolveFileUrl?: (key: string) => Promise<string | null>
 }) {
   const [type, setType] = useState<DraftReport["type"] | "">("")
   const [clientId, setClientId] = useState("")
@@ -241,7 +250,7 @@ export function ReportForm({
           // branch rows these ids point at, so what comes back is the name the
           // office will search for.
           upload={async (filename, contentType, size) => {
-            const ticket = await createReportUploadUrl({
+            const ticket = await uploadReport({
               type: type as DraftReport["type"],
               clientId,
               branchId: branchId || null,
@@ -253,7 +262,7 @@ export function ReportForm({
             setSavedAs(ticket.ok ? ticket.fileName : null)
             return ticket
           }}
-          resolveUrl={getAttendanceFileUrl}
+          resolveUrl={resolveFileUrl}
         />
         {savedAs && (
           <p className="text-xs text-muted-foreground">

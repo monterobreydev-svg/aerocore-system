@@ -2,8 +2,10 @@
 
 import { useActionState, useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import {
   CircleAlert,
+  Clock,
   Eye,
   EyeOff,
   Loader2,
@@ -249,7 +251,19 @@ export default function LoginPage() {
               </FieldGroup>
             </form>
 
-            <div className="mt-7 flex items-start gap-2 border-t pt-5 text-xs text-muted-foreground">
+            {/* Most of the crew never signs in — they punch on the shared
+                phone. Anyone who lands here from an old link or bookmark
+                needs a way back to the clock that doesn't involve knowing
+                the address. */}
+            <Link
+              href="/"
+              className="mt-6 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              <Clock className="size-4" />
+              Time in or out without signing in
+            </Link>
+
+            <div className="mt-5 flex items-start gap-2 border-t pt-5 text-xs text-muted-foreground">
               <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
               <p>
                 Company system — activity is recorded against your account.
