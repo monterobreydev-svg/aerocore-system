@@ -21,7 +21,6 @@ import {
   grantedHours,
   type AttendanceRow,
   type ScheduledJob,
-  type StaffDay,
 } from "@/components/attendance/admin-attendance"
 
 const OVERTIME_CHIP: Record<string, string> = {
@@ -233,43 +232,6 @@ const SCHEDULE_STATUS_LABEL: Record<ScheduledJob["status"], string> = {
   COMPLETED: "done",
   NEED_TO_RETURN: "needs a return visit",
   RESCHEDULED: "rescheduled",
-}
-
-/**
- * A day the office assigned that nobody clocked.
- *
- * Stated as a fact — "no punch recorded" — and nothing more. Whether that was
- * leave, a rest day or an absence isn't something this system knows, and
- * labelling it would be inventing a record.
- */
-export function UnworkedDayRow({ day }: { day: StaffDay }) {
-  return (
-    <li className="flex items-start gap-3 bg-muted/20 py-3.5 pr-4 pl-4">
-      <span
-        aria-hidden
-        className="mt-0.5 flex size-9 shrink-0 flex-col items-center justify-center rounded-xl bg-muted"
-      >
-        <span className="text-[9px] leading-none font-medium tracking-wide text-muted-foreground uppercase">
-          {new Date(day.date).toLocaleDateString(undefined, { month: "short" })}
-        </span>
-        <span className="mt-0.5 text-sm leading-none font-semibold tabular-nums text-muted-foreground">
-          {new Date(day.date).getDate()}
-        </span>
-      </span>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="min-w-0 truncate text-sm font-medium text-muted-foreground">
-            {dayLabel(day.date, true)}
-          </p>
-          <p className="shrink-0 text-xs text-muted-foreground">
-            no punch recorded
-          </p>
-        </div>
-        <ScheduleLines jobs={day.scheduled} />
-      </div>
-    </li>
-  )
 }
 
 /** The day's assigned jobs, as a short indented list. */

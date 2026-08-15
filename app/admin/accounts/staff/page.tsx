@@ -76,7 +76,6 @@ export default async function StaffPage() {
           employmentType: true,
           dateHired: true,
           hourlyRate: true,
-          allowancePerCutoff: true,
           skills: true,
           emergencyContactPerson: true,
           emergencyContactNo: true,
@@ -139,10 +138,6 @@ export default async function StaffPage() {
         ? account.employee.dateHired.toISOString().slice(0, 10)
         : null,
       hourlyRate: Number(account.employee.hourlyRate),
-      allowancePerCutoff:
-        account.employee.allowancePerCutoff === null
-          ? null
-          : Number(account.employee.allowancePerCutoff),
       skills: account.employee.skills,
       emergencyContactPerson: account.employee.emergencyContactPerson,
       emergencyContactNo: account.employee.emergencyContactNo,

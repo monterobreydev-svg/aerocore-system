@@ -51,7 +51,6 @@ model Employee {
   employmentType               EmploymentType?
   dateHired                    DateTime?
   hourlyRate                   Decimal
-  allowancePerCutoff           Decimal?
   skills                       String[]
   tinNo                        String?
   sssNo                        String?
@@ -68,6 +67,7 @@ model Employee {
   fundReleases        FundRelease[]        @relation("EmployeeFundReleases")
   attendance          Attendance[]         @relation("EmployeeAttendance")
   overtimeRequests    OvertimeRequest[]    @relation("EmployeeOvertime")
+  payrollAdjustments  PayrollAdjustment[]  @relation("EmployeePayrollAdjustments")
 }
 
 model UserAccount {
@@ -96,6 +96,7 @@ model UserAccount {
   fundReleases         FundRelease[]     @relation("FundReleasedBy")
   notifications        Notification[]    @relation("NotificationRecipient")
   overtimeReviews      OvertimeRequest[] @relation("OvertimeReviewedBy")
+  payrollAdjustments   PayrollAdjustment[] @relation("PayrollAdjustmentsMade")
 }
 
 // ---------------------------------------------------------------------------
@@ -482,6 +483,42 @@ model Attendance {
   // employee to lead on. A composite starting with employeeId can't serve that
   // — Postgres would scan the table — so the date needs an index of its own.
   @@index([date])
+}
+
+// A one-off correction to somebody's pay for one cutoff.
+//
+// Payroll is computed from attendance, which is right for hours and wrong for
+// everything the clock can't see: a transport allowance the office agreed to,
+// a cash advance being paid back, a uniform deduction. Without somewhere to
+// put those, they get done outside the system and the payslip stops matching
+// what was handed over.
+//
+// The sign carries the meaning — positive adds to gross, negative deducts —
+// so an adjustment is one row rather than two kinds of row. Kept against the
+// cutoff it belongs to rather than a date, because that is the unit payroll is
+// read and paid in; moving a person's attendance around can't detach it.
+//
+// Who made it is recorded and never edited: this is money someone decided to
+// add or take away, and "who said so" is the first question asked about it.
+model PayrollAdjustment {
+  id          String      @id @default(uuid())
+  employeeId  String
+  employee    Employee    @relation("EmployeePayrollAdjustments", fields: [employeeId], references: [id], onDelete: Cascade)
+  /** Local midnight of the first day of the cutoff it applies to. */
+  cutoffStart DateTime
+  /** What it is, in the office's words — "Transport allowance", "Cash advance". */
+  label       String
+  /** Positive pays more, negative pays less. Never zero. */
+  amount      Decimal
+  note        String?
+  createdById String
+  createdBy   UserAccount @relation("PayrollAdjustmentsMade", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+
+  // Always read as "this person's adjustments for this cutoff".
+  @@index([employeeId, cutoffStart])
+  // And once per run, for everybody at once.
+  @@index([cutoffStart])
 }
 
 // A coordinate pair turned into words, remembered so it is only ever asked

@@ -79,7 +79,6 @@ const FIELD_STEP: Record<string, number> = {
   dateHired: 2,
   skills: 2,
   hourlyRate: 3,
-  allowancePerCutoff: 3,
   tinNo: 3,
   sssNo: 3,
   philhealthNo: 3,
@@ -134,7 +133,7 @@ function StepSection({
 function formatReviewValue(field: string, value: string) {
   if (!value) return "—"
   if (field === "password") return "•".repeat(Math.min(value.length, 10))
-  if (field === "hourlyRate" || field === "allowancePerCutoff") {
+  if (field === "hourlyRate") {
     const amount = Number(value)
     return Number.isNaN(amount)
       ? "—"
@@ -192,7 +191,6 @@ const REVIEW_SECTIONS = [
     fields: [
       ["hourlyRate", "Hourly rate"],
       ["monthlyRate", "Projected monthly"],
-      ["allowancePerCutoff", "Allowance per cutoff"],
     ],
   },
   {
@@ -755,34 +753,6 @@ export function CreateStaffDialog({
                   </p>
                 </Field>
 
-                <Field data-invalid={!!state?.errors?.allowancePerCutoff}>
-                  <FieldLabel htmlFor="allowancePerCutoff">
-                    Allowance per cutoff
-                  </FieldLabel>
-                  <div className="relative">
-                    <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-muted-foreground">
-                      ₱
-                    </span>
-                    <Input
-                      id="allowancePerCutoff"
-                      name="allowancePerCutoff"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="1500.00"
-                      disabled={pending}
-                      className="pl-6"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Paid on top of hours worked, each cutoff.
-                  </p>
-                  <FieldError
-                    errors={state?.errors?.allowancePerCutoff?.map(
-                      (message) => ({ message })
-                    )}
-                  />
-                </Field>
               </div>
             </FieldGroup>
 

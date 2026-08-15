@@ -67,8 +67,6 @@ export const getAccountSettings = cache(async () => {
       employmentType: e.employmentType,
       dateHired: dateOnly(e.dateHired),
       hourlyRate: Number(e.hourlyRate),
-      allowancePerCutoff:
-        e.allowancePerCutoff === null ? null : Number(e.allowancePerCutoff),
       skills: e.skills,
       createdAt: e.createdAt.toISOString(),
     },

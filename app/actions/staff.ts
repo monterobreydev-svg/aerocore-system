@@ -59,7 +59,6 @@ const StaffSchema = z.object({
   employmentType: optionalEmploymentType,
   dateHired: z.string().trim().optional(),
   hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
-  allowancePerCutoff: optionalMoney,
   skills: skillSet,
   emergencyContactPerson: z.string().trim().optional(),
   emergencyContactNo: z.string().trim().optional(),
@@ -94,7 +93,6 @@ export type StaffState =
         employmentType?: string[]
         dateHired?: string[]
         hourlyRate?: string[]
-        allowancePerCutoff?: string[]
         skills?: string[]
         emergencyContactPerson?: string[]
         emergencyContactNo?: string[]
@@ -136,7 +134,6 @@ export async function createStaffAccount(
     employmentType: formData.get("employmentType"),
     dateHired: formData.get("dateHired"),
     hourlyRate: formData.get("hourlyRate"),
-    allowancePerCutoff: formData.get("allowancePerCutoff"),
     skills: formData.getAll("skills"),
     emergencyContactPerson: formData.get("emergencyContactPerson"),
     emergencyContactNo: formData.get("emergencyContactNo"),
@@ -170,7 +167,6 @@ export async function createStaffAccount(
     employmentType,
     dateHired,
     hourlyRate,
-    allowancePerCutoff,
     skills,
     emergencyContactPerson,
     emergencyContactNo,
@@ -228,8 +224,7 @@ export async function createStaffAccount(
         employmentType: employmentType || null,
         dateHired: dateHired ? new Date(dateHired) : null,
         hourlyRate,
-        allowancePerCutoff,
-        skills,
+            skills,
         emergencyContactPerson: emergencyContactPerson || null,
         emergencyContactNo: emergencyContactNo || null,
         emergencyContactRelationship: emergencyContactRelationship || null,
@@ -271,7 +266,6 @@ const UpdateStaffSchema = z.object({
   employmentType: optionalEmploymentType,
   dateHired: z.string().trim().optional(),
   hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
-  allowancePerCutoff: optionalMoney,
   skills: skillSet,
   emergencyContactPerson: z.string().trim().optional(),
   emergencyContactNo: z.string().trim().optional(),
@@ -299,7 +293,6 @@ export type UpdateStaffState =
         employmentType?: string[]
         dateHired?: string[]
         hourlyRate?: string[]
-        allowancePerCutoff?: string[]
         skills?: string[]
         emergencyContactPerson?: string[]
         emergencyContactNo?: string[]
@@ -343,7 +336,6 @@ export async function updateStaffAccount(
     employmentType: formData.get("employmentType"),
     dateHired: formData.get("dateHired"),
     hourlyRate: formData.get("hourlyRate"),
-    allowancePerCutoff: formData.get("allowancePerCutoff"),
     skills: formData.getAll("skills"),
     emergencyContactPerson: formData.get("emergencyContactPerson"),
     emergencyContactNo: formData.get("emergencyContactNo"),
@@ -386,7 +378,6 @@ export async function updateStaffAccount(
     employmentType,
     dateHired,
     hourlyRate,
-    allowancePerCutoff,
     skills,
     emergencyContactPerson,
     emergencyContactNo,
@@ -455,13 +446,6 @@ export async function updateStaffAccount(
     nextDateHired ? nextDateHired.toISOString().slice(0, 10) : null
   )
   diff("hourlyRate", String(employee.hourlyRate), String(hourlyRate))
-  diff(
-    "allowancePerCutoff",
-    employee.allowancePerCutoff === null
-      ? null
-      : String(employee.allowancePerCutoff),
-    allowancePerCutoff === null ? null : String(allowancePerCutoff)
-  )
   diff("skills", employee.skills.join(", "), skills.join(", "))
   diff(
     "emergencyContactPerson",
@@ -508,8 +492,7 @@ export async function updateStaffAccount(
           employmentType: nextEmploymentType,
           dateHired: nextDateHired,
           hourlyRate,
-          allowancePerCutoff,
-          skills,
+                skills,
           emergencyContactPerson: normalize(emergencyContactPerson),
           emergencyContactNo: normalize(emergencyContactNo),
           emergencyContactRelationship: normalize(

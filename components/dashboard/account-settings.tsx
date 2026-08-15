@@ -474,14 +474,6 @@ function EmploymentTab({ account }: { account: AccountSettingsData }) {
               value={peso(monthlyFromHourly(e.hourlyRate))}
             />
             <Row
-              label="Allowance per cutoff"
-              value={
-                e.allowancePerCutoff === null
-                  ? null
-                  : peso(e.allowancePerCutoff)
-              }
-            />
-            <Row
               label="Record created"
               value={new Date(e.createdAt).toLocaleDateString()}
             />

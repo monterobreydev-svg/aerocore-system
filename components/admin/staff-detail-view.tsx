@@ -108,7 +108,6 @@ const FIELD_LABELS: Record<string, string> = {
   employmentType: "Employment type",
   dateHired: "Date hired",
   hourlyRate: "Hourly rate",
-  allowancePerCutoff: "Allowance per cutoff",
   skills: "Skills",
   emergencyContactPerson: "Emergency contact name",
   emergencyContactNo: "Emergency contact number",
@@ -122,7 +121,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 function formatFieldValue(field: string, value: string | null) {
   if (!value) return "—"
-  if (field === "hourlyRate" || field === "allowancePerCutoff")
+  if (field === "hourlyRate")
     return peso(Number(value))
   if (field === "birthDate" || field === "dateHired") {
     return new Date(value).toLocaleDateString()
@@ -628,32 +627,6 @@ export function StaffDetailView({
                             }))}
                           />
                         </Field>
-                        <Field
-                          data-invalid={!!state?.errors?.allowancePerCutoff}
-                        >
-                          <FieldLabel
-                            htmlFor={`allowancePerCutoff-${staff.id}`}
-                          >
-                            Allowance per cutoff
-                          </FieldLabel>
-                          <Input
-                            id={`allowancePerCutoff-${staff.id}`}
-                            name="allowancePerCutoff"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="1500.00"
-                            defaultValue={
-                              initial.employee.allowancePerCutoff ?? ""
-                            }
-                            disabled={pending}
-                          />
-                          <FieldError
-                            errors={state?.errors?.allowancePerCutoff?.map(
-                              (m) => ({ message: m })
-                            )}
-                          />
-                        </Field>
                         <Field>
                           <FieldLabel htmlFor={`isActive-${staff.id}`}>
                             Status
@@ -902,14 +875,6 @@ export function StaffDetailView({
                 <Row
                   label="Projected monthly"
                   value={peso(monthlyFromHourly(e.hourlyRate))}
-                />
-                <Row
-                  label="Allowance per cutoff"
-                  value={
-                    e.allowancePerCutoff === null
-                      ? null
-                      : peso(e.allowancePerCutoff)
-                  }
                 />
               </InfoCard>
 

@@ -69,7 +69,6 @@ export type StaffMember = {
     employmentType: EmploymentType | null
     dateHired: string | null
     hourlyRate: number
-    allowancePerCutoff: number | null
     skills: string[]
     emergencyContactPerson: string | null
     emergencyContactNo: string | null
