@@ -512,6 +512,125 @@ export async function planDownload(
  * only looked inside the folder you happen to be standing in would miss the
  * report you are looking for, which is the entire reason you typed.
  */
+// ---------------------------------------------------------------------------
+// Searching the folders, not just what is in them
+// ---------------------------------------------------------------------------
+
+/**
+ * Reports read to work out which folders match. Bounded like the month scan
+ * above: this is a search box, and a client with ten thousand reports must not
+ * turn one keystroke into a table scan. Enough to find every folder a name
+ * appears in without reading a year of filing to do it.
+ */
+const FOLDER_SCAN_LIMIT = 1000
+
+/** How many folders a search will show before it stops being a short list. */
+const FOLDER_RESULT_LIMIT = 8
+
+/** A folder a search turned up, and the way into it. */
+export type FolderHit = {
+  /** Stable identity for the list. */
+  key: string
+  path: TreePath
+  name: string
+  /** Where it sits — "2026 · PMS", or the client for a branch. */
+  trail: string
+  count: number
+}
+
+/**
+ * The folders whose *name* matches, as opposed to what is filed inside them.
+ *
+ * Typing a client's name used to find their reports but never their folder, so
+ * the way to the folder was to notice a result, read the path underneath it and
+ * navigate there by hand.
+ *
+ * Only clients and branches are matched, because they are the only folder names
+ * that are *data*. The others are a fixed vocabulary — two report types, twelve
+ * months, one number per year — and matching them would answer "August" with
+ * every August the company has ever had, which is noise standing between
+ * somebody and the thing they typed.
+ *
+ * A client is not one folder: the tree is year → type → client, so the same
+ * client has a folder under PMS and another under Service Report, in every year
+ * they were serviced. Each is returned separately, newest first, because they
+ * are genuinely different drawers.
+ */
+export async function searchFolders(query: string): Promise<FolderHit[]> {
+  const term = query.trim()
+  if (!term) return []
+
+  const contains = { contains: term, mode: "insensitive" as const }
+
+  const rows = await prisma.attendanceReport.findMany({
+    where: {
+      OR: [{ client: { name: contains } }, { branch: { name: contains } }],
+    },
+    select: {
+      type: true,
+      clientId: true,
+      branchId: true,
+      client: { select: { name: true } },
+      branch: { select: { name: true } },
+      attendance: { select: { date: true } },
+    },
+    orderBy: { attendance: { date: "desc" } },
+    take: FOLDER_SCAN_LIMIT,
+  })
+
+  const needle = term.toLowerCase()
+  const hits = new Map<string, FolderHit>()
+
+  const add = (hit: Omit<FolderHit, "count">) => {
+    const known = hits.get(hit.key)
+    if (known) known.count++
+    else hits.set(hit.key, { ...hit, count: 1 })
+  }
+
+  for (const row of rows) {
+    const year = row.attendance.date.getFullYear()
+    const typeFolder = REPORT_TYPE_FOLDER[row.type]
+
+    // Which half of the row matched decides which folder is worth offering:
+    // searching a branch should land on the branch, not on its client.
+    if (row.client.name.toLowerCase().includes(needle)) {
+      add({
+        key: `c|${year}|${row.type}|${row.clientId}`,
+        path: {
+          year,
+          type: row.type,
+          clientId: row.clientId,
+          branchId: null,
+          month: null,
+        },
+        name: row.client.name,
+        trail: `${year} · ${typeFolder}`,
+      })
+    }
+
+    if (row.branch && row.branch.name.toLowerCase().includes(needle)) {
+      add({
+        key: `b|${year}|${row.type}|${row.clientId}|${row.branchId}`,
+        path: {
+          year,
+          type: row.type,
+          clientId: row.clientId,
+          branchId: row.branchId,
+          month: null,
+        },
+        name: row.branch.name,
+        trail: `${year} · ${typeFolder} · ${row.client.name}`,
+      })
+    }
+  }
+
+  // Newest year first, then the fullest drawer — the folder somebody means is
+  // usually the recent one with the most in it.
+  return [...hits.values()]
+    .sort((a, b) => (b.path.year ?? 0) - (a.path.year ?? 0) || b.count - a.count)
+    .slice(0, FOLDER_RESULT_LIMIT)
+}
+
 export function searchFiles(query: string, page = 1) {
   const term = query.trim()
   if (!term) return fetchFiles({ id: "" }, 1)

@@ -27,6 +27,7 @@ import {
   MAX_ZIP_FILES,
   parseTreePath,
   searchFiles,
+  searchFolders,
   type TreePath,
 } from "@/lib/document-tree"
 import type { ReportType } from "@/components/attendance/admin-attendance"
@@ -205,6 +206,24 @@ function FolderTile({
   )
 }
 
+/**
+ * "Folders 3" — the rule that turns two lists into a hierarchy.
+ *
+ * Folders come first because a folder is the more useful answer: it holds the
+ * file you were looking for *and* the ones you hadn't thought of yet.
+ */
+function SearchHeading({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+      </h3>
+      <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
 function Empty({ message }: { message: string }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center sm:p-12">
@@ -230,35 +249,63 @@ export default async function AdminDocumentsPage({
   // matched, because the report you can't find is rarely in the folder you
   // happen to be standing in.
   if (query) {
-    const results = await searchFiles(query, pageNo)
+    // Both halves at once: a name can be a folder and a filing at the same
+    // time, and which one somebody wants is not something to guess at.
+    const [folders, results] = await Promise.all([
+      searchFolders(query),
+      searchFiles(query, pageNo),
+    ])
 
     return (
       <div className="flex flex-col gap-5">
         <Header />
         <DocumentSearch query={query} />
 
-        {results.total === 0 ? (
+        {folders.length === 0 && results.total === 0 ? (
           <Empty
-            message={`Nothing matches "${query}". Try a serial number, part of a filename, or the client's name.`}
+            message={`Nothing matches "${query}". Try a serial number, part of a filename, or a client or branch name.`}
           />
         ) : (
           <>
-            <p className="text-sm text-muted-foreground">
-              {results.total} {results.total === 1 ? "report" : "reports"}{" "}
-              matching{" "}
-              <span className="font-medium text-foreground">{query}</span>
-            </p>
-            {/* Keyed by the page it is showing, so ticked boxes don't survive
-                into a page whose reports they are no longer on. */}
-            <DocumentFiles
-              key={`search-${results.page}`}
-              page={results}
-              showLocation
-              folderQuery=""
-              filesPerPage={FILES_PER_PAGE}
-              prevHref={hrefFor({ query, page: results.page - 1 })}
-              nextHref={hrefFor({ query, page: results.page + 1 })}
-            />
+            {folders.length > 0 && (
+              <section className="flex flex-col gap-2">
+                <SearchHeading label="Folders" count={folders.length} />
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {folders.map((folder) => (
+                    <FolderTile
+                      key={folder.key}
+                      href={hrefFor(folder.path)}
+                      download={archiveHref(folder.path)}
+                      folder={{
+                        id: folder.key,
+                        name: folder.name,
+                        // Where the folder sits, since a client has one of
+                        // these per year and per kind of report.
+                        hint: folder.trail,
+                        count: folder.count,
+                      }}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {results.total > 0 && (
+              <section className="flex flex-col gap-2">
+                <SearchHeading label="Files" count={results.total} />
+                {/* Keyed by the page it is showing, so ticked boxes don't
+                    survive into a page whose reports they are no longer on. */}
+                <DocumentFiles
+                  key={`search-${results.page}`}
+                  page={results}
+                  showLocation
+                  folderQuery=""
+                  filesPerPage={FILES_PER_PAGE}
+                  prevHref={hrefFor({ query, page: results.page - 1 })}
+                  nextHref={hrefFor({ query, page: results.page + 1 })}
+                />
+              </section>
+            )}
           </>
         )}
       </div>
