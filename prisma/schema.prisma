@@ -97,6 +97,7 @@ model UserAccount {
   notifications        Notification[]    @relation("NotificationRecipient")
   overtimeReviews      OvertimeRequest[] @relation("OvertimeReviewedBy")
   payrollAdjustments   PayrollAdjustment[] @relation("PayrollAdjustmentsMade")
+  payrollReleases      PayrollRelease[]    @relation("PayrollReleases")
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +109,7 @@ enum NotificationType {
   LIQUIDATION_SUBMITTED
   FUND_RELEASED
   OVERTIME_REQUESTED
+  PAYSLIP_RELEASED
 }
 
 // Addressed to a UserAccount rather than an Employee: an inbox only means
@@ -525,6 +527,32 @@ model PayrollAdjustment {
   // Always read as "this person's adjustments for this cutoff".
   @@index([employeeId, cutoffStart])
   // And once per run, for everybody at once.
+  @@index([cutoffStart])
+}
+
+// Payroll for a cutoff, published to the people it pays.
+//
+// One row per period, not per employee: releasing is a single decision about a
+// finished run, and a per-employee table would let half a payroll be visible
+// while the other half wasn't, which is a support call rather than a feature.
+//
+// Deliberately *not* a snapshot of the figures. Payroll is recomputed from
+// attendance on every read — see app/admin/payroll/page.tsx — and that stays
+// true after release, so a punch corrected on Monday reaches the payslip the
+// employee is looking at instead of leaving two numbers in the building. The
+// row records the decision and who made it; the arithmetic stays live.
+model PayrollRelease {
+  id String @id @default(uuid())
+
+  /** Local midnight of the cutoff's first day — the key adjustments use too. */
+  cutoffStart DateTime @unique
+  cutoffEnd   DateTime
+
+  releasedById String
+  releasedBy   UserAccount @relation("PayrollReleases", fields: [releasedById], references: [id])
+  releasedAt   DateTime    @default(now())
+
+  // "Which periods can this employee see" is the employee page's only query.
   @@index([cutoffStart])
 }
 

@@ -4,13 +4,16 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { requireManager } from "@/lib/auth"
-import { cutoffEnd, cutoffStart, nextDay, parseDayParam } from "@/lib/attendance"
 import {
-  computePayslip,
-  holidaysBetween,
-  HOLIDAY_QUALIFYING_LOOKBACK_DAYS,
-  type Payslip,
-} from "@/lib/payroll"
+  attendanceDay,
+  cutoffEnd,
+  cutoffLabel,
+  cutoffStart,
+  parseDayParam,
+} from "@/lib/attendance"
+import { buildPayslip } from "@/lib/payslip-query"
+import { notifyEmployees } from "@/lib/notify"
+import type { Payslip } from "@/lib/payroll"
 
 export type AdjustmentRow = {
   id: string
@@ -48,39 +51,13 @@ export async function getPayslip(
 
   const day = parseDayParam(cutoffDay, new Date())
   const start = cutoffStart(day)
-  const end = cutoffEnd(day)
 
-  // Reaches into the previous cutoff far enough to answer whether a holiday on
-  // the opening days of this one was preceded by a day at work. Those rows are
-  // read for that question alone — see `daysBeforeCutoff` below.
-  const qualifyingFrom = new Date(start)
-  qualifyingFrom.setDate(
-    qualifyingFrom.getDate() - HOLIDAY_QUALIFYING_LOOKBACK_DAYS
-  )
-
-  const [employee, adjustments] = await Promise.all([
-    prisma.employee.findUnique({
-      where: { id: employeeId },
-      select: {
-        firstName: true,
-        lastName: true,
-        employeeNo: true,
-        position: true,
-        hourlyRate: true,
-        attendance: {
-          where: { date: { gte: qualifyingFrom, lt: nextDay(end) } },
-          select: {
-            date: true,
-            timeIn: true,
-            timeOut: true,
-            overtime: {
-              select: { hours: true, approvedHours: true, status: true },
-            },
-          },
-          orderBy: { date: "asc" },
-        },
-      },
-    }),
+  // The figures come from the shared reader — the same one the employee's own
+  // payslip and the PDF use, so the three can't drift. Only the authorship of
+  // each adjustment is extra here, and it is admin-only by design: an employee
+  // needs to see that ₱500 came off, not which administrator typed it.
+  const [record, adjustments] = await Promise.all([
+    buildPayslip(employeeId, day),
     prisma.payrollAdjustment.findMany({
       where: { employeeId, cutoffStart: start },
       select: {
@@ -96,44 +73,106 @@ export async function getPayslip(
       orderBy: { createdAt: "asc" },
     }),
   ])
-  if (!employee) return null
-
-  const attendance = employee.attendance.map((row) => ({
-    date: row.date,
-    timeIn: row.timeIn,
-    timeOut: row.timeOut,
-    approvedOvertimeHours:
-      row.overtime?.status === "APPROVED"
-        ? Number(row.overtime.approvedHours ?? row.overtime.hours)
-        : 0,
-  }))
-
-  const rows: AdjustmentRow[] = adjustments.map((row) => ({
-    id: row.id,
-    label: row.label,
-    amount: Number(row.amount),
-    note: row.note,
-    createdAt: row.createdAt.toISOString(),
-    createdByName: `${row.createdBy.employee.firstName} ${row.createdBy.employee.lastName}`,
-  }))
+  if (!record) return null
 
   return {
-    employeeName: `${employee.firstName} ${employee.lastName}`,
-    employeeNo: employee.employeeNo,
-    position: employee.position,
-    cutoffStart: start.toISOString(),
-    cutoffEnd: end.toISOString(),
-    adjustments: rows,
-    payslip: computePayslip({
-      hourlyRate: Number(employee.hourlyRate),
-      // The cutoff's own days are what get paid; the ones before it only say
-      // whether the employee was at work ahead of a holiday.
-      days: attendance.filter((row) => row.date >= start),
-      daysBeforeCutoff: attendance.filter((row) => row.date < start),
-      holidaysInCutoff: holidaysBetween(start, end),
-      adjustments: rows,
-    }),
+    employeeName: record.employeeName,
+    employeeNo: record.employeeNo,
+    position: record.position,
+    cutoffStart: record.cutoffStart,
+    cutoffEnd: record.cutoffEnd,
+    payslip: record.payslip,
+    adjustments: adjustments.map((row) => ({
+      id: row.id,
+      label: row.label,
+      amount: Number(row.amount),
+      note: row.note,
+      createdAt: row.createdAt.toISOString(),
+      createdByName: `${row.createdBy.employee.firstName} ${row.createdBy.employee.lastName}`,
+    })),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Releasing a run
+//
+// Until this happens the period is the office's working document: figures move
+// as punches are corrected and overtime is decided. Releasing says the run is
+// final enough to show the people it pays — and only then does it appear on
+// their side at all.
+//
+// It does not freeze the numbers. Payroll is recomputed from attendance on
+// every read, and that stays true afterwards, so a punch fixed on Monday
+// reaches the payslip the employee is looking at rather than leaving two
+// versions of the truth in the building. What the row records is the decision:
+// who published it, and when.
+// ---------------------------------------------------------------------------
+
+export type ReleaseState = { message?: string; success?: boolean } | undefined
+
+export async function releasePayroll(cutoffDay: string): Promise<ReleaseState> {
+  const session = await requireManager()
+
+  const day = parseDayParam(cutoffDay, new Date())
+  const start = cutoffStart(day)
+  const end = cutoffEnd(day)
+
+  // A period still running would be released half-finished, and every payslip
+  // in it would change under the employee for days afterwards.
+  if (end >= attendanceDay(new Date())) {
+    return {
+      message: "This period hasn't finished yet. Release it once the cutoff has closed.",
+    }
+  }
+
+  await prisma.payrollRelease.upsert({
+    where: { cutoffStart: start },
+    create: {
+      cutoffStart: start,
+      cutoffEnd: end,
+      releasedById: session.accountId,
+    },
+    // Re-releasing is not an error and not a second row — it just restamps who
+    // stands behind the run.
+    update: { releasedById: session.accountId, releasedAt: new Date() },
+  })
+
+  // Everyone the run pays, told once. Outside any transaction: an inbox row
+  // failing is not a reason to un-release a payroll.
+  const employees = await prisma.employee.findMany({
+    where: { OR: [{ account: null }, { account: { isActive: true } }] },
+    select: { id: true },
+  })
+
+  await notifyEmployees(
+    employees.map((employee) => employee.id),
+    {
+      type: "PAYSLIP_RELEASED",
+      title: "Payslip available",
+      body: `Your payslip for ${cutoffLabel(start, end)} is ready to view.`,
+      destination: "payroll",
+    }
+  )
+
+  revalidatePath("/admin/payroll")
+  revalidatePath("/employee/payslips")
+
+  return { success: true }
+}
+
+/** Undo, for a run released a cutoff early. Hides it again; nothing is lost. */
+export async function unreleasePayroll(
+  cutoffDay: string
+): Promise<ReleaseState> {
+  await requireManager()
+
+  const start = cutoffStart(parseDayParam(cutoffDay, new Date()))
+  await prisma.payrollRelease.deleteMany({ where: { cutoffStart: start } })
+
+  revalidatePath("/admin/payroll")
+  revalidatePath("/employee/payslips")
+
+  return { success: true }
 }
 
 // ---------------------------------------------------------------------------

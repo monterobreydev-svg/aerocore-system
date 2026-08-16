@@ -6,6 +6,7 @@ import Link from "next/link"
 import {
   Banknote,
   CalendarDays,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -14,6 +15,7 @@ import {
   Send,
   Users,
 } from "lucide-react"
+import type { ReleaseMode } from "@/components/payroll/release-payroll-dialog"
 import { peso } from "@/lib/reimbursement"
 import { dayLabel } from "@/lib/attendance"
 import { cn } from "@/lib/utils"
@@ -33,6 +35,14 @@ import {
 // until a row is actually opened.
 const PayslipDialog = dynamic(() =>
   import("@/components/payroll/payslip-dialog").then((m) => m.PayslipDialog)
+)
+
+// Same reasoning: a confirmation nobody has asked for yet shouldn't cost the
+// Dialog primitive on first paint.
+const ReleasePayrollDialog = dynamic(() =>
+  import("@/components/payroll/release-payroll-dialog").then(
+    (m) => m.ReleasePayrollDialog
+  )
 )
 
 export type PayrollRow = {
@@ -138,13 +148,26 @@ export function PayrollView({
   rows,
   cutoff,
   holidays,
+  released,
 }: {
   rows: PayrollRow[]
   cutoff: PayrollCutoff
   holidays: { date: string; name: string }[]
+  /** Null while the run is still the office's own working copy. */
+  released: { at: string; byName: string } | null
 }) {
   const [query, setQuery] = useState("")
   const [openFor, setOpenFor] = useState<PayrollRow | null>(null)
+  // Which confirmation is open, if any. Releasing is the one action here that
+  // reaches outside the office, so neither direction happens on a single click.
+  const [confirming, setConfirming] = useState<ReleaseMode | null>(null)
+
+  const releasedOn = released
+    ? new Date(released.at).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : ""
 
   const term = query.trim().toLowerCase()
   const visible = term
@@ -216,19 +239,47 @@ export function PayrollView({
           </span>
         )}
 
-        {/* Placeholders: the design needs them present to read right, but
-            neither is wired to anything yet. */}
         <div className="ml-auto flex items-center gap-2">
+          {/* Still a placeholder: the office's own copy of the whole run is a
+              different document from the payslip an employee downloads. */}
           <Button variant="outline" size="lg" title="Not wired up yet">
             <Download />
             <span className="hidden sm:inline">Download PDF</span>
           </Button>
-          <Button size="lg" title="Not wired up yet">
-            <Send />
-            Release
-          </Button>
+
+          {released ? (
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+                title={`Released by ${released.byName} on ${releasedOn}`}
+              >
+                <CheckCircle2 className="size-3.5 shrink-0" />
+                Released {releasedOn}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirming("unrelease")}
+              >
+                Unrelease
+              </Button>
+            </div>
+          ) : (
+            <Button size="lg" onClick={() => setConfirming("release")}>
+              <Send />
+              Release
+            </Button>
+          )}
         </div>
       </div>
+
+      {!released && (
+        <p className="text-xs text-muted-foreground">
+          These figures are the office&rsquo;s working copy. Releasing publishes
+          them to every employee&rsquo;s Payroll page, where they can read the
+          summary and download the full computation.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Summary
@@ -459,6 +510,22 @@ export function PayrollView({
           cutoffLabel={cutoff.label}
           open
           onOpenChange={(next) => !next && setOpenFor(null)}
+        />
+      )}
+
+      {confirming && (
+        <ReleasePayrollDialog
+          mode={confirming}
+          open
+          onOpenChange={(next) => !next && setConfirming(null)}
+          cutoffDay={cutoff.day}
+          cutoffLabel={cutoff.label}
+          cutoffEnd={cutoff.end}
+          // Everyone on the run and what it comes to — not the filtered view.
+          // A search box narrowing the table must not narrow what the
+          // confirmation says is about to be published.
+          staffCount={rows.length}
+          netTotal={rows.reduce((sum, row) => sum + row.net, 0)}
         />
       )}
     </div>

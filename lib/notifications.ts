@@ -25,6 +25,7 @@ export const NOTIFICATION_ACCENT: Record<NotificationType, string> = {
   LIQUIDATION_SUBMITTED: "bg-amber-600/10 text-amber-700 dark:text-amber-400",
   FUND_RELEASED: "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400",
   OVERTIME_REQUESTED: "bg-violet-600/10 text-violet-700 dark:text-violet-400",
+  PAYSLIP_RELEASED: "bg-brand/10 text-brand",
 }
 
 // "just now", "4m", "3h", "2d", then a plain date. Short because it sits on a

@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useOptimistic, useTransition } from "react"
 import {
+  Banknote,
   Bell,
   CalendarClock,
   Receipt,
@@ -35,6 +36,7 @@ const ICONS: Record<NotificationType, typeof Bell> = {
   LIQUIDATION_SUBMITTED: Receipt,
   FUND_RELEASED: Wallet,
   OVERTIME_REQUESTED: Timer,
+  PAYSLIP_RELEASED: Banknote,
 }
 
 // Stable identity so the optimistic reducer's initial state never re-renders

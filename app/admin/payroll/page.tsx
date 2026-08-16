@@ -64,7 +64,7 @@ export default async function PayrollPage({
   // One read of the period for everyone on the payroll. Bounded by the cutoff:
   // sixteen days at the outside, plus the lookback, however long the company
   // has existed.
-  const [employees, adjustments] = await Promise.all([
+  const [employees, adjustments, release] = await Promise.all([
     prisma.employee.findMany({
     where: ON_PAYROLL,
     select: {
@@ -93,6 +93,16 @@ export default async function PayrollPage({
     prisma.payrollAdjustment.findMany({
       where: { cutoffStart: start },
       select: { employeeId: true, label: true, amount: true },
+    }),
+    // Whether this run has been published to the people it pays.
+    prisma.payrollRelease.findUnique({
+      where: { cutoffStart: start },
+      select: {
+        releasedAt: true,
+        releasedBy: {
+          select: { employee: { select: { firstName: true, lastName: true } } },
+        },
+      },
     }),
   ])
 
@@ -177,6 +187,14 @@ export default async function PayrollPage({
           date: holiday.date.toISOString(),
           name: holiday.name,
         }))}
+        released={
+          release
+            ? {
+                at: release.releasedAt.toISOString(),
+                byName: `${release.releasedBy.employee.firstName} ${release.releasedBy.employee.lastName}`,
+              }
+            : null
+        }
       />
     </div>
   )
