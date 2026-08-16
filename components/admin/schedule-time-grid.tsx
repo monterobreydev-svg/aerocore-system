@@ -9,6 +9,7 @@ import {
   isSameDay,
   minutesIntoDay,
   packOverlapping,
+  spansMidnight,
   startOfDay,
 } from "@/lib/schedule"
 import {
@@ -33,7 +34,15 @@ function useGridBounds(schedules: ScheduleRecord[]) {
 
     for (const schedule of schedules) {
       first = Math.min(first, Math.floor(minutesIntoDay(schedule.startTime) / 60))
-      last = Math.max(last, Math.ceil(minutesIntoDay(schedule.endTime) / 60))
+
+      // A shift that crosses midnight needs both ends of the grid: it runs to
+      // the bottom of its own day and starts again at the top of the next.
+      if (spansMidnight(schedule)) {
+        first = 0
+        last = 24
+      } else {
+        last = Math.max(last, Math.ceil(minutesIntoDay(schedule.endTime) / 60))
+      }
     }
 
     return { startHour: Math.max(0, first), endHour: Math.min(24, last) }
@@ -47,6 +56,8 @@ function JobBlock({
   top,
   height,
   detailed,
+  continues = false,
+  continued = false,
   onSelect,
 }: {
   schedule: ScheduleRecord
@@ -55,6 +66,10 @@ function JobBlock({
   top: number
   height: number
   detailed: boolean
+  /** Cut off at midnight — the rest is on tomorrow's column. */
+  continues?: boolean
+  /** The tail of a shift that began yesterday. */
+  continued?: boolean
   onSelect: (schedule: ScheduleRecord) => void
 }) {
   const primaryType = schedule.workTypes[0]
@@ -84,11 +99,20 @@ function JobBlock({
         primaryType
           ? WORK_TYPE_SOLID[primaryType]
           : "bg-muted text-muted-foreground",
-        schedule.status === "CANCELLED" && "opacity-50"
+        schedule.status === "CANCELLED" && "opacity-50",
+        // Square off the edge the shift runs through, so a night shift reads as
+        // carrying on rather than as two jobs that happen to touch midnight.
+        continues && "rounded-b-none",
+        continued && "rounded-t-none"
       )}
     >
       <span className="truncate text-[11px] leading-tight font-medium">
-        {formatTime(schedule.startTime)}
+        {/* The tail says where it came from, not "12:00 AM" — the shift did
+            not start at midnight, it merely crossed it. */}
+        {continued
+          ? `from ${formatTime(schedule.startTime)}`
+          : formatTime(schedule.startTime)}
+        {continues && " →"}
       </span>
       <span
         className={cn(
@@ -114,6 +138,66 @@ function JobBlock({
   )
 }
 
+const DAY_MINUTES = 24 * 60
+
+/** The piece of a shift that belongs to one column of the grid. */
+type Segment = {
+  schedule: ScheduleRecord
+  start: number
+  end: number
+  /** Runs past midnight — the rest of it is drawn on tomorrow's column. */
+  continues: boolean
+  /** Began yesterday — this is the tail of it. */
+  continued: boolean
+}
+
+/**
+ * A day's worth of blocks, including the tail of a shift that began yesterday.
+ *
+ * A grid column is a calendar day, but a night shift is one job across two of
+ * them. Drawing it as a single block was impossible — the height came out
+ * negative, because the end is earlier in the day than the start — so it is cut
+ * at midnight and drawn twice, with each half told which way it runs so it can
+ * say so rather than looking truncated.
+ */
+function segmentsFor(day: Date, schedules: ScheduleRecord[]): Segment[] {
+  const segments: Segment[] = []
+
+  for (const schedule of schedules) {
+    const start = new Date(schedule.startTime)
+    const end = new Date(schedule.endTime)
+    const overnight = !isSameDay(start, end)
+
+    if (isSameDay(start, day)) {
+      segments.push({
+        schedule,
+        start: minutesIntoDay(schedule.startTime),
+        // A shift that wraps runs to the bottom of this column; one that
+        // doesn't keeps its own end, floored so a 10-minute job is still
+        // visible.
+        end: overnight
+          ? DAY_MINUTES
+          : Math.max(
+              minutesIntoDay(schedule.endTime),
+              minutesIntoDay(schedule.startTime) + 15
+            ),
+        continues: overnight,
+        continued: false,
+      })
+    } else if (overnight && isSameDay(end, day)) {
+      segments.push({
+        schedule,
+        start: 0,
+        end: Math.max(minutesIntoDay(schedule.endTime), 15),
+        continues: false,
+        continued: true,
+      })
+    }
+  }
+
+  return segments
+}
+
 function DayColumn({
   day,
   hours,
@@ -131,20 +215,7 @@ function DayColumn({
   onSelect: (schedule: ScheduleRecord) => void
   onCreateAt?: (day: Date, hour: number) => void
 }) {
-  const daySchedules = schedules.filter((schedule) =>
-    isSameDay(new Date(schedule.date), day)
-  )
-
-  const packed = packOverlapping(
-    daySchedules.map((schedule) => ({
-      start: minutesIntoDay(schedule.startTime),
-      end: Math.max(
-        minutesIntoDay(schedule.endTime),
-        minutesIntoDay(schedule.startTime) + 15
-      ),
-      schedule,
-    }))
-  )
+  const packed = packOverlapping(segmentsFor(day, schedules))
 
   // The column's height comes from the grid around it, so dropping these
   // targets costs no layout — which is what lets a past day simply not have
@@ -173,14 +244,18 @@ function DayColumn({
         ))}
 
       {packed.map(({ item, column, columns }) => (
+        // Keyed by which half it is: a night shift puts two blocks on the grid
+        // and they are different elements, not the same one moved.
         <JobBlock
-          key={item.schedule.id}
+          key={`${item.schedule.id}-${item.continued ? "tail" : "head"}`}
           schedule={item.schedule}
           column={column}
           columns={columns}
           top={((item.start - startHour * 60) / 60) * HOUR_HEIGHT}
           height={((item.end - item.start) / 60) * HOUR_HEIGHT}
           detailed={detailed}
+          continues={item.continues}
+          continued={item.continued}
           onSelect={onSelect}
         />
       ))}
@@ -201,10 +276,17 @@ export function ScheduleTimeGrid({
   onSelect: (schedule: ScheduleRecord) => void
   onCreateAt?: (day: Date, hour: number) => void
 }) {
+  // Start *or* end, not just the day it is filed under: a shift that began
+  // last night belongs on this morning's column too, and a day view of the
+  // morning after would otherwise show nothing at all.
   const visible = useMemo(
     () =>
       schedules.filter((schedule) =>
-        days.some((day) => isSameDay(new Date(schedule.date), day))
+        days.some(
+          (day) =>
+            isSameDay(new Date(schedule.startTime), day) ||
+            isSameDay(new Date(schedule.endTime), day)
+        )
       ),
     [schedules, days]
   )

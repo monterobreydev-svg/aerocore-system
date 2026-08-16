@@ -7,10 +7,13 @@ import { verifySession } from "@/lib/auth"
 import {
   dateKey,
   SCHEDULE_STATUS_LABELS,
+  scheduleEndsAt,
+  shiftMinutes,
   todayKey,
   toTimeInputValue,
   WORK_TYPE_LABELS,
 } from "@/lib/schedule"
+import { MAX_SHIFT_HOURS } from "@/lib/attendance"
 import { notifyEmployees } from "@/lib/notify"
 import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
 
@@ -28,6 +31,21 @@ async function requireScheduleAccess() {
 
 function combineDateAndTime(date: string, time: string) {
   return new Date(`${date}T${time}:00`)
+}
+
+/**
+ * The two instants a scheduled shift runs between.
+ *
+ * The only place that decides where an end time lands, so a night shift can't
+ * be written with an end that sits eleven hours before its own start. The row's
+ * `date` stays the day the shift *begins* — the same day attendance files the
+ * punch under, which is what keeps the two able to find each other.
+ */
+function shiftBounds(date: string, startTime: string, endTime: string) {
+  return {
+    start: combineDateAndTime(date, startTime),
+    end: scheduleEndsAt(date, startTime, endTime)!,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -232,10 +250,22 @@ const ScheduleSchema = z
       .array(z.enum(WORK_TYPE_VALUES))
       .min(1, "Select at least one work type."),
   })
-  .refine((data) => data.endTime > data.startTime, {
-    message: "End time must be after the start time.",
+  .refine((data) => data.endTime !== data.startTime, {
+    message: "The start and end can't be the same time.",
     path: ["endTime"],
   })
+  // An end *before* the start is a night shift, not a typo — 19:00 to 08:00 is
+  // thirteen hours of one job, and attendance has always handled a punch that
+  // crosses midnight. What is a mistake is a shift nobody could punch out of:
+  // timing out stops looking for an open punch after MAX_SHIFT_HOURS, so a
+  // schedule longer than that could never be closed properly.
+  .refine(
+    (data) => shiftMinutes(data.startTime, data.endTime) <= MAX_SHIFT_HOURS * 60,
+    {
+      message: `A shift can't run longer than ${MAX_SHIFT_HOURS} hours.`,
+      path: ["endTime"],
+    }
+  )
   // Work is assigned, not recorded: a job on a day that has already been and
   // gone is nobody's to turn up for. The date picker is capped at today too,
   // but a form left open overnight submits yesterday's date in good faith and
@@ -312,8 +342,7 @@ export async function createSchedule(
     ...new Set(formData.getAll("employeeIds").map(String).filter(Boolean)),
   ]
 
-  const start = combineDateAndTime(date, startTime)
-  const end = combineDateAndTime(date, endTime)
+  const { start, end } = shiftBounds(date, startTime, endTime)
 
   const conflicts = await findAssignmentConflicts({ employeeIds, start, end })
   if (conflicts.length > 0) {
@@ -380,10 +409,22 @@ const UpdateScheduleSchema = z
       .min(1, "Select at least one work type."),
     status: z.enum(STATUS_VALUES, { error: "Select a status." }),
   })
-  .refine((data) => data.endTime > data.startTime, {
-    message: "End time must be after the start time.",
+  .refine((data) => data.endTime !== data.startTime, {
+    message: "The start and end can't be the same time.",
     path: ["endTime"],
   })
+  // An end *before* the start is a night shift, not a typo — 19:00 to 08:00 is
+  // thirteen hours of one job, and attendance has always handled a punch that
+  // crosses midnight. What is a mistake is a shift nobody could punch out of:
+  // timing out stops looking for an open punch after MAX_SHIFT_HOURS, so a
+  // schedule longer than that could never be closed properly.
+  .refine(
+    (data) => shiftMinutes(data.startTime, data.endTime) <= MAX_SHIFT_HOURS * 60,
+    {
+      message: `A shift can't run longer than ${MAX_SHIFT_HOURS} hours.`,
+      path: ["endTime"],
+    }
+  )
 
 export type UpdateScheduleState =
   | {
@@ -450,8 +491,7 @@ export async function updateSchedule(
     ...new Set(formData.getAll("employeeIds").map(String).filter(Boolean)),
   ]
 
-  const start = combineDateAndTime(date, startTime)
-  const end = combineDateAndTime(date, endTime)
+  const { start, end } = shiftBounds(date, startTime, endTime)
 
   // Excludes this schedule, so re-saving a job without changing its employees
   // doesn't report the job clashing with itself.

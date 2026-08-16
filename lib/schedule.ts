@@ -282,6 +282,63 @@ export function combineDateTime(date: string, time: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Shifts that cross midnight
+// ---------------------------------------------------------------------------
+//
+// A night shift is one shift, not two: 19:00 to 08:00 is thirteen hours of one
+// job, and the person doing it times in once and out once. Attendance was
+// always built that way — the punch is filed under the day it *started* and
+// timing out looks for whoever has a punch open, wherever it began — but
+// scheduling wasn't, and refused to accept an end time earlier than the start.
+//
+// So a shift is overnight exactly when its end time is not after its start
+// time, and the end lands on the following day. Everything downstream — the
+// conflict check, the overtime window, the auto time-out — reads real Dates and
+// needs no further help once the end is stored on the right day.
+
+/**
+ * Does this shift run past midnight?
+ *
+ * Times are "HH:MM" from the form, which compare correctly as text. Equal times
+ * are not a 24-hour shift — they are a mistake, and are rejected rather than
+ * silently turned into one.
+ */
+export function crossesMidnight(startTime: string, endTime: string) {
+  return endTime < startTime
+}
+
+/** How long a shift runs, in minutes, counting across midnight when it wraps. */
+export function shiftMinutes(startTime: string, endTime: string) {
+  const [startHour, startMinute] = startTime.split(":").map(Number)
+  const [endHour, endMinute] = endTime.split(":").map(Number)
+  if ([startHour, startMinute, endHour, endMinute].some(Number.isNaN)) return 0
+
+  const from = startHour * 60 + startMinute
+  const to = endHour * 60 + endMinute
+  return to > from ? to - from : to + 24 * 60 - from
+}
+
+/**
+ * The instant a shift ends, given the day it starts on.
+ *
+ * The one place that knows an overnight end belongs to the next day. Both the
+ * create and the edit path go through it, so a schedule cannot be written with
+ * an end that sits before its own start.
+ */
+export function scheduleEndsAt(date: string, startTime: string, endTime: string) {
+  const end = combineDateTime(date, endTime)
+  if (!end) return null
+
+  if (crossesMidnight(startTime, endTime)) end.setDate(end.getDate() + 1)
+  return end
+}
+
+/** Whether a stored schedule's end landed on a different day from its start. */
+export function spansMidnight(schedule: { startTime: string; endTime: string }) {
+  return !isSameDay(new Date(schedule.startTime), new Date(schedule.endTime))
+}
+
+// ---------------------------------------------------------------------------
 // Week/day time-grid layout
 // ---------------------------------------------------------------------------
 

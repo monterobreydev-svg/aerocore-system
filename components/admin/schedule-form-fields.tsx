@@ -1,13 +1,16 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { MapPin } from "lucide-react"
+import { MapPin, MoonStar } from "lucide-react"
 import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
 import { listBranches } from "@/app/actions/schedules"
 import {
   SCHEDULE_STATUSES,
   SCHEDULE_STATUS_LABELS,
   combineDateTime,
+  crossesMidnight,
+  scheduleEndsAt,
+  shiftMinutes,
   type EmployeeBusyBlock,
 } from "@/lib/schedule"
 import { Input } from "@/components/ui/input"
@@ -26,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 import { SearchSelect } from "@/components/ui/search-select"
 import { ScheduleEmployeePicker } from "@/components/admin/schedule-employee-picker"
 import { ScheduleWorkTypePicker } from "@/components/admin/schedule-worktype-picker"
@@ -56,6 +60,13 @@ const DURATION_PRESETS = [
   { label: "4h", minutes: 240 },
   { label: "8h", minutes: 480 },
 ]
+
+/** "13h" or "9h 30m" — the length, said the way a person would say it. */
+function formatShiftLength(minutes: number) {
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`
+}
 
 function addMinutesToTime(time: string, minutes: number) {
   const [hours, mins] = time.split(":").map(Number)
@@ -197,7 +208,21 @@ export function ScheduleFormFields({
     : selectedClient?.address
 
   const start = combineDateTime(context.date, context.startTime)
-  const end = combineDateTime(context.date, context.endTime)
+  // The employee picker checks for clashes against this, so it has to be the
+  // real end — a night shift's end is on the next day, not eleven hours before
+  // its own start.
+  const end = scheduleEndsAt(context.date, context.startTime, context.endTime)
+
+  const overnight =
+    Boolean(context.startTime && context.endTime) &&
+    crossesMidnight(context.startTime, context.endTime)
+  const shiftLength =
+    context.startTime && context.endTime
+      ? shiftMinutes(context.startTime, context.endTime)
+      : 0
+  const nextDayLabel = end
+    ? end.toLocaleDateString("en-PH", { weekday: "long" })
+    : ""
 
   return (
     <div className="flex flex-col gap-4">
@@ -330,6 +355,29 @@ export function ScheduleFormFields({
               />
             </Field>
           </div>
+
+          {/* What was actually typed, said back. An end before the start is a
+              night shift and perfectly legal — but it is also what a typo looks
+              like, so the length and the day it finishes on are spelled out
+              here where they can be checked before saving. */}
+          {shiftLength > 0 && (
+            <p
+              className={cn(
+                "flex items-center gap-1.5 text-xs",
+                overnight
+                  ? "text-violet-700 dark:text-violet-400"
+                  : "text-muted-foreground"
+              )}
+            >
+              {overnight && <MoonStar className="size-3.5 shrink-0" />}
+              {overnight
+                ? `Overnight — ends ${nextDayLabel} at ${context.endTime}`
+                : "Same day"}
+              <span className="text-muted-foreground">
+                · {formatShiftLength(shiftLength)}
+              </span>
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Duration</span>
