@@ -7,6 +7,7 @@ import { verifySession } from "@/lib/auth"
 import {
   dateKey,
   SCHEDULE_STATUS_LABELS,
+  todayKey,
   toTimeInputValue,
   WORK_TYPE_LABELS,
 } from "@/lib/schedule"
@@ -234,6 +235,19 @@ const ScheduleSchema = z
   .refine((data) => data.endTime > data.startTime, {
     message: "End time must be after the start time.",
     path: ["endTime"],
+  })
+  // Work is assigned, not recorded: a job on a day that has already been and
+  // gone is nobody's to turn up for. The date picker is capped at today too,
+  // but a form left open overnight submits yesterday's date in good faith and
+  // an action is a public endpoint regardless of what the dialog allows — so
+  // the day is checked here, when it is actually being written.
+  //
+  // Only on creation. Editing keeps a past date editable, because a job that
+  // already happened still needs its outcome recorded against the day it
+  // happened on.
+  .refine((data) => data.date >= todayKey(), {
+    message: "That day has already passed. Schedule work for today or later.",
+    path: ["date"],
   })
 
 export type ScheduleState =

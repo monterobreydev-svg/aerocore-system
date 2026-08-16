@@ -13,6 +13,7 @@ import {
   parseDateKey,
   startOfDay,
   startOfWeek,
+  todayKey,
   type EmployeeBusyBlock,
 } from "@/lib/schedule"
 import { HOLIDAY_PAY_NOTE } from "@/lib/holidays"
@@ -113,12 +114,20 @@ export function SchedulesView({
   // Opening the create dialog from anywhere: the toolbar button uses the day
   // the calendar is on, a month cell uses that day, a time-grid cell uses that
   // day and hour. A fresh object each time so the dialog reseeds its form.
+  //
+  // Never a day that has gone. The calendar cells for those days aren't create
+  // targets at all, but the toolbar button follows wherever the calendar has
+  // been scrolled to — browsing March and pressing "New schedule" should offer
+  // today, not seed a date the form is going to reject.
   function openCreate(day: Date, hour?: number) {
+    // Both are `YYYY-MM-DD`, which sorts as text.
+    const date = [dateKey(day), todayKey()].sort().at(-1)!
+
     setSlot(
       hour === undefined
-        ? defaultSlot(dateKey(day))
+        ? defaultSlot(date)
         : {
-            date: dateKey(day),
+            date,
             startTime: `${String(hour).padStart(2, "0")}:00`,
             endTime: `${String(Math.min(hour + 2, 23)).padStart(2, "0")}:00`,
           }

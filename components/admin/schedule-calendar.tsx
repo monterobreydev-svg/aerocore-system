@@ -8,6 +8,7 @@ import {
   addDays,
   formatTime,
   isSameDay,
+  startOfDay,
   startOfMonth,
   startOfWeek,
 } from "@/lib/schedule"
@@ -43,6 +44,8 @@ export function ScheduleMonthView({
 }) {
   const today = new Date()
 
+  const startOfToday = +startOfDay(today)
+
   const days = useMemo(() => {
     const gridStart = startOfWeek(startOfMonth(cursor))
     return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
@@ -62,6 +65,7 @@ export function ScheduleMonthView({
         {days.map((day, index) => {
           const inMonth = day.getMonth() === cursor.getMonth()
           const dayIsToday = isSameDay(day, today)
+          const isPast = +startOfDay(day) < startOfToday
           const holiday = holidayOn(day)
           const daySchedules = schedules
             .filter((schedule) => isSameDay(new Date(schedule.date), day))
@@ -169,15 +173,24 @@ export function ScheduleMonthView({
 
               {/* Fills the leftover space so the whole empty area of the cell
                   is the "create here" target, without sitting on top of the
-                  chips above it. */}
-              {onCreateAt && (
-                <button
-                  type="button"
-                  onClick={() => onCreateAt(day)}
-                  aria-label={`Create a schedule on ${day.toDateString()}`}
-                  className="min-h-4 flex-1 rounded outline-none hover:bg-sky-600/5 focus-visible:bg-sky-600/5"
-                />
-              )}
+                  chips above it.
+
+                  A day that has gone keeps the filler but loses the button:
+                  nobody can be sent to work last Tuesday, and a cell that
+                  lights up under the cursor and then refuses the form is a
+                  worse answer than one that was never offered. The day number
+                  above still opens the day, so past work stays readable. */}
+              {onCreateAt &&
+                (isPast ? (
+                  <div className="min-h-4 flex-1" />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onCreateAt(day)}
+                    aria-label={`Create a schedule on ${day.toDateString()}`}
+                    className="min-h-4 flex-1 rounded outline-none hover:bg-sky-600/5 focus-visible:bg-sky-600/5"
+                  />
+                ))}
             </div>
           )
         })}

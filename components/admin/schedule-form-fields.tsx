@@ -92,6 +92,7 @@ export function ScheduleFormFields({
   errors,
   pending,
   scheduleId,
+  minDate,
   defaultWorkTypes = [],
   defaultEmployeeIds = [],
   defaultContactPerson = "",
@@ -109,6 +110,14 @@ export function ScheduleFormFields({
   errors?: FieldErrors
   pending: boolean
   scheduleId?: string
+  /**
+   * Earliest day the picker will offer, as `YYYY-MM-DD`.
+   *
+   * Set when creating, left off when editing: a job that already happened is
+   * still edited on the day it happened, so a floor there would lock the form
+   * of every past job the office needs to close out.
+   */
+  minDate?: string
   defaultWorkTypes?: WorkType[]
   defaultEmployeeIds?: string[]
   defaultContactPerson?: string
@@ -266,12 +275,22 @@ export function ScheduleFormFields({
                 name="date"
                 type="date"
                 value={context.date}
+                min={minDate}
                 onChange={(event) =>
                   onContextChange({ date: event.target.value })
                 }
                 disabled={pending}
                 required
               />
+              {/* Said once, next to the field, rather than only after a
+                  rejected submit — the picker greys the days out but gives no
+                  reason, and a greyed-out calendar with no explanation reads as
+                  something broken. */}
+              {minDate && !errors?.date && (
+                <p className="text-xs text-muted-foreground">
+                  Today onwards.
+                </p>
+              )}
               <FieldError
                 errors={errors?.date?.map((message) => ({ message }))}
               />

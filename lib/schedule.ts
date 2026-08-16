@@ -196,6 +196,18 @@ export function dateKey(date: Date) {
   return `${year}-${month}-${day}`
 }
 
+/**
+ * Today, in the same form a `<input type="date">` and `dateKey` speak.
+ *
+ * The floor on a new schedule. Two `YYYY-MM-DD` strings compare correctly with
+ * `<` and `>` as plain text, so "is this day in the past" needs no Date maths
+ * and no timezone reasoning — which is the point, because the browser and the
+ * server each answer it separately and have to agree.
+ */
+export function todayKey() {
+  return dateKey(new Date())
+}
+
 // The reverse of dateKey, for a ?date= in the URL. Local midnight again, so a
 // linked day lines up with the calendar rather than landing a day off. Anything
 // that isn't a plain date returns null — a hand-edited URL should fall back to

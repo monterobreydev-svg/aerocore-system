@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react"
 import { AlertTriangle, CheckCircle2 } from "lucide-react"
 import { createSchedule, type ScheduleState } from "@/app/actions/schedules"
-import { type EmployeeBusyBlock } from "@/lib/schedule"
+import { todayKey, type EmployeeBusyBlock } from "@/lib/schedule"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -126,6 +126,10 @@ export function CreateScheduleDialog({
             onContextChange={patchContext}
             errors={state?.errors}
             pending={pending}
+            // Read on each open rather than held in state: the dialog can be
+            // left sitting on a phone overnight, and the floor has to be the
+            // day it is submitted on, not the day it was opened on.
+            minDate={todayKey()}
           />
 
           {conflictMessages.length > 0 && (

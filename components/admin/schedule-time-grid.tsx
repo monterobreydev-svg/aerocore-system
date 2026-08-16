@@ -9,6 +9,7 @@ import {
   isSameDay,
   minutesIntoDay,
   packOverlapping,
+  startOfDay,
 } from "@/lib/schedule"
 import {
   HOLIDAY_CELL,
@@ -145,6 +146,11 @@ function DayColumn({
     }))
   )
 
+  // The column's height comes from the grid around it, so dropping these
+  // targets costs no layout — which is what lets a past day simply not have
+  // them, the same way the read-only employee calendar doesn't.
+  const isPast = +startOfDay(day) < +startOfDay(new Date())
+
   // Every column carries a left border, including the first — the header row
   // does the same, so the two line up exactly against the time gutter.
   return (
@@ -154,6 +160,7 @@ function DayColumn({
           stacking order (z-10) so it never swallows a click meant for a job.
           on the employee side, where the calendar is read-only. */}
       {onCreateAt &&
+        !isPast &&
         hours.map((hour) => (
           <button
             key={hour}
