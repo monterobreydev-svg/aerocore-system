@@ -64,8 +64,14 @@ export type AttendanceRow = {
   spansDays: number
   timeInFix: PunchFix
   timeOutFix: PunchFix | null
-  timeInSelfieKey: string
+  /** Null once the photograph has been deleted — see `photosPurgedAt`. */
+  timeInSelfieKey: string | null
   timeOutSelfieKey: string | null
+  /**
+   * When the two punch photographs were deleted from storage, if they have
+   * been. The punch is kept forever; the faces are not.
+   */
+  photosPurgedAt: string | null
   /**
    * Closed by the system an hour after the shift was due to end, rather than
    * by the person. There is no selfie and no position behind it, so the office

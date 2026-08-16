@@ -117,6 +117,28 @@ export function autoTimeOut({
   }
 }
 
+/**
+ * The day before which punch photographs are deleted.
+ *
+ * The first of *last* month: in September, July and everything older goes and
+ * August is kept. So a photograph lives between 30 and 62 days — long enough
+ * that both of its month's payroll cutoffs have been paid and had time to be
+ * queried, and not a day longer.
+ *
+ * Expressed as "the start of the previous month" rather than "delete last month
+ * on the 1st" on purpose: the answer is the same on any day of the month, so
+ * the sweep can run whenever the app happens to be used and always does the
+ * same thing. A rule that only works on the 1st is a rule that silently does
+ * nothing if nobody opens the app that morning.
+ *
+ * Only the two selfies are affected. The punch — times, coordinates, accuracy —
+ * and every report filed against it are kept: those are the record, the
+ * photograph was only ever the proof that the person was standing there.
+ */
+export function photoRetentionCutoff(now: Date = new Date()) {
+  return new Date(now.getFullYear(), now.getMonth() - 1, 1)
+}
+
 export type OvertimeGate =
   /** No shift today, so there's nothing to extend. */
   | { state: "no-shift" }

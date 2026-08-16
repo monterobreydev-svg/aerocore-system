@@ -100,6 +100,7 @@ function PunchCard({
   selfieUrl,
   loading,
   place,
+  purged,
 }: {
   kind: "in" | "out"
   at: string | null
@@ -108,6 +109,8 @@ function PunchCard({
   loading: boolean
   /** Resolved address, or null while it's being looked up or if it can't be. */
   place: string | null
+  /** The photograph was deleted on schedule, rather than failing to load. */
+  purged: boolean
 }) {
   const coarse = fix?.accuracy != null && fix.accuracy > COARSE_FIX_METRES
   const Icon = kind === "in" ? LogIn : LogOut
@@ -142,6 +145,13 @@ function PunchCard({
         {!at ? (
           <p className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
             Still on the clock — no time out yet.
+          </p>
+        ) : purged ? (
+          // Distinct from a failed load on purpose: one is a problem to chase,
+          // the other is the system having done what it was told.
+          <p className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-xs text-muted-foreground">
+            <ImageOff className="size-5" />
+            Photo deleted — punch photographs are kept for about two months.
           </p>
         ) : loading ? (
           <span className="flex h-full items-center justify-center">
@@ -314,7 +324,9 @@ export function AttendanceDetailDialog({
   const [places, setPlaces] = useState<Places>(
     () => settledValue(placeCache, id, FOREVER) ?? { in: null, out: null }
   )
-  const loading = urls === null
+  // A purged punch has nothing to wait for, so it must not sit on a spinner.
+  const hasPhotos = Boolean(timeInSelfieKey || timeOutSelfieKey)
+  const loading = hasPhotos && urls === null
 
   // Signed at open time, not baked into the page: nothing in the bucket is
   // public, and a URL minted when the table rendered would be stale — or worse,
@@ -322,9 +334,16 @@ export function AttendanceDetailDialog({
   useEffect(() => {
     let cancelled = false
 
+    // Nothing to sign once the photographs have been deleted — asking would
+    // mint a URL for an object that is no longer in the bucket. Nothing to set
+    // either: `loading` above already knows there is nothing coming.
+    if (!timeInSelfieKey && !timeOutSelfieKey) return
+
     const entry = cachedOnce(selfieCache, id, SIGNED_URL_TTL_MS, async () => {
       const [timeInUrl, timeOutUrl] = await Promise.all([
-        getAttendanceFileUrl(timeInSelfieKey),
+        timeInSelfieKey
+          ? getAttendanceFileUrl(timeInSelfieKey)
+          : Promise.resolve(null),
         timeOutSelfieKey
           ? getAttendanceFileUrl(timeOutSelfieKey)
           : Promise.resolve(null),
@@ -404,6 +423,7 @@ export function AttendanceDetailDialog({
 
   const overtime = row.overtime
   const working = !row.timeOut
+  const purged = row.photosPurgedAt != null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -531,6 +551,7 @@ export function AttendanceDetailDialog({
                   fix={row.timeInFix}
                   selfieUrl={urls?.in ?? null}
                   loading={loading}
+                  purged={purged}
                   place={places.in}
                 />
                 <PunchCard
@@ -539,6 +560,7 @@ export function AttendanceDetailDialog({
                   fix={row.timeOutFix}
                   selfieUrl={urls?.out ?? null}
                   loading={loading}
+                  purged={purged}
                   place={places.out}
                 />
               </div>

@@ -461,8 +461,12 @@ model Attendance {
   // regardless of what hour the shift starts.
   date       DateTime
 
-  timeIn          DateTime
-  timeInSelfieKey String
+  timeIn DateTime
+  // Nullable because the photograph is deleted once the punch is old enough to
+  // be past dispute — see lib/purge-photos.ts. Null means "there is no photo",
+  // and the type is what forces every reader to say so rather than presigning a
+  // URL for an object that is no longer in the bucket.
+  timeInSelfieKey String?
   timeInLatitude  Float
   timeInLongitude Float
   // Metres of uncertainty the device reported. Kept because a fix accurate to
@@ -482,6 +486,11 @@ model Attendance {
   // position behind it, and the office may want to ask what actually happened.
   autoTimedOut Boolean @default(false)
 
+  // When the two punch photographs were deleted from storage. The punch itself
+  // — times, positions, accuracy, reports — is kept forever; only the faces go.
+  // Set even when there was nothing to delete, so a row is never re-examined.
+  photosPurgedAt DateTime?
+
   // A free-text note about the day as a whole -- anything the office should
   // know that isn't a filed report.
   reportNote String?
@@ -499,6 +508,10 @@ model Attendance {
   // employee to lead on. A composite starting with employeeId can't serve that
   // — Postgres would scan the table — so the date needs an index of its own.
   @@index([date])
+  // "Old enough to purge, and not purged yet" — the photo sweep's only
+  // question. Without the second column it would walk every old row to find
+  // none outstanding, every time it ran.
+  @@index([date, photosPurgedAt])
 }
 
 // A one-off correction to somebody's pay for one cutoff.

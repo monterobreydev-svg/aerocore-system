@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server"
 
 import { closeAbandonedPunches } from "@/lib/auto-timeout"
+import { purgePunchPhotos } from "@/lib/purge-photos"
 
 // Closing abandoned punches on a timer, for whoever wants to run one.
 //
@@ -32,7 +33,11 @@ async function sweep(request: NextRequest) {
     return new Response("Not allowed.", { status: 401 })
   }
 
+  // Both housekeeping jobs on one timer. They are unrelated in what they do
+  // but identical in when they should run — regularly, unattended, and without
+  // anyone having to open a page for the record to be tidy.
   const closed = await closeAbandonedPunches()
+  const purged = await purgePunchPhotos()
 
   return Response.json({
     closed: closed.length,
@@ -41,6 +46,7 @@ async function sweep(request: NextRequest) {
       employeeId: punch.employeeId,
       timeOut: punch.timeOut.toISOString(),
     })),
+    photosPurged: purged,
   })
 }
 

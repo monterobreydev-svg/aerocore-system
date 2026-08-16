@@ -2,6 +2,7 @@ import { after } from "next/server"
 import type { Prisma } from "@/app/generated/prisma/client"
 import { requireManager } from "@/lib/auth"
 import { closeAbandonedPunches } from "@/lib/auto-timeout"
+import { purgePunchPhotos } from "@/lib/purge-photos"
 import { prisma } from "@/lib/prisma"
 import {
   attendanceDay,
@@ -76,6 +77,9 @@ export default async function AdminAttendancePage({
   // stamp it writes is the scheduled shift end either way, so running a moment
   // late changes nothing about the row. The next load shows the result.
   after(closeAbandonedPunches)
+  // And photographs old enough to have served their purpose. One indexed
+  // lookup that finds nothing on all but a few days of the month.
+  after(purgePunchPhotos)
 
   const params = await searchParams
   const today = attendanceDay(new Date())

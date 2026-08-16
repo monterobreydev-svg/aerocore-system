@@ -4,6 +4,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
@@ -248,4 +249,49 @@ export async function getObjectBytes(key: string) {
 
 export async function deleteObject(key: string) {
   await r2().send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
+}
+
+/** The most keys one DeleteObjects call takes, per the S3 API R2 implements. */
+const DELETE_BATCH = 1000
+
+/**
+ * Delete many objects in as few round trips as possible.
+ *
+ * A month of punch photographs is hundreds of keys, and deleting them one at a
+ * time is hundreds of requests to somebody else's service. Returns the keys
+ * actually removed, so the caller only forgets a photograph the bucket has
+ * really let go of.
+ *
+ * A key that was already gone counts as deleted — S3 treats deleting a missing
+ * object as success, which is what makes the sweep safe to re-run.
+ */
+export async function deleteObjects(keys: string[]): Promise<Set<string>> {
+  const deleted = new Set<string>()
+  if (keys.length === 0) return deleted
+
+  for (let at = 0; at < keys.length; at += DELETE_BATCH) {
+    const batch = keys.slice(at, at + DELETE_BATCH)
+
+    try {
+      const result = await r2().send(
+        new DeleteObjectsCommand({
+          Bucket: BUCKET,
+          Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: false },
+        })
+      )
+      for (const entry of result.Deleted ?? []) {
+        if (entry.Key) deleted.add(entry.Key)
+      }
+      for (const error of result.Errors ?? []) {
+        console.error(`[r2] could not delete ${error.Key}: ${error.Message}`)
+      }
+    } catch (error) {
+      // The whole batch failed — storage is unreachable or the credentials are
+      // wrong. Report nothing as deleted so the caller leaves its rows alone
+      // and tries again rather than forgetting photographs that still exist.
+      console.error("[r2] delete batch failed", error)
+    }
+  }
+
+  return deleted
 }
