@@ -21,6 +21,7 @@ export const ATTENDANCE_DETAIL_SELECT = {
   timeOutLatitude: true,
   timeOutLongitude: true,
   timeOutAccuracy: true,
+  autoTimedOut: true,
   reportNote: true,
   reports: {
     select: {
@@ -87,6 +88,7 @@ export function toAttendanceRow(record: AttendanceDetailRecord): AttendanceRow {
         : null,
     timeInSelfieKey: record.timeInSelfieKey,
     timeOutSelfieKey: record.timeOutSelfieKey,
+    autoTimedOut: record.autoTimedOut,
     reports: record.reports.map((report) => ({
       id: report.id,
       type: report.type,

@@ -49,6 +49,7 @@ import {
   type StaffAttendanceSummary,
 } from "@/components/attendance/admin-attendance"
 import { notifyEmployee, notifyReviewers } from "@/lib/notify"
+import { closeAbandonedPunches } from "@/lib/auto-timeout"
 
 function revalidateAll() {
   revalidatePath("/employee/attendance")
@@ -933,6 +934,12 @@ async function resolveUsername(raw: FormDataEntryValue | null) {
 export async function kioskWhoIs(username: string): Promise<KioskWho> {
   const who = await resolveUsername(username)
   if (!who.ok) return who
+
+  // Settle their own abandoned punches before answering. Someone who forgot to
+  // time out last night would otherwise be told they are still on the clock and
+  // offered a "Time out" button for a shift that ended sixteen hours ago —
+  // and this is the screen where that gets noticed.
+  await closeAbandonedPunches(who.employeeId)
 
   const now = new Date()
   const day = attendanceDay(now)

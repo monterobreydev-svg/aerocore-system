@@ -66,6 +66,12 @@ export type AttendanceRow = {
   timeOutFix: PunchFix | null
   timeInSelfieKey: string
   timeOutSelfieKey: string | null
+  /**
+   * Closed by the system an hour after the shift was due to end, rather than
+   * by the person. There is no selfie and no position behind it, so the office
+   * needs to be able to see which rows those are.
+   */
+  autoTimedOut: boolean
   /** Every form filed for the day, one per site visited. */
   reports: AttendanceReportRow[]
   reportNote: string | null

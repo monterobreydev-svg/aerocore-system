@@ -70,6 +70,53 @@ export function grantedHours(overtime: {
  */
 export const MAX_SHIFT_HOURS = 18
 
+/**
+ * How long after a shift ends somebody still has to close their own punch.
+ *
+ * A crew finishing at 17:00 is packing a van, not looking at a phone, and the
+ * handset they punch on is often in somebody else's pocket. An hour covers
+ * that. Past it, the punch is not a long day — it is one nobody closed.
+ */
+export const AUTO_TIMEOUT_GRACE_MINUTES = 60
+
+/**
+ * When an abandoned punch gets closed, and what time goes on it.
+ *
+ * Two different instants, and the distinction is the whole design:
+ *
+ *   `closesAt` is *stamped* on the record — the end of the scheduled shift,
+ *   plus whatever overtime the office actually approved. It is what the person
+ *   was scheduled to work, and it does not move no matter when the sweep
+ *   happens to run. That makes closing an abandoned punch idempotent: run it a
+ *   minute after it falls due or three days later and the row reads the same.
+ *
+ *   `dueAt` is *when* the sweep may act — an hour later. Nothing is stamped
+ *   during that hour, because the person may still be about to do it properly,
+ *   with the selfie and the position that make a punch evidence.
+ *
+ * Deliberately not stamping the hour of grace: it is time to press a button,
+ * not time at work, and paying it would hand an extra hour to everyone who
+ * forgets. Staying late without approved overtime already pays nothing (see
+ * lib/payroll.ts), and this keeps the two rules saying the same thing.
+ */
+export function autoTimeOut({
+  shiftEndsAt,
+  approvedOvertimeHours = 0,
+}: {
+  shiftEndsAt: Date
+  /** Hours the office granted. Unapproved overtime does not extend anything. */
+  approvedOvertimeHours?: number
+}) {
+  const closesAt = new Date(
+    shiftEndsAt.getTime() + Math.max(0, approvedOvertimeHours) * 3_600_000
+  )
+
+  return {
+    closesAt,
+    dueAt: new Date(closesAt.getTime() + AUTO_TIMEOUT_GRACE_MINUTES * 60_000),
+  }
+}
+
 export type OvertimeGate =
   /** No shift today, so there's nothing to extend. */
   | { state: "no-shift" }

@@ -15,6 +15,11 @@ import {
   getPunchPlaces,
 } from "@/app/actions/attendance"
 import {
+  cachedOnce,
+  settledValue,
+  type Cached,
+} from "@/lib/request-cache"
+import {
   clockTime,
   COARSE_FIX_METRES,
   coordinateLabel,
@@ -256,6 +261,40 @@ function Panel({
   )
 }
 
+// ---------------------------------------------------------------------------
+// Fetching each thing once
+// ---------------------------------------------------------------------------
+//
+// Both lookups below are server actions, and both used to run twice every time
+// the dialog opened. React's Strict Mode — on by default in the app router —
+// mounts, unmounts and remounts a component in development, so every effect
+// body runs twice; the `cancelled` flag stopped the second *state update* but
+// the request had already left. Reopening the same row asked all over again.
+//
+// So the results are kept outside the component, keyed by the attendance row
+// they belong to. What is cached is the *promise*, not just the value, which is
+// what makes the double mount share one request instead of racing two: the
+// second effect finds the first one still in flight and waits on it.
+//
+// The two have different lifetimes on purpose. A signed URL expires, so it is
+// held for less time than it is valid for. A place name is a fact about a
+// coordinate and never changes, so it is held for as long as the tab lives.
+
+/**
+ * Comfortably inside the 600s a download URL is signed for, so a cached one
+ * always has minutes left on it rather than expiring in the reader's hand.
+ */
+const SIGNED_URL_TTL_MS = 5 * 60_000
+
+/** A place name is a fact about a coordinate. It does not go stale. */
+const FOREVER = Number.POSITIVE_INFINITY
+
+type SelfieUrls = { in: string | null; out: string | null }
+type Places = { in: string | null; out: string | null }
+
+const selfieCache = new Map<string, Cached<SelfieUrls>>()
+const placeCache = new Map<string, Cached<Places>>()
+
 export function AttendanceDetailDialog({
   row,
   open,
@@ -265,15 +304,17 @@ export function AttendanceDetailDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const [urls, setUrls] = useState<{ in: string | null; out: string | null }>({
-    in: null,
-    out: null,
-  })
-  const [loading, setLoading] = useState(true)
-  const [places, setPlaces] = useState<{
-    in: string | null
-    out: string | null
-  }>({ in: null, out: null })
+  const { id, timeInSelfieKey, timeOutSelfieKey } = row
+
+  // Seeded from the cache so reopening a row it already fetched paints the
+  // photographs immediately, with no request and no loading flash.
+  const [urls, setUrls] = useState<SelfieUrls | null>(
+    () => settledValue(selfieCache, id, SIGNED_URL_TTL_MS) ?? null
+  )
+  const [places, setPlaces] = useState<Places>(
+    () => settledValue(placeCache, id, FOREVER) ?? { in: null, out: null }
+  )
+  const loading = urls === null
 
   // Signed at open time, not baked into the page: nothing in the bucket is
   // public, and a URL minted when the table rendered would be stale — or worse,
@@ -281,58 +322,85 @@ export function AttendanceDetailDialog({
   useEffect(() => {
     let cancelled = false
 
-    void (async () => {
+    const entry = cachedOnce(selfieCache, id, SIGNED_URL_TTL_MS, async () => {
       const [timeInUrl, timeOutUrl] = await Promise.all([
-        getAttendanceFileUrl(row.timeInSelfieKey),
-        row.timeOutSelfieKey
-          ? getAttendanceFileUrl(row.timeOutSelfieKey)
+        getAttendanceFileUrl(timeInSelfieKey),
+        timeOutSelfieKey
+          ? getAttendanceFileUrl(timeOutSelfieKey)
           : Promise.resolve(null),
       ])
-      if (cancelled) return
-      setUrls({ in: timeInUrl, out: timeOutUrl })
-      setLoading(false)
-    })()
+      return { in: timeInUrl, out: timeOutUrl }
+    })
+
+    entry.promise.then(
+      (value) => {
+        // Same object back from the cache means React bails out of the render —
+        // seeding above already put it on screen.
+        if (!cancelled) setUrls(value)
+      },
+      () => {}
+    )
 
     return () => {
       cancelled = true
     }
-  }, [row.timeInSelfieKey, row.timeOutSelfieKey])
+  }, [id, timeInSelfieKey, timeOutSelfieKey])
 
   // Addresses, in their own request and deliberately after the photographs.
   // A cache miss means waiting on somebody else's geocoder, and the evidence
   // shouldn't sit behind that — the coordinates are already on screen, and the
   // place name drops in when it arrives.
+  //
+  // Both coordinates come off the row the list already loaded, so nothing about
+  // the punch itself is fetched again here.
   const timeInPoint = row.timeInFix
   const timeOutPoint = row.timeOutFix
 
-  useEffect(() => {
-    let cancelled = false
+  // Depended on as numbers rather than as the fix objects: a parent re-render
+  // hands down a new object for the same coordinates, and an object in a
+  // dependency array is a new request every time that happens.
+  const inLatitude = timeInPoint?.latitude ?? null
+  const inLongitude = timeInPoint?.longitude ?? null
+  const outLatitude = timeOutPoint?.latitude ?? null
+  const outLongitude = timeOutPoint?.longitude ?? null
 
-    const points = [timeInPoint, timeOutPoint].filter(
-      (point): point is PunchFix => point != null
-    )
+  useEffect(() => {
+    const points: { latitude: number; longitude: number }[] = []
+    if (inLatitude != null && inLongitude != null) {
+      points.push({ latitude: inLatitude, longitude: inLongitude })
+    }
+    if (outLatitude != null && outLongitude != null) {
+      points.push({ latitude: outLatitude, longitude: outLongitude })
+    }
     if (points.length === 0) return
 
-    void (async () => {
-      const labels = await getPunchPlaces(
-        points.map((point) => ({
-          latitude: point.latitude,
-          longitude: point.longitude,
-        }))
-      )
-      if (cancelled) return
+    let cancelled = false
+
+    const entry = cachedOnce(placeCache, id, FOREVER, async () => {
+      const labels = await getPunchPlaces(points)
       // Mapped back by position: the out fix is only in the request when it
       // exists, so its label is the second entry only when it was sent.
-      setPlaces({
-        in: timeInPoint ? labels[0] : null,
-        out: timeOutPoint ? labels[timeInPoint ? 1 : 0] : null,
-      })
-    })()
+      const hasIn = inLatitude != null && inLongitude != null
+      return {
+        in: hasIn ? (labels[0] ?? null) : null,
+        out:
+          outLatitude != null && outLongitude != null
+            ? (labels[hasIn ? 1 : 0] ?? null)
+            : null,
+      }
+    })
+
+    entry.promise.then(
+      (value) => {
+        if (!cancelled) setPlaces(value)
+      },
+      () => {}
+    )
 
     return () => {
       cancelled = true
     }
-  }, [timeInPoint, timeOutPoint])
+  }, [id, inLatitude, inLongitude, outLatitude, outLongitude])
 
   const overtime = row.overtime
   const working = !row.timeOut
@@ -405,6 +473,14 @@ export function AttendanceDetailDialog({
                   // day is named.
                   working ? (
                     "Not yet out"
+                  ) : row.autoTimedOut ? (
+                    // The strongest thing this dialog can say about a punch is
+                    // where the person was standing, and for this one there is
+                    // no answer — so it says who closed it instead of leaving a
+                    // time that looks like somebody pressed a button.
+                    <span className="text-amber-700 dark:text-amber-400">
+                      closed automatically
+                    </span>
                   ) : row.spansDays > 0 ? (
                     <span className="text-violet-700 dark:text-violet-400">
                       on {dayLabel(row.timeOut!)}
@@ -431,6 +507,20 @@ export function AttendanceDetailDialog({
               />
             </div>
 
+            {/* Said plainly, above the evidence, because the evidence for the
+                time out is the thing that is missing. */}
+            {row.autoTimedOut && (
+              <p className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  Nobody closed this punch, so the system did — stamped at the
+                  end of the scheduled shift plus any approved overtime. There
+                  is no time-out photo or position behind it. Correct the time
+                  if the crew actually worked later.
+                </span>
+              </p>
+            )}
+
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-5">
               {/* Evidence. Kept together and kept first — it is what the whole
                   record rests on. */}
@@ -439,7 +529,7 @@ export function AttendanceDetailDialog({
                   kind="in"
                   at={row.timeIn}
                   fix={row.timeInFix}
-                  selfieUrl={urls.in}
+                  selfieUrl={urls?.in ?? null}
                   loading={loading}
                   place={places.in}
                 />
@@ -447,7 +537,7 @@ export function AttendanceDetailDialog({
                   kind="out"
                   at={row.timeOut}
                   fix={row.timeOutFix}
-                  selfieUrl={urls.out}
+                  selfieUrl={urls?.out ?? null}
                   loading={loading}
                   place={places.out}
                 />

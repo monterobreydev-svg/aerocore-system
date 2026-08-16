@@ -1,5 +1,7 @@
+import { after } from "next/server"
 import type { Prisma } from "@/app/generated/prisma/client"
 import { requireManager } from "@/lib/auth"
+import { closeAbandonedPunches } from "@/lib/auto-timeout"
 import { prisma } from "@/lib/prisma"
 import {
   attendanceDay,
@@ -68,6 +70,12 @@ export default async function AdminAttendancePage({
   searchParams,
 }: PageProps<"/admin/attendance">) {
   await requireManager()
+
+  // Punches nobody closed get settled after this response goes out, not before
+  // it — the office should not wait on a sweep to see the day log, and the
+  // stamp it writes is the scheduled shift end either way, so running a moment
+  // late changes nothing about the row. The next load shows the result.
+  after(closeAbandonedPunches)
 
   const params = await searchParams
   const today = attendanceDay(new Date())

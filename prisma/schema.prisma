@@ -475,6 +475,13 @@ model Attendance {
   timeOutLongitude Float?
   timeOutAccuracy  Float?
 
+  // Closed by the system rather than by the person, an hour after the shift
+  // (plus any approved overtime) was due to end. The stamp is the scheduled
+  // end, not the moment the sweep ran — see lib/auto-timeout.ts — so it must be
+  // possible to tell the two apart: an auto-closed punch has no selfie and no
+  // position behind it, and the office may want to ask what actually happened.
+  autoTimedOut Boolean @default(false)
+
   // A free-text note about the day as a whole -- anything the office should
   // know that isn't a filed report.
   reportNote String?
