@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useOptimistic, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { useEffect, useOptimistic, useRef, useTransition } from "react"
 import {
   Banknote,
   Bell,
@@ -20,6 +21,7 @@ import {
 import {
   clearNotifications,
   dismissNotification,
+  notificationPulse,
 } from "@/app/actions/notifications"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -46,6 +48,16 @@ const NONE: ReadonlySet<string> = new Set()
 // Sentinel for "clear all", so one reducer covers both paths.
 const ALL = "*"
 
+/**
+ * How often the browser asks whether anything has arrived.
+ *
+ * Only while the tab is actually being looked at — a phone in a pocket polls
+ * nothing, which is the case that matters when the person holding it is paying
+ * for the data. A minute is well inside "did anyone notice my overtime
+ * request" and costs a few hundred bytes an hour with the app open.
+ */
+const PULSE_MS = 60_000
+
 export function NotificationBell({
   items,
   pendingCount,
@@ -54,6 +66,7 @@ export function NotificationBell({
   pendingCount: number
 }) {
   const [, startTransition] = useTransition()
+  const router = useRouter()
 
   // Dismissal is one-way, so the optimistic state is append-only: add an id and
   // the row leaves the list at once, then the revalidated layout replaces this
@@ -62,6 +75,51 @@ export function NotificationBell({
     NONE,
     (state: ReadonlySet<string>, id: string) => new Set(state).add(id)
   )
+
+  // What the server last rendered, kept in a ref so the poll below can compare
+  // against it without restarting its timer every time the list changes.
+  const newest = items[0]?.createdAt ?? null
+  const shown = useRef({ count: pendingCount, latest: newest })
+
+  useEffect(() => {
+    shown.current = { count: pendingCount, latest: newest }
+  }, [pendingCount, newest])
+
+  useEffect(() => {
+    let stopped = false
+
+    async function check() {
+      if (stopped || document.visibilityState !== "visible") return
+      try {
+        const pulse = await notificationPulse()
+        // Count *and* newest: one arriving while another is dismissed leaves
+        // the count unchanged, and the timestamp is what catches that.
+        if (
+          pulse.count !== shown.current.count ||
+          pulse.latest !== shown.current.latest
+        ) {
+          // Refresh rather than patch state from here. The layout is the one
+          // source of the list, and a second copy maintained in the browser is
+          // a second copy to get wrong.
+          router.refresh()
+        }
+      } catch {
+        // A dropped request on a bad connection is not worth a broken bell;
+        // the next tick asks again.
+      }
+    }
+
+    const timer = setInterval(check, PULSE_MS)
+    // Coming back to the tab is the moment somebody wants this to be current,
+    // and it costs nothing while they are away.
+    document.addEventListener("visibilitychange", check)
+
+    return () => {
+      stopped = true
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", check)
+    }
+  }, [router])
 
   const visible = dismissed.has(ALL)
     ? []

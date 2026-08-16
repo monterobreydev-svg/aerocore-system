@@ -39,3 +39,37 @@ export async function clearNotifications() {
 
   revalidateShell(session.role)
 }
+
+/**
+ * Just enough to tell whether the bell is out of date.
+ *
+ * The bell is rendered in the layout, and a layout does not re-render while
+ * somebody clicks around inside it — so an overtime request filed by an
+ * employee sat in the database, correctly addressed, and the administrator saw
+ * nothing until they reloaded the whole page. `revalidatePath` cannot fix that:
+ * it invalidates a cache on the server, and the stale copy is in somebody
+ * else's browser.
+ *
+ * So the browser asks. This is deliberately not the inbox itself — two indexed
+ * lookups returning a number and a timestamp, cheap enough to run on a timer on
+ * a phone. When the answer differs from what is on screen the bell refreshes
+ * the route, and the layout comes back with the real list; there is no second
+ * copy of the inbox to keep in step.
+ */
+export async function notificationPulse(): Promise<{
+  count: number
+  latest: string | null
+}> {
+  const session = await verifySession()
+
+  const [count, newest] = await Promise.all([
+    prisma.notification.count({ where: { recipientId: session.accountId } }),
+    prisma.notification.findFirst({
+      where: { recipientId: session.accountId },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ])
+
+  return { count, latest: newest?.createdAt.toISOString() ?? null }
+}
