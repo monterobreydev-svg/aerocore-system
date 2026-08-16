@@ -24,6 +24,7 @@ export type PayslipSummary = {
   regularHours: number
   overtimeHours: number
   nightHours: number
+  nightPaidHours: number
   basicPay: number
   overtimePay: number
   nightPay: number
@@ -147,7 +148,7 @@ function PayslipCard({
                 Earnings
               </p>
               <Line
-                label={`Basic · ${slip.regularHours} h`}
+                label={`Basic · ${slip.regularHours - slip.nightPaidHours} h`}
                 value={peso(slip.basicPay)}
               />
               <Line
@@ -155,8 +156,12 @@ function PayslipCard({
                 value={peso(slip.overtimePay)}
                 muted={slip.overtimePay === 0}
               />
+              {/* The night hours in full — their own pay plus the premium —
+                  because "night differential 8.75" against a rate of 87.50
+                  reads as though the hour was worth a tenth of a day hour.
+                  They are left out of Basic above rather than counted twice. */}
               <Line
-                label={`Night differential · ${slip.nightHours} h`}
+                label={`Night · ${slip.nightPaidHours} h at rate +10%`}
                 value={peso(slip.nightPay)}
                 muted={slip.nightPay === 0}
               />

@@ -48,6 +48,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { formatDate } from "@/lib/format-date"
 import {
   Dialog,
   DialogContent,
@@ -1006,7 +1007,7 @@ export function ClientDetailView({
               />
               <Row
                 label="Client since"
-                value={new Date(client.createdAt).toLocaleDateString()}
+                value={formatDate(client.createdAt)}
               />
             </InfoCard>
 

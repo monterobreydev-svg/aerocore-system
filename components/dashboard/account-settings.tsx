@@ -31,6 +31,7 @@ import {
   MONTHLY_RATE_BASIS,
 } from "@/lib/employee"
 import { cn } from "@/lib/utils"
+import { formatDate, formatDateTime } from "@/lib/format-date"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -445,7 +446,7 @@ function EmploymentTab({ account }: { account: AccountSettingsData }) {
             />
             <Row
               label="Date hired"
-              value={e.dateHired ? new Date(e.dateHired).toLocaleDateString() : null}
+              value={e.dateHired ? formatDate(e.dateHired) : null}
             />
             <Row
               label="Skills"
@@ -477,7 +478,7 @@ function EmploymentTab({ account }: { account: AccountSettingsData }) {
             />
             <Row
               label="Record created"
-              value={new Date(e.createdAt).toLocaleDateString()}
+              value={formatDate(e.createdAt)}
             />
           </dl>
         </SectionCard>
@@ -674,7 +675,7 @@ function SecurityTab({
             label="Last sign-in"
             value={
               account.lastLoginAt
-                ? new Date(account.lastLoginAt).toLocaleString()
+                ? formatDateTime(account.lastLoginAt)
                 : null
             }
           />

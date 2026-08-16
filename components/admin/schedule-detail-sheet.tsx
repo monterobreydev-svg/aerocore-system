@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react"
 import type { ScheduleStatus } from "@/app/generated/prisma/client"
+import { formatDateTime } from "@/lib/format-date"
 import {
   AlertTriangle,
   CalendarDays,
@@ -169,7 +170,7 @@ function ScheduleHistory({ scheduleId }: { scheduleId: string }) {
                     </Badge>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(entry.createdAt).toLocaleString()}
+                    {formatDateTime(entry.createdAt)}
                   </p>
                 </div>
               </div>
@@ -331,7 +332,7 @@ function ScheduleSummary({
               <span className="font-medium text-foreground">
                 {schedule.createdByName ?? "the system"}
               </span>{" "}
-              on {new Date(schedule.createdAt).toLocaleString()}
+              on {formatDateTime(schedule.createdAt)}
             </span>
           </DetailRow>
         </div>

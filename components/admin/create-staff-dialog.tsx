@@ -23,6 +23,7 @@ import {
   suggestUsername,
 } from "@/lib/employee"
 import { cn } from "@/lib/utils"
+import { formatDate } from "@/lib/format-date"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -140,7 +141,7 @@ function formatReviewValue(field: string, value: string) {
       : amount.toLocaleString("en-US", { style: "currency", currency: "PHP" })
   }
   if (field === "birthDate" || field === "dateHired") {
-    return new Date(value).toLocaleDateString()
+    return formatDate(value)
   }
   if (field === "civilStatus") {
     return civilStatusLabel(value as Parameters<typeof civilStatusLabel>[0])

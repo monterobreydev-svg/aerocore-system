@@ -18,6 +18,8 @@ import {
   timeAgo,
   type InboxItem,
 } from "@/lib/notifications"
+import { formatDayAndMonth } from "@/lib/format-date"
+import { useNow } from "@/lib/use-now"
 import {
   clearNotifications,
   dismissNotification,
@@ -72,6 +74,16 @@ export function NotificationBell({
 }) {
   const [, startTransition] = useTransition()
   const router = useRouter()
+
+  // The clock this list is read against. Zero until the browser's first tick,
+  // because there is no "now" the server and the browser agree on — see
+  // lib/use-now.ts. Until then each row shows its date, which is the same
+  // string on both sides; after it, they turn into "4m ago" and keep counting.
+  const tick = useNow()
+
+  function when(iso: string) {
+    return tick === 0 ? formatDayAndMonth(iso) : timeAgo(iso, new Date(tick))
+  }
 
   // Dismissal is one-way, so the optimistic state is append-only: add an id and
   // the row leaves the list at once, then the revalidated layout replaces this
@@ -218,7 +230,7 @@ export function NotificationBell({
                         {item.title}
                       </span>
                       <span className="shrink-0 text-[11px] text-muted-foreground">
-                        {timeAgo(item.createdAt)}
+                        {when(item.createdAt)}
                       </span>
                     </span>
                     <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">

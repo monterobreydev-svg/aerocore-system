@@ -494,10 +494,10 @@ export function PayslipDialog({
                       amount={slip.overtimePay}
                     />
                     <Line
-                      label="Night differential"
+                      label="Night hours"
                       basis={
-                        slip.nightHours > 0
-                          ? `${slip.nightHours} h · ${NIGHT_DIFFERENTIAL_RATE * 100}%`
+                        slip.nightPaidHours > 0
+                          ? `${slip.nightPaidHours} h at rate +${NIGHT_DIFFERENTIAL_RATE * 100}%`
                           : "no night hours"
                       }
                       amount={slip.nightPay}
@@ -670,8 +670,13 @@ export function PayslipDialog({
                 day — the ninth hour on site is the unpaid break. Overtime pays
                 the approved hours that were actually worked past{" "}
                 {OVERTIME_STARTS_AFTER_HOURS} hours on the clock, so an
-                approval on its own pays nothing. Contributions are monthly and
-                this is one of two cutoffs, so half of each is taken here.
+                approval on its own pays nothing. An hour between 22:00 and
+                06:00 pays the hourly rate plus a further{" "}
+                {NIGHT_DIFFERENTIAL_RATE * 100}% — {(1 + NIGHT_DIFFERENTIAL_RATE) * 100}% in
+                total — and is shown on the night line instead of in basic pay,
+                so no hour is counted twice. Contributions
+                are monthly and this is one of two cutoffs, so half of each is
+                taken here.
               </p>
             </div>
           )}

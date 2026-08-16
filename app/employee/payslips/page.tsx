@@ -56,6 +56,7 @@ export default async function EmployeePayslipsPage() {
       regularHours: slip.regularHours,
       overtimeHours: slip.overtimeHours,
       nightHours: slip.nightHours,
+      nightPaidHours: slip.nightPaidHours,
       basicPay: slip.basicPay,
       overtimePay: slip.overtimePay,
       nightPay: slip.nightPay,

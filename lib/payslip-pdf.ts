@@ -228,13 +228,16 @@ export function payslipBlocks(doc: PayslipDocument): PdfBlock[] {
 
   const rate = amount(slip.hourlyRate)
   const lines: [string, string][] = [
-    [`Basic pay (${slip.regularHours} h @ ${rate})`, amount(slip.basicPay)],
+    [`Basic pay (${slip.regularHours - slip.nightPaidHours} h @ ${rate})`, amount(slip.basicPay)],
     [
       `Overtime (${slip.overtimeHours} h approved and worked)`,
       amount(slip.overtimePay),
     ],
+    // The hour and its premium on one line, so it reads as what a night hour
+    // is worth. Those hours are excluded from the basic line above rather than
+    // counted twice.
     [
-      `Night differential (${slip.nightHours} h @ ${NIGHT_DIFFERENTIAL_RATE * 100}%)`,
+      `Night hours (${slip.nightPaidHours} h @ ${rate} + ${NIGHT_DIFFERENTIAL_RATE * 100}%)`,
       amount(slip.nightPay),
     ],
     ["Holiday pay", amount(slip.holidayPay)],
@@ -346,6 +349,12 @@ export function payslipBlocks(doc: PayslipDocument): PdfBlock[] {
       font: "sans",
       size: 8,
       text: `Overtime pays approved hours actually worked past ${OVERTIME_STARTS_AFTER_HOURS} hours on the clock, so an approval alone pays nothing.`,
+    },
+    {
+      kind: "text",
+      font: "sans",
+      size: 8,
+      text: `An hour worked between 22:00 and 06:00 pays the hourly rate plus a further ${NIGHT_DIFFERENTIAL_RATE * 100}% — ${(1 + NIGHT_DIFFERENTIAL_RATE) * 100}% in total. Those hours are shown on the night line rather than in basic pay, so no hour is counted twice.`,
     },
     {
       kind: "text",

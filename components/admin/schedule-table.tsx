@@ -18,6 +18,7 @@ import {
   formatTimeRange,
 } from "@/lib/schedule"
 import { cn } from "@/lib/utils"
+import { formatDate } from "@/lib/format-date"
 import type { ScheduleRecord } from "@/components/admin/schedule-types"
 
 function employeeInitials(name: string) {
@@ -149,7 +150,7 @@ export function ScheduleTable({
                     {schedule.createdByName ?? "—"}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {new Date(schedule.createdAt).toLocaleDateString()}
+                    {formatDate(schedule.createdAt)}
                   </div>
                 </TableCell>
                 <TableCell>

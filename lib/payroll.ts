@@ -223,8 +223,11 @@ export type PayrollDay = {
   /** What the office granted. Never less than `overtimeHours`. */
   approvedOvertimeHours: number
   nightHours: number
+  /** Night hours that fall inside paid time, and so are paid at rate + 10%. */
+  nightPaidHours: number
   holiday: string | null
   worked: boolean
+  /** Regular hours at the plain rate, *excluding* the night hours below. */
   basicPay: number
   overtimePay: number
   nightPay: number
@@ -250,6 +253,7 @@ export function computeDay(
       overtimeHours: 0,
       approvedOvertimeHours: Math.max(0, input.approvedOvertimeHours),
       nightHours: 0,
+      nightPaidHours: 0,
       holiday,
       worked: true,
       basicPay: 0,
@@ -284,15 +288,36 @@ export function computeDay(
   const overtimeHours = Math.min(approvedOvertimeHours, overtimeWorked)
   const nightHours = wholeHours(nightMinutes(input.timeIn, input.timeOut))
 
-  const basic = regularHours * hourlyRate
-  // The premium is the second 100%, carried separately so the payslip can say
-  // which part of the day was the holiday rather than just showing a big
-  // number for a Tuesday.
-  const holidayPremium = holiday
-    ? basic * (HOLIDAY_MULTIPLIER - 1)
-    : 0
+  // Every regular hour at the plain rate, night or not. This is the figure the
+  // rest of the day is built from, and it does not move.
+  const regularPay = regularHours * hourlyRate
+
+  // The night hours that fall inside paid regular time. A long punch can render
+  // more night minutes than it is paid for — past the eight-hour cap the hours
+  // are overtime or they are nothing — and an hour nobody is paid for cannot be
+  // paid at a night rate.
+  const nightPaidHours = Math.min(nightHours, regularHours)
+
+  // A night hour is worth the hourly rate *plus* ten per cent, and this is the
+  // line that says so. The hour's own pay is carried here rather than on the
+  // basic line, because "night differential 8.75" against a rate of 87.50 reads
+  // as though the hour was worth a tenth of a day hour — the opposite of what
+  // it means. Every paid hour still appears exactly once, and the day's total
+  // is unchanged by where it is shown.
+  //
+  // Night hours outside paid time keep the premium alone: there is no base pay
+  // under them to add ten per cent to.
+  const nightPay =
+    nightPaidHours * hourlyRate * (1 + NIGHT_DIFFERENTIAL_RATE) +
+    (nightHours - nightPaidHours) * hourlyRate * NIGHT_DIFFERENTIAL_RATE
+
+  const basic = regularPay - nightPaidHours * hourlyRate
+
+  // Doubled against the whole day's regular pay, not against what is left on
+  // the basic line — a night shift on a holiday must not lose the holiday on
+  // the hours that moved across.
+  const holidayPremium = holiday ? regularPay * (HOLIDAY_MULTIPLIER - 1) : 0
   const overtimePay = overtimeHours * hourlyRate * OVERTIME_MULTIPLIER
-  const nightPay = nightHours * hourlyRate * NIGHT_DIFFERENTIAL_RATE
 
   return {
     date,
@@ -301,6 +326,7 @@ export function computeDay(
     overtimeHours,
     approvedOvertimeHours,
     nightHours,
+    nightPaidHours,
     holiday,
     worked: true,
     basicPay: money(basic),
@@ -428,10 +454,14 @@ export type Payslip = {
    */
   approvedOvertimeHours: number
   nightHours: number
+  /** Of those, the ones paid at rate + 10% because they were inside paid time. */
+  nightPaidHours: number
 
+  /** Regular hours at the plain rate, *excluding* the night hours. */
   basicPay: number
   holidayPay: number
   overtimePay: number
+  /** The night hours in full: their own pay plus the 10% premium. */
   nightPay: number
   /** Adjustments that pay more, already inside `gross`. */
   adjustmentAdditions: number
@@ -601,6 +631,7 @@ export function computePayslip({
     overtimeHours: sum((day) => day.overtimeHours),
     approvedOvertimeHours: sum((day) => day.approvedOvertimeHours),
     nightHours: sum((day) => day.nightHours),
+    nightPaidHours: sum((day) => day.nightPaidHours),
     basicPay,
     holidayPay,
     overtimePay,

@@ -27,6 +27,7 @@ import {
   MONTHLY_RATE_BASIS,
 } from "@/lib/employee"
 import { cn } from "@/lib/utils"
+import { formatDate, formatDateTime } from "@/lib/format-date"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -124,7 +125,7 @@ function formatFieldValue(field: string, value: string | null) {
   if (field === "hourlyRate")
     return peso(Number(value))
   if (field === "birthDate" || field === "dateHired") {
-    return new Date(value).toLocaleDateString()
+    return formatDate(value)
   }
   if (field === "isActive") return value === "true" ? "Active" : "Inactive"
   if (field === "civilStatus") {
@@ -884,7 +885,7 @@ export function StaffDetailView({
                   label="Date of birth"
                   value={
                     e.birthDate
-                      ? new Date(e.birthDate).toLocaleDateString()
+                      ? formatDate(e.birthDate)
                       : null
                   }
                 />
@@ -894,7 +895,7 @@ export function StaffDetailView({
                 />
                 <Row
                   label="Added"
-                  value={`${new Date(e.createdAt).toLocaleDateString()}${
+                  value={`${formatDate(e.createdAt)}${
                     e.createdByName ? ` by ${e.createdByName}` : ""
                   }`}
                 />
@@ -999,7 +1000,7 @@ export function StaffDetailView({
                                   </Badge>
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {new Date(log.createdAt).toLocaleString()}
+                                  {formatDateTime(log.createdAt)}
                                 </p>
                               </div>
                             </div>
