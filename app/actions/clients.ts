@@ -4,6 +4,7 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/auth"
+import { ACRONYM_MAX_LENGTH } from "@/lib/documents"
 
 async function requireClientAccess() {
   const session = await verifySession()
@@ -26,8 +27,29 @@ const optionalTaxStatus = z
   .optional()
   .or(z.literal("").transform(() => undefined))
 
+/**
+ * The short form, normalised the way it will be read back.
+ *
+ * Upper-cased and stripped to letters, digits and hyphens because this ends up
+ * in a filename — "A.C.S." would come back out of `fileSegment` as "A-C-S"
+ * anyway, so it is settled here where the office can see what it got. Blank
+ * clears the field and puts the client back on the derived acronym.
+ */
+const optionalAcronym = z
+  .string()
+  .trim()
+  .max(ACRONYM_MAX_LENGTH * 2, "That's a name, not an acronym.")
+  .transform((value) =>
+    value
+      .toUpperCase()
+      .replace(/[^A-Z0-9-]+/g, "")
+      .slice(0, ACRONYM_MAX_LENGTH)
+  )
+  .optional()
+
 const ClientSchema = z.object({
   name: z.string().trim().min(1, "Registered name is required."),
+  acronym: optionalAcronym,
   tin: z.string().trim().optional(),
   taxStatus: optionalTaxStatus,
   address: z.string().trim().min(1, "Address is required."),
@@ -39,6 +61,7 @@ export type ClientState =
   | {
       errors?: {
         name?: string[]
+        acronym?: string[]
         tin?: string[]
         taxStatus?: string[]
         address?: string[]
@@ -74,6 +97,7 @@ export async function createClient(
 
   const validatedFields = CreateClientSchema.safeParse({
     name: formData.get("name"),
+    acronym: formData.get("acronym"),
     tin: formData.get("tin"),
     taxStatus: formData.get("taxStatus"),
     address: formData.get("address"),
@@ -91,6 +115,7 @@ export async function createClient(
 
   const {
     name,
+    acronym,
     tin,
     taxStatus,
     address,
@@ -105,6 +130,9 @@ export async function createClient(
   await prisma.client.create({
     data: {
       name,
+      // Null rather than "", so "nobody set one" is one state and not two —
+      // `clientShortName` falls back on null and would keep an empty string.
+      acronym: acronym || null,
       tin: tin || null,
       taxStatus: taxStatus || null,
       address,
@@ -148,6 +176,7 @@ export async function updateClient(
   const validatedFields = UpdateClientSchema.safeParse({
     clientId: formData.get("clientId"),
     name: formData.get("name"),
+    acronym: formData.get("acronym"),
     tin: formData.get("tin"),
     taxStatus: formData.get("taxStatus"),
     address: formData.get("address"),
@@ -159,13 +188,15 @@ export async function updateClient(
     return { errors: validatedFields.error.flatten().fieldErrors }
   }
 
-  const { clientId, name, tin, taxStatus, address, phoneNo, email } =
+  const { clientId, name, acronym, tin, taxStatus, address, phoneNo, email } =
     validatedFields.data
 
   await prisma.client.update({
     where: { id: clientId },
     data: {
       name,
+      // Cleared back to null puts the client on the derived acronym again.
+      acronym: acronym || null,
       tin: tin || null,
       taxStatus: taxStatus || null,
       address,

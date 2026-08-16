@@ -169,8 +169,15 @@ enum TaxStatus {
 // Clients are companies/customers AeroCoole services. They never log in —
 // no UserAccount, no role — this is purely business/contact record-keeping.
 model Client {
-  id        String     @id @default(uuid())
-  name      String
+  id   String @id @default(uuid())
+  name String
+  // The short form the office actually says out loud — "ACS" for AEON CREDIT
+  // SERVICE (Philippines) INC. Null means nobody has set one, and the acronym
+  // is derived from the registered name instead (see clientAcronym in
+  // lib/documents.ts). Deliberately not unique: two clients can genuinely
+  // abbreviate the same, and the serial in front of it is what makes a report
+  // filename unique.
+  acronym   String?
   tin       String?
   taxStatus TaxStatus?
   address   String

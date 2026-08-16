@@ -54,6 +54,8 @@ export type ClientContact = {
 export type ClientRecord = {
   id: string
   name: string
+  /** What the office set. Null falls back to the acronym derived from `name`. */
+  acronym: string | null
   tin: string | null
   taxStatus: TaxStatus | null
   address: string
@@ -146,6 +148,9 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
 
       return [
         client.name,
+        // Searchable by the short form too — being able to type "ACS" instead
+        // of the registered name is most of the reason to keep one.
+        client.acronym,
         client.tin,
         client.address,
         ...client.branches.map((branch) => branch.name),
@@ -381,6 +386,12 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
                           {client.name}
                         </p>
                         <p className="truncate font-mono text-xs text-muted-foreground">
+                          {client.acronym && (
+                            <span className="text-foreground">
+                              {client.acronym}
+                            </span>
+                          )}
+                          {client.acronym && " · "}
                           {client.tin ?? "No TIN"}
                         </p>
                       </div>

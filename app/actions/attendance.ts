@@ -213,7 +213,7 @@ async function reportTicket(input: {
 
   const client = await prisma.client.findUnique({
     where: { id: input.clientId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, acronym: true },
   })
   if (!client) {
     return { ok: false, message: "That client is no longer on file." }
@@ -236,6 +236,7 @@ async function reportTicket(input: {
   const fileName = reportFileName({
     serialNo,
     clientName: client.name,
+    clientAcronym: client.acronym,
     branchName,
     sourceName: input.filename,
   })
@@ -710,7 +711,9 @@ async function punchOut(
   // Names to rebuild each report's filename from, filled in by the validation
   // pass below. The browser sends one too, but it is a label for the list on
   // the way out — what gets stored is composed here, from the rows.
-  let clientNames = new Map<string, string>()
+  // Name *and* acronym: the filename is composed from both, and the acronym is
+  // as much a fact of the client row as the name is.
+  let clientsById = new Map<string, { name: string; acronym: string | null }>()
   let branchNames = new Map<string, string>()
 
   if (reports.length > 0) {
@@ -722,7 +725,7 @@ async function punchOut(
     const [clients, branches] = await Promise.all([
       prisma.client.findMany({
         where: { id: { in: clientIds } },
-        select: { id: true, name: true },
+        select: { id: true, name: true, acronym: true },
       }),
       branchIds.length
         ? prisma.branch.findMany({
@@ -736,7 +739,12 @@ async function punchOut(
     const branchOwner = new Map(
       branches.map((branch) => [branch.id, branch.clientId])
     )
-    clientNames = new Map(clients.map((client) => [client.id, client.name]))
+    clientsById = new Map(
+      clients.map((client) => [
+        client.id,
+        { name: client.name, acronym: client.acronym },
+      ])
+    )
     branchNames = new Map(branches.map((branch) => [branch.id, branch.name]))
 
     for (const report of reports) {
@@ -769,7 +777,7 @@ async function punchOut(
     prisma.attendanceReport.createMany({
       data: reports.map((report) => {
         const branchId = report.branchId || null
-        const clientName = clientNames.get(report.clientId)
+        const client = clientsById.get(report.clientId)
         const branchName = branchId ? (branchNames.get(branchId) ?? null) : null
 
         return {
@@ -782,10 +790,11 @@ async function punchOut(
           // Recomposed from the client and branch rows rather than taken from
           // the request. The upload was named the same way, so these agree —
           // but only one of the two is a fact the browser can't rewrite.
-          fileName: clientName
+          fileName: client
             ? reportFileName({
                 serialNo: report.serialNo,
-                clientName,
+                clientName: client.name,
+                clientAcronym: client.acronym,
                 branchName,
                 sourceName: report.fileName,
               })

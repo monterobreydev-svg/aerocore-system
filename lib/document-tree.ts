@@ -3,7 +3,7 @@ import "server-only"
 import type { Prisma } from "@/app/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import {
-  clientAcronym,
+  clientShortName,
   fileSegment,
   monthFolder,
   MONTH_NAMES,
@@ -384,7 +384,7 @@ const DOWNLOAD_SELECT = {
   fileKey: true,
   fileName: true,
   type: true,
-  client: { select: { name: true } },
+  client: { select: { name: true, acronym: true } },
   branch: { select: { name: true } },
   attendance: { select: { date: true } },
 } satisfies Prisma.AttendanceReportSelect
@@ -414,12 +414,20 @@ function safeLeaf(fileName: string) {
  * things. Names come from the database rather than the query string: the id in
  * the URL says *which* client, never how to spell it.
  */
-function archiveName(path: TreePath, sample: { client: { name: string }; branch: { name: string } | null } | undefined) {
+function archiveName(
+  path: TreePath,
+  sample:
+    | {
+        client: { name: string; acronym: string | null }
+        branch: { name: string } | null
+      }
+    | undefined
+) {
   const parts: string[] = []
 
   if (path.year != null) parts.push(String(path.year))
   if (path.type) parts.push(fileSegment(REPORT_TYPE_FOLDER[path.type]))
-  if (path.clientId && sample) parts.push(clientAcronym(sample.client.name))
+  if (path.clientId && sample) parts.push(clientShortName(sample.client))
   if (path.branchId) {
     parts.push(
       path.branchId === NO_BRANCH

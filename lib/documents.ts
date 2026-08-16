@@ -119,12 +119,37 @@ const NOISE = new Set([
 ])
 
 /**
+ * How long an acronym is allowed to be, typed or derived.
+ *
+ * Past this it stops being an abbreviation and starts being the name again,
+ * and the filename it lands in already carries a serial and often a branch.
+ */
+export const ACRONYM_MAX_LENGTH = 6
+
+/**
+ * The short form for a client: what the office set, or failing that, what the
+ * registered name derives to.
+ *
+ * The derivation is a guess and it is sometimes wrong — two clients whose names
+ * reduce to the same letters, or a company everyone calls something that isn't
+ * its initials at all. So the guess is only the fallback, and the field on the
+ * client record wins whenever somebody has filled it in.
+ */
+export function clientShortName(client: {
+  name: string
+  acronym?: string | null
+}) {
+  const set = client.acronym?.trim()
+  return set ? fileSegment(set, "CLIENT").slice(0, ACRONYM_MAX_LENGTH) : clientAcronym(client.name)
+}
+
+/**
  * "AEON CREDIT SERVICE (Philippines) INC." → "ACS".
  *
- * First letters of the words that carry the identity. Capped at six, because
- * past that it stops being an abbreviation and starts being the name again.
- * Two clients can derive to the same letters — the serial in front of it is
- * what makes a filename unique, not this.
+ * First letters of the words that carry the identity. Capped, because past that
+ * it stops being an abbreviation and starts being the name again. Two clients
+ * can derive to the same letters — the serial in front of it is what makes a
+ * filename unique, not this.
  */
 export function clientAcronym(name: string) {
   const words = name
@@ -138,7 +163,10 @@ export function clientAcronym(name: string) {
   // rather than returning nothing to name a file with.
   const source = meaningful.length > 0 ? meaningful : words
 
-  const letters = source.map((word) => word[0]).join("").slice(0, 6)
+  const letters = source
+    .map((word) => word[0])
+    .join("")
+    .slice(0, ACRONYM_MAX_LENGTH)
   return letters || "CLIENT"
 }
 
@@ -170,18 +198,21 @@ function extensionOf(filename: string) {
 export function reportFileName({
   serialNo,
   clientName,
+  clientAcronym: acronym,
   branchName,
   sourceName,
 }: {
   serialNo: string
   clientName: string
+  /** What the office set on the client, if anything. Beats the derivation. */
+  clientAcronym?: string | null
   branchName: string | null
   /** The uploaded file, read only for its extension. */
   sourceName: string
 }) {
   const parts = [
     fileSegment(serialNo, "NO-SERIAL"),
-    clientAcronym(clientName),
+    clientShortName({ name: clientName, acronym }),
     ...(branchName ? [fileSegment(branchName)] : []),
   ]
 

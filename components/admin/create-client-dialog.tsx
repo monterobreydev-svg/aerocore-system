@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react"
 import { Building2, MapPin, Plus, UserRound } from "lucide-react"
 import { createClient, type ClientState } from "@/app/actions/clients"
 import { TAX_STATUS_OPTIONS, taxStatusLabel } from "@/lib/client"
+import { ACRONYM_MAX_LENGTH } from "@/lib/documents"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -127,6 +128,33 @@ export function CreateClientDialog() {
                   />
                   <FieldError
                     errors={state?.errors?.name?.map((message) => ({
+                      message,
+                    }))}
+                  />
+                </Field>
+
+                {/* Optional, and usually best left alone: the acronym is
+                    derived from the registered name when this is blank, and
+                    the derivation is right for most companies. It's here for
+                    the ones everybody calls something else. */}
+                <Field data-invalid={!!state?.errors?.acronym}>
+                  <FieldLabel htmlFor="acronym">
+                    Acronym
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Optional — worked out from the name if blank
+                    </span>
+                  </FieldLabel>
+                  <Input
+                    id="acronym"
+                    name="acronym"
+                    placeholder="KAP"
+                    maxLength={ACRONYM_MAX_LENGTH}
+                    autoComplete="off"
+                    disabled={pending}
+                    className="font-mono uppercase"
+                  />
+                  <FieldError
+                    errors={state?.errors?.acronym?.map((message) => ({
                       message,
                     }))}
                   />

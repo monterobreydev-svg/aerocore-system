@@ -27,6 +27,11 @@ import {
 } from "@/app/actions/clients"
 import { TAX_STATUS_OPTIONS, taxStatusLabel } from "@/lib/client"
 import {
+  ACRONYM_MAX_LENGTH,
+  clientAcronym,
+  clientShortName,
+} from "@/lib/documents"
+import {
   SCHEDULE_STATUS_CHIP,
   SCHEDULE_STATUS_LABELS,
   WORK_TYPE_LABELS,
@@ -65,6 +70,7 @@ import {
 } from "@/components/ui/card"
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -137,6 +143,35 @@ function EditClientDialog({ client }: { client: ClientRecord }) {
               />
               <FieldError
                 errors={state?.errors?.name?.map((message) => ({ message }))}
+              />
+            </Field>
+            {/* Sits directly under the registered name, because that is what
+                it is short for and the placeholder shows what the name would
+                derive to on its own. */}
+            <Field data-invalid={!!state?.errors?.acronym}>
+              <FieldLabel htmlFor={`client-acronym-${client.id}`}>
+                Acronym
+                <span className="text-xs font-normal text-muted-foreground">
+                  Optional
+                </span>
+              </FieldLabel>
+              <Input
+                id={`client-acronym-${client.id}`}
+                name="acronym"
+                placeholder={clientAcronym(initial.name)}
+                defaultValue={initial.acronym ?? ""}
+                maxLength={ACRONYM_MAX_LENGTH}
+                disabled={pending}
+                className="font-mono uppercase"
+              />
+              <FieldDescription>
+                The short form used on report filenames. Leave it blank to keep
+                using{" "}
+                <span className="font-mono">{clientAcronym(initial.name)}</span>
+                , worked out from the name.
+              </FieldDescription>
+              <FieldError
+                errors={state?.errors?.acronym?.map((message) => ({ message }))}
               />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -880,6 +915,17 @@ export function ClientDetailView({
               <h2 className="text-xl leading-tight font-semibold">
                 {client.name}
               </h2>
+              {/* Only when it was set. The derived one is a fallback for
+                  filenames, not a name to put on the record's masthead. */}
+              {client.acronym && (
+                <Badge
+                  variant="secondary"
+                  className="font-mono"
+                  title="Short form used on report filenames"
+                >
+                  {client.acronym}
+                </Badge>
+              )}
               <Badge className={locationBadgeClass(client)}>
                 {locationLabel(client)}
               </Badge>
@@ -934,6 +980,23 @@ export function ClientDetailView({
           <div className="grid gap-3 lg:grid-cols-2">
             <InfoCard title="Company">
               <Row label="Registered name" value={client.name} />
+              {/* Always a value, never a dash: a client with nothing set still
+                  has a short form, it just came from the name rather than from
+                  anyone deciding — and saying which is the useful part. */}
+              <Row
+                label="Acronym"
+                mono
+                value={
+                  <>
+                    {clientShortName(client)}
+                    {!client.acronym && (
+                      <span className="ml-1.5 font-sans text-xs font-normal text-muted-foreground">
+                        from the name
+                      </span>
+                    )}
+                  </>
+                }
+              />
               <Row label="TIN" value={client.tin} mono />
               <Row
                 label="Tax status"

@@ -38,6 +38,7 @@ export default async function ClientsPage() {
   const clients: ClientRecord[] = clientRecords.map((client) => ({
     id: client.id,
     name: client.name,
+    acronym: client.acronym,
     tin: client.tin,
     taxStatus: client.taxStatus,
     address: client.address,
