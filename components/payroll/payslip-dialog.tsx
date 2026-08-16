@@ -668,8 +668,14 @@ export function PayslipDialog({
           )}
         </div>
 
-        {/* Placeholders: present so the layout reads right, wired to nothing. */}
-        <DialogFooter className="sm:justify-end">
+        {/* The margins have to be reset, not just the alignment. DialogFooter
+            carries `-mx-3 -mb-3` (and `sm:-mx-4 -mb-4`) to cancel the padding a
+            normal dialog has — but this panel is full-bleed, so there is no
+            padding to cancel and those negatives drag the footer past the
+            panel's edges, where overflow-hidden slices the last button in half.
+
+            Placeholders: present so the layout reads right, wired to nothing. */}
+        <DialogFooter className="mx-0 mb-0 px-4 sm:mx-0 sm:mb-0 sm:justify-end sm:px-5">
           <Button variant="outline" title="Not wired up yet">
             <Download />
             Download PDF
