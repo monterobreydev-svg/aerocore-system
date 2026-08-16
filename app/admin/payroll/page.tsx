@@ -9,7 +9,11 @@ import {
   nextDay,
   parseDayParam,
 } from "@/lib/attendance"
-import { computePayslip, holidaysBetween } from "@/lib/payroll"
+import {
+  computePayslip,
+  holidaysBetween,
+  HOLIDAY_QUALIFYING_LOOKBACK_DAYS,
+} from "@/lib/payroll"
 import {
   PayrollView,
   type PayrollRow,
@@ -48,8 +52,18 @@ export default async function PayrollPage({
 
   const holidays = holidaysBetween(start, end)
 
+  // A holiday on the 1st or the 16th is qualified by attendance in the cutoff
+  // before this one, so the read reaches back far enough to see it. Those extra
+  // days are handed to `computePayslip` separately and are never paid here —
+  // the cutoff they belong to already paid them.
+  const qualifyingFrom = new Date(start)
+  qualifyingFrom.setDate(
+    qualifyingFrom.getDate() - HOLIDAY_QUALIFYING_LOOKBACK_DAYS
+  )
+
   // One read of the period for everyone on the payroll. Bounded by the cutoff:
-  // sixteen days at the outside, however long the company has existed.
+  // sixteen days at the outside, plus the lookback, however long the company
+  // has existed.
   const [employees, adjustments] = await Promise.all([
     prisma.employee.findMany({
     where: ON_PAYROLL,
@@ -61,7 +75,7 @@ export default async function PayrollPage({
       position: true,
       hourlyRate: true,
       attendance: {
-        where: { date: { gte: start, lt: nextDay(end) } },
+        where: { date: { gte: qualifyingFrom, lt: nextDay(end) } },
         select: {
           date: true,
           timeIn: true,
@@ -93,20 +107,25 @@ export default async function PayrollPage({
   }
 
   const rows: PayrollRow[] = employees.map((employee) => {
+    const attendance = employee.attendance.map((row) => ({
+      date: row.date,
+      timeIn: row.timeIn,
+      timeOut: row.timeOut,
+      // Only what the office granted. Hours somebody stayed for without an
+      // approved request are not payable, and the punch alone can't say
+      // whether they were asked for.
+      approvedOvertimeHours:
+        row.overtime?.status === "APPROVED"
+          ? Number(row.overtime.approvedHours ?? row.overtime.hours)
+          : 0,
+    }))
+
     const payslip = computePayslip({
       hourlyRate: Number(employee.hourlyRate),
-      days: employee.attendance.map((row) => ({
-        date: row.date,
-        timeIn: row.timeIn,
-        timeOut: row.timeOut,
-        // Only what the office granted. Hours somebody stayed for without an
-        // approved request are not payable, and the punch alone can't say
-        // whether they were asked for.
-        approvedOvertimeHours:
-          row.overtime?.status === "APPROVED"
-            ? Number(row.overtime.approvedHours ?? row.overtime.hours)
-            : 0,
-      })),
+      // Split at the cutoff's opening day: what falls inside is paid, what
+      // falls before it only answers whether a holiday qualifies.
+      days: attendance.filter((row) => row.date >= start),
+      daysBeforeCutoff: attendance.filter((row) => row.date < start),
       holidaysInCutoff: holidays,
       adjustments: adjustmentsByEmployee.get(employee.id) ?? [],
     })

@@ -8,6 +8,7 @@ import { cutoffEnd, cutoffStart, nextDay, parseDayParam } from "@/lib/attendance
 import {
   computePayslip,
   holidaysBetween,
+  HOLIDAY_QUALIFYING_LOOKBACK_DAYS,
   type Payslip,
 } from "@/lib/payroll"
 
@@ -49,6 +50,14 @@ export async function getPayslip(
   const start = cutoffStart(day)
   const end = cutoffEnd(day)
 
+  // Reaches into the previous cutoff far enough to answer whether a holiday on
+  // the opening days of this one was preceded by a day at work. Those rows are
+  // read for that question alone — see `daysBeforeCutoff` below.
+  const qualifyingFrom = new Date(start)
+  qualifyingFrom.setDate(
+    qualifyingFrom.getDate() - HOLIDAY_QUALIFYING_LOOKBACK_DAYS
+  )
+
   const [employee, adjustments] = await Promise.all([
     prisma.employee.findUnique({
       where: { id: employeeId },
@@ -59,7 +68,7 @@ export async function getPayslip(
         position: true,
         hourlyRate: true,
         attendance: {
-          where: { date: { gte: start, lt: nextDay(end) } },
+          where: { date: { gte: qualifyingFrom, lt: nextDay(end) } },
           select: {
             date: true,
             timeIn: true,
@@ -89,6 +98,16 @@ export async function getPayslip(
   ])
   if (!employee) return null
 
+  const attendance = employee.attendance.map((row) => ({
+    date: row.date,
+    timeIn: row.timeIn,
+    timeOut: row.timeOut,
+    approvedOvertimeHours:
+      row.overtime?.status === "APPROVED"
+        ? Number(row.overtime.approvedHours ?? row.overtime.hours)
+        : 0,
+  }))
+
   const rows: AdjustmentRow[] = adjustments.map((row) => ({
     id: row.id,
     label: row.label,
@@ -107,15 +126,10 @@ export async function getPayslip(
     adjustments: rows,
     payslip: computePayslip({
       hourlyRate: Number(employee.hourlyRate),
-      days: employee.attendance.map((row) => ({
-        date: row.date,
-        timeIn: row.timeIn,
-        timeOut: row.timeOut,
-        approvedOvertimeHours:
-          row.overtime?.status === "APPROVED"
-            ? Number(row.overtime.approvedHours ?? row.overtime.hours)
-            : 0,
-      })),
+      // The cutoff's own days are what get paid; the ones before it only say
+      // whether the employee was at work ahead of a holiday.
+      days: attendance.filter((row) => row.date >= start),
+      daysBeforeCutoff: attendance.filter((row) => row.date < start),
       holidaysInCutoff: holidaysBetween(start, end),
       adjustments: rows,
     }),

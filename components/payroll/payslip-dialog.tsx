@@ -506,9 +506,14 @@ export function PayslipDialog({
                       label="Holiday pay"
                       basis={
                         slip.holidayPay === 0
-                          ? "no holiday this cutoff"
-                          : slip.unworkedHolidays.length > 0
+                          ? slip.unworkedHolidays.length > 0
+                            ? "not qualified — absent the day before"
+                            : "no holiday this cutoff"
+                          : slip.unworkedHolidays.some(
+                                (holiday) => holiday.qualified
+                              )
                             ? slip.unworkedHolidays
+                                .filter((holiday) => holiday.qualified)
                                 .map((holiday) => holiday.name)
                                 .join(", ")
                             : "worked — double"
@@ -642,8 +647,12 @@ export function PayslipDialog({
                             <span className="ml-1.5 text-xs text-red-600 dark:text-red-400">
                               {holiday.name}
                             </span>
+                            {/* Says why when it paid nothing. A holiday that
+                                shows ₱0 with no reason is a phone call. */}
                             <span className="block text-xs text-muted-foreground">
-                              not worked · {REGULAR_HOURS_PER_DAY} h holiday pay
+                              {holiday.qualified
+                                ? `not worked · ${REGULAR_HOURS_PER_DAY} h holiday pay`
+                                : "not worked · absent the day before, so unpaid"}
                             </span>
                           </span>
                           <span className="shrink-0 text-sm tabular-nums">

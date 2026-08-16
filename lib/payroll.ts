@@ -16,16 +16,16 @@ import { holidayOn } from "@/lib/holidays"
 //   Overtime    approved hours only, at the plain hourly rate. Staying late
 //               without an approved request pays nothing.
 //   Night       an extra 10% of the hourly rate for time worked 22:00–06:00.
-//   Holiday     worked on a regular holiday, the day pays double; not worked,
-//               it still pays a normal day.
+//   Holiday     worked on a regular holiday, the day pays double, and working
+//               it is what earns it. Not worked, it pays a normal day — but
+//               only to someone who was present on the workday before it.
+//               Absent before it and absent on it, the day pays nothing.
 //   Deductions  SSS, PhilHealth and Pag-IBIG are monthly, and payroll runs
 //               twice a month, so half comes off each cutoff.
 //
-// Two of those are deliberate house rules rather than the statutory minimum,
-// and both are one constant each if that ever changes: overtime is paid flat
-// where the Labor Code sets 125% for an ordinary day, and an unworked holiday
-// is paid to anyone who worked at all in the cutoff rather than testing
-// attendance on the preceding workday.
+// One of those is a deliberate house rule rather than the statutory minimum,
+// and it is one constant if that ever changes: overtime is paid flat where the
+// Labor Code sets 125% for an ordinary day.
 // ---------------------------------------------------------------------------
 
 /** Paid hours in a normal day. The ninth hour on site is the meal break. */
@@ -53,6 +53,23 @@ export const OVERTIME_MULTIPLIER = 1
 
 /** A regular holiday worked pays twice the day's rate. */
 export const HOLIDAY_MULTIPLIER = 2
+
+/**
+ * How far back to look for the workday before a regular holiday.
+ *
+ * An unworked holiday is only paid to someone who was present on the workday
+ * *before* it — but this system has no roster, so it cannot say which days a
+ * person was meant to be at work. Testing only the previous calendar day would
+ * deny the pay to nearly everybody: National Heroes Day is always a Monday, and
+ * nobody punches on a Sunday.
+ *
+ * So the preceding workday is taken to be the most recent day the employee was
+ * actually present, and this is how far back that search goes. Five days covers
+ * a weekend either side of the holiday; past that, someone who has not been
+ * seen for a working week is absent, and an absence before a holiday is exactly
+ * what the rule withholds the pay for.
+ */
+export const HOLIDAY_QUALIFYING_LOOKBACK_DAYS = 5
 
 /** The night differential is a premium on top of the hour, not a rate for it. */
 export const NIGHT_DIFFERENTIAL_RATE = 0.1
@@ -318,7 +335,65 @@ export function holidaysBetween(start: Date, end: Date) {
   return found
 }
 
-export type UnworkedHoliday = { date: string; name: string; pay: number }
+export type UnworkedHoliday = {
+  date: string
+  name: string
+  /** Zero when the day before was an absence — see `qualifiesOn`. */
+  pay: number
+  /**
+   * Whether the employee was present on the workday before it.
+   *
+   * Carried rather than filtered away so the payslip can show the day and say
+   * why it paid nothing. A holiday that silently vanishes from the breakdown
+   * is a question the office has to ring somebody about.
+   */
+  qualified: boolean
+}
+
+/** "2026-08-31" from local parts — how a day is keyed for comparison here. */
+function localDayKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * Was this employee present on the workday before the holiday?
+ *
+ * The rule the office states, in four cases:
+ *
+ *   before   holiday   paid
+ *   ───────────────────────────────────────────────
+ *   no       no        nothing at all
+ *   yes      yes       double
+ *   yes      no        a normal day
+ *   no       yes       double — working it is what earns it
+ *
+ * Only the third case needs asking, and it is the one this answers: the other
+ * three fall out of whether the holiday itself was worked. Walks back from the
+ * holiday for the most recent day the employee was present, stopping at
+ * `HOLIDAY_QUALIFYING_LOOKBACK_DAYS`.
+ *
+ * An earlier holiday the employee was *paid* for counts as being present — a
+ * paid day is not an absence, which matters for Good Friday, whose preceding
+ * day is Maundy Thursday.
+ */
+function qualifiesOn(
+  holiday: Date,
+  presentKeys: ReadonlySet<string>,
+  paidHolidayKeys: ReadonlySet<string>
+) {
+  const cursor = new Date(holiday)
+
+  for (let back = 0; back < HOLIDAY_QUALIFYING_LOOKBACK_DAYS; back++) {
+    cursor.setDate(cursor.getDate() - 1)
+    const key = localDayKey(cursor)
+    if (presentKeys.has(key) || paidHolidayKeys.has(key)) return true
+  }
+
+  return false
+}
 
 /**
  * A one-off correction the office made to this cutoff.
@@ -333,7 +408,13 @@ export type Payslip = {
   hourlyRate: number
   monthlyBasis: number
   days: PayrollDay[]
-  /** Regular holidays in the cutoff the employee did not work but is paid for. */
+  /**
+   * Regular holidays in the cutoff the employee did not work.
+   *
+   * Includes the ones that paid nothing because the day before was an absence
+   * — each carries its own `qualified` flag, so the breakdown can show the day
+   * and say why rather than leaving it out.
+   */
   unworkedHolidays: UnworkedHoliday[]
 
   daysWorked: number
@@ -386,11 +467,20 @@ export type Payslip = {
 export function computePayslip({
   hourlyRate,
   days,
+  daysBeforeCutoff = [],
   holidaysInCutoff,
   adjustments = [],
 }: {
   hourlyRate: number
   days: PayrollDayInput[]
+  /**
+   * Attendance from the days just before the cutoff opened.
+   *
+   * Never paid and never counted — read only to answer "were they present
+   * before this holiday" for a holiday sitting on the first days of the
+   * period, whose qualifying day belongs to the cutoff before this one.
+   */
+  daysBeforeCutoff?: PayrollDayInput[]
   /** Every regular holiday falling inside the cutoff. */
   holidaysInCutoff: { date: Date; name: string }[]
   /** What the office added or took off by hand this cutoff. */
@@ -398,25 +488,45 @@ export function computePayslip({
 }): Payslip {
   const computed = days.map((day) => computeDay(day, hourlyRate))
 
-  const workedKeys = new Set(
-    computed.map((day) => day.date.slice(0, 10))
+  // Keyed off the input dates, not off `computed[].date` — that one is an ISO
+  // string of local midnight, which in Manila reads as the *previous* day once
+  // it has been through UTC. Every key here is local, so they compare.
+  const workedKeys = new Set(days.map((day) => localDayKey(day.date)))
+
+  // Presence, not paid hours: the test is whether somebody turned up, and a
+  // punch is the evidence of that. A day still on the clock pays nothing but
+  // is not an absence, so it qualifies the holiday after it.
+  const presentKeys = new Set(
+    [...days, ...daysBeforeCutoff].map((day) => localDayKey(day.date))
   )
 
-  // A regular holiday is paid whether or not it is worked — but only to
-  // someone who actually worked in this period. Paying a full day to a person
-  // with no punches at all would be paying an absence.
-  const anyWork = computed.some((day) => day.regularHours > 0)
-  const unworkedHolidays: UnworkedHoliday[] = anyWork
-    ? holidaysInCutoff
-        .filter(
-          (holiday) => !workedKeys.has(holiday.date.toISOString().slice(0, 10))
-        )
-        .map((holiday) => ({
-          date: holiday.date.toISOString(),
-          name: holiday.name,
-          pay: money(REGULAR_HOURS_PER_DAY * hourlyRate),
-        }))
-    : []
+  // Chronological, because a holiday can qualify the one after it: Good Friday
+  // follows Maundy Thursday, and being paid for the Thursday is not an absence
+  // on the Friday. Walking them in order means the earlier answer is known by
+  // the time the later one is asked.
+  const paidHolidayKeys = new Set<string>()
+  const unworkedHolidays: UnworkedHoliday[] = []
+
+  for (const holiday of [...holidaysInCutoff].sort((a, b) => +a.date - +b.date)) {
+    const key = localDayKey(holiday.date)
+
+    // Worked holidays are already paid — at double — by `computeDay`, and
+    // working the day is itself what earns it, whatever came before.
+    if (workedKeys.has(key)) {
+      paidHolidayKeys.add(key)
+      continue
+    }
+
+    const qualified = qualifiesOn(holiday.date, presentKeys, paidHolidayKeys)
+    if (qualified) paidHolidayKeys.add(key)
+
+    unworkedHolidays.push({
+      date: holiday.date.toISOString(),
+      name: holiday.name,
+      pay: qualified ? money(REGULAR_HOURS_PER_DAY * hourlyRate) : 0,
+      qualified,
+    })
+  }
 
   const sum = (pick: (day: PayrollDay) => number) =>
     computed.reduce((total, day) => total + pick(day), 0)
