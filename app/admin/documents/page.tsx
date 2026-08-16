@@ -1,5 +1,12 @@
 import Link from "next/link"
-import { ChevronRight, ClipboardList, Folder, FolderOpen, Wrench } from "lucide-react"
+import {
+  ChevronRight,
+  ClipboardList,
+  Download,
+  Folder,
+  FolderOpen,
+  Wrench,
+} from "lucide-react"
 import { requireManager } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import {
@@ -17,14 +24,15 @@ import {
   listMonths,
   listTypes,
   listYears,
+  MAX_ZIP_FILES,
+  parseTreePath,
   searchFiles,
   type TreePath,
 } from "@/lib/document-tree"
 import type { ReportType } from "@/components/attendance/admin-attendance"
 import { LinkPending } from "@/components/ui/link-pending"
-import { Pager } from "@/components/ui/pager"
 import { DocumentSearch } from "@/components/documents/document-search"
-import { ReportFileRow } from "@/components/documents/report-file-row"
+import { DocumentFiles } from "@/components/documents/document-files"
 
 // Every report a technician has filed, in the shape the office already files
 // them in: year, then the kind of report, then who it was for, then where, then
@@ -32,46 +40,43 @@ import { ReportFileRow } from "@/components/documents/report-file-row"
 // as a tree, so a report is browsable the moment the punch that carried it is
 // saved.
 
-type Params = Record<string, string | string[] | undefined>
-
 function one(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
 }
 
-// A deeper parameter without the ones above it would query a level that has no
-// meaning ("August" of no year), so the path is only as deep as it is complete.
-function parsePath(params: Params): TreePath {
-  const year = Number(one(params.y))
-  const validYear = Number.isInteger(year) && year > 2000 ? year : null
-
-  const rawType = one(params.t)
-  const type: ReportType | null =
-    validYear && (rawType === "PMS" || rawType === "SERVICE") ? rawType : null
-
-  const clientId = type ? (one(params.c) ?? null) : null
-  const branchId = clientId ? (one(params.b) ?? null) : null
-
-  const month = Number(one(params.m))
-  const validMonth =
-    clientId && Number.isInteger(month) && month >= 0 && month <= 11
-      ? month
-      : null
-
-  return { year: validYear, type, clientId, branchId, month: validMonth }
-}
-
-function hrefFor(path: Partial<TreePath> & { page?: number; query?: string }) {
+/** The folder, as query parameters — the half of a link both readers share. */
+function pathQuery(path: Partial<TreePath>) {
   const query = new URLSearchParams()
-  if (path.query) query.set("q", path.query)
   if (path.year != null) query.set("y", String(path.year))
   if (path.type) query.set("t", path.type)
   if (path.clientId) query.set("c", path.clientId)
   if (path.branchId) query.set("b", path.branchId)
   if (path.month != null) query.set("m", String(path.month))
+  return query.toString()
+}
+
+function hrefFor(path: Partial<TreePath> & { page?: number; query?: string }) {
+  const query = new URLSearchParams(pathQuery(path))
+  if (path.query) query.set("q", path.query)
   if (path.page && path.page > 1) query.set("p", String(path.page))
 
   const search = query.toString()
   return search ? `/admin/documents?${search}` : "/admin/documents"
+}
+
+/**
+ * The same folder, as one zip.
+ *
+ * Deliberately a plain link and not a button that fetches: the browser
+ * navigates, gets an attachment back and puts the archive in its own downloads
+ * list, where it survives leaving the page and can be retried when the office
+ * wifi drops halfway through.
+ */
+function archiveHref(path: Partial<TreePath>) {
+  const query = pathQuery(path)
+  return query
+    ? `/api/documents/download?${query}`
+    : "/api/documents/download"
 }
 
 /**
@@ -137,28 +142,66 @@ function SummaryCards({
 
 // A folder looks like a folder: an icon, a name, a count. No shadow, no chrome,
 // nothing that competes with the file list it leads to.
-function FolderTile({ href, folder }: { href: string; folder: DocumentFolder }) {
+//
+// The whole tile used to be the link. It is now a link *and* a download, side by
+// side, because the reason someone opens a client's August folder is usually to
+// take August away with them — and a nested anchor inside an anchor is not a
+// thing, so the two share a row rather than one containing the other.
+function FolderTile({
+  href,
+  download,
+  folder,
+}: {
+  href: string
+  download: string
+  folder: DocumentFolder
+}) {
+  // Over the cap the archive would be refused by the route, so the tile says so
+  // here instead of after the click.
+  const tooMany = folder.count > MAX_ZIP_FILES
+  const icon = "size-4 shrink-0"
+
   return (
-    <Link
-      href={href}
-      className="flex min-w-0 items-center gap-2.5 rounded-lg border px-3 py-2.5 outline-none transition-colors hover:bg-muted/50"
-    >
-      <Folder className="size-4.5 shrink-0 fill-sky-600/15 text-sky-600 dark:text-sky-400" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm">{folder.name}</span>
-        {folder.hint && (
-          <span className="block truncate text-[11px] text-muted-foreground">
-            {folder.hint}
-          </span>
-        )}
-      </span>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        {folder.count}
-      </span>
-      {/* Opening a folder is a query change, not a route change, so no
-          `loading.tsx` fires — the tile has to show its own wait. */}
-      <LinkPending className="ml-1 text-muted-foreground" />
-    </Link>
+    <div className="flex min-w-0 items-center rounded-lg border transition-colors hover:bg-muted/50">
+      <Link
+        href={href}
+        className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 outline-none"
+      >
+        <Folder className="size-4.5 shrink-0 fill-sky-600/15 text-sky-600 dark:text-sky-400" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm">{folder.name}</span>
+          {folder.hint && (
+            <span className="block truncate text-[11px] text-muted-foreground">
+              {folder.hint}
+            </span>
+          )}
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          {folder.count}
+        </span>
+        {/* Opening a folder is a query change, not a route change, so no
+            `loading.tsx` fires — the tile has to show its own wait. */}
+        <LinkPending className="ml-1 text-muted-foreground" />
+      </Link>
+
+      {tooMany ? (
+        <span
+          title={`${folder.count} reports is too many for one archive — open ${folder.name} and download a folder inside it.`}
+          className="mx-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-40"
+        >
+          <Download className={icon} />
+        </span>
+      ) : (
+        <a
+          href={download}
+          aria-label={`Download ${folder.name} as a ZIP`}
+          title={`Download ${folder.name} as a ZIP`}
+          className="mx-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-background hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <Download className={icon} />
+        </a>
+      )}
+    </div>
   )
 }
 
@@ -173,50 +216,6 @@ function Empty({ message }: { message: string }) {
   )
 }
 
-function FileList({
-  page,
-  showLocation,
-  hrefForPage,
-}: {
-  page: FilePage
-  showLocation?: boolean
-  hrefForPage: (n: number) => string
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Column headings, desktop only — they name what the two right-hand
-          columns are, and below `sm` those columns aren't there to name. */}
-      <div className="hidden items-center gap-3 border-b px-1 pb-1.5 text-[11px] tracking-wide text-muted-foreground uppercase sm:flex">
-        <span className="w-4 shrink-0" />
-        <span className="min-w-0 flex-1">Name</span>
-        <span className="w-40 shrink-0">Filed by</span>
-        <span className="w-28 shrink-0">Serviced</span>
-        <span className="w-4 shrink-0" />
-      </div>
-
-      <ul className="divide-y">
-        {page.files.map((file) => (
-          <li key={file.id}>
-            <ReportFileRow file={file} showLocation={showLocation} />
-          </li>
-        ))}
-      </ul>
-
-      {/* Two strings, not the builder that made them: `Pager` is a client
-          component and a function can't cross that boundary. */}
-      <Pager
-        page={page.page}
-        pages={page.pages}
-        total={page.total}
-        noun="reports"
-        pageSize={FILES_PER_PAGE}
-        prevHref={hrefForPage(page.page - 1)}
-        nextHref={hrefForPage(page.page + 1)}
-      />
-    </div>
-  )
-}
-
 export default async function AdminDocumentsPage({
   searchParams,
 }: PageProps<"/admin/documents">) {
@@ -225,7 +224,7 @@ export default async function AdminDocumentsPage({
 
   const query = (one(params.q) ?? "").trim()
   const pageNo = Math.max(1, Math.trunc(Number(one(params.p))) || 1)
-  const path = parsePath(params)
+  const path = parseTreePath((key) => one(params[key]))
 
   // Searching is its own mode: the tree is set aside and the whole table is
   // matched, because the report you can't find is rarely in the folder you
@@ -249,10 +248,16 @@ export default async function AdminDocumentsPage({
               matching{" "}
               <span className="font-medium text-foreground">{query}</span>
             </p>
-            <FileList
+            {/* Keyed by the page it is showing, so ticked boxes don't survive
+                into a page whose reports they are no longer on. */}
+            <DocumentFiles
+              key={`search-${results.page}`}
               page={results}
               showLocation
-              hrefForPage={(n) => hrefFor({ query, page: n })}
+              folderQuery=""
+              filesPerPage={FILES_PER_PAGE}
+              prevHref={hrefFor({ query, page: results.page - 1 })}
+              nextHref={hrefFor({ query, page: results.page + 1 })}
             />
           </>
         )}
@@ -319,27 +324,28 @@ export default async function AdminDocumentsPage({
   // against itself — most of them.
   let folders: DocumentFolder[] = []
   let files: FilePage | null = null
-  let childOf: (folder: DocumentFolder) => string = () => hrefFor({})
+  // The path a tile leads to rather than the link itself, because a tile is now
+  // two links to the same folder — one that opens it, one that zips it.
+  let childOf: (folder: DocumentFolder) => Partial<TreePath> = () => ({})
 
   if (path.year == null) {
     folders = await listYears()
-    childOf = (folder) => hrefFor({ year: Number(folder.id) })
+    childOf = (folder) => ({ year: Number(folder.id) })
   } else if (!path.type) {
     folders = await listTypes(path)
-    childOf = (folder) =>
-      hrefFor({ year: path.year, type: folder.id as ReportType })
+    childOf = (folder) => ({ year: path.year, type: folder.id as ReportType })
   } else if (!path.clientId) {
     folders = await listClients(path)
-    childOf = (folder) => hrefFor({ ...path, clientId: folder.id })
+    childOf = (folder) => ({ ...path, clientId: folder.id })
   } else if (path.month == null) {
     const branches = path.branchId ? [] : await listBranches(path)
 
     if (branches.length > 0) {
       folders = branches
-      childOf = (folder) => hrefFor({ ...path, branchId: folder.id })
+      childOf = (folder) => ({ ...path, branchId: folder.id })
     } else {
       folders = await listMonths(path)
-      childOf = (folder) => hrefFor({ ...path, month: Number(folder.id) })
+      childOf = (folder) => ({ ...path, month: Number(folder.id) })
     }
   } else {
     files = await listFiles(path, pageNo)
@@ -383,9 +389,13 @@ export default async function AdminDocumentsPage({
         files.total === 0 ? (
           <Empty message="No reports were filed here." />
         ) : (
-          <FileList
+          <DocumentFiles
+            key={`${pathQuery(path)}-${files.page}`}
             page={files}
-            hrefForPage={(n) => hrefFor({ ...path, page: n })}
+            folderQuery={pathQuery(path)}
+            filesPerPage={FILES_PER_PAGE}
+            prevHref={hrefFor({ ...path, page: files.page - 1 })}
+            nextHref={hrefFor({ ...path, page: files.page + 1 })}
           />
         )
       ) : folders.length === 0 ? (
@@ -401,7 +411,8 @@ export default async function AdminDocumentsPage({
           {folders.map((folder) => (
             <FolderTile
               key={folder.id}
-              href={childOf(folder)}
+              href={hrefFor(childOf(folder))}
+              download={archiveHref(childOf(folder))}
               folder={folder}
             />
           ))}

@@ -3,6 +3,9 @@ import "server-only"
 import type { Prisma } from "@/app/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import {
+  clientAcronym,
+  fileSegment,
+  monthFolder,
   MONTH_NAMES,
   REPORT_TYPE_FOLDER,
   type DocumentFolder,
@@ -45,6 +48,39 @@ export type TreePath = {
 }
 
 const NO_BRANCH = "none"
+
+/**
+ * The folder path, read out of a query string.
+ *
+ * Shared by the page and by the download route so that a "download this
+ * folder" link is the folder you are looking at, parsed by the same rules —
+ * two readers of the same five parameters would eventually disagree, and the
+ * disagreement would be a zip of the wrong reports.
+ *
+ * A deeper parameter without the ones above it would name a level that has no
+ * meaning ("August" of no year), so the path is only as deep as it is complete.
+ */
+export function parseTreePath(
+  get: (key: string) => string | null | undefined
+): TreePath {
+  const year = Number(get("y"))
+  const validYear = Number.isInteger(year) && year > 2000 ? year : null
+
+  const rawType = get("t")
+  const type: ReportType | null =
+    validYear && (rawType === "PMS" || rawType === "SERVICE") ? rawType : null
+
+  const clientId = type ? (get("c") ?? null) : null
+  const branchId = clientId ? (get("b") ?? null) : null
+
+  const month = Number(get("m"))
+  const validMonth =
+    clientId && Number.isInteger(month) && month >= 0 && month <= 11
+      ? month
+      : null
+
+  return { year: validYear, type, clientId, branchId, month: validMonth }
+}
 
 function yearWindow(year: number) {
   return { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) }
@@ -327,6 +363,135 @@ async function fetchFiles(
 
 export function listFiles(path: TreePath, page = 1) {
   return fetchFiles(scopeOf(path), page)
+}
+
+// ---------------------------------------------------------------------------
+// Taking a folder home
+// ---------------------------------------------------------------------------
+
+/**
+ * Reports per archive.
+ *
+ * Every one of them is read out of storage and pushed through the server on its
+ * way to the browser, so this is a ceiling on how long one click can tie up a
+ * connection — a year folder is thousands of files and nobody meant to ask for
+ * that. The tiles hide the download above this count rather than letting
+ * someone start a request that gets refused.
+ */
+export const MAX_ZIP_FILES = 500
+
+const DOWNLOAD_SELECT = {
+  fileKey: true,
+  fileName: true,
+  type: true,
+  client: { select: { name: true } },
+  branch: { select: { name: true } },
+  attendance: { select: { date: true } },
+} satisfies Prisma.AttendanceReportSelect
+
+export type DownloadPlan = {
+  /** The archive's own name, without the extension. */
+  name: string
+  files: { key: string; path: string; date: Date }[]
+  /** How many matched, which is more than `files` when the cap bit. */
+  total: number
+}
+
+// Sanitised either side of the dot, never across it — the same care
+// `buildReportKey` takes, and for the same reason: run over the whole name it
+// would eat the separator and leave "...MAKATI-pdf".
+function safeLeaf(fileName: string) {
+  const dot = fileName.lastIndexOf(".")
+  if (dot <= 0) return fileSegment(fileName, "report")
+  return `${fileSegment(fileName.slice(0, dot), "report")}.${fileSegment(fileName.slice(dot + 1), "bin")}`
+}
+
+/**
+ * What the archive is called.
+ *
+ * Composed from the folder that was asked for — `2026_PMS_ACS_MAKATI_08-August`
+ * — so five of them in a downloads folder are still five distinguishable
+ * things. Names come from the database rather than the query string: the id in
+ * the URL says *which* client, never how to spell it.
+ */
+function archiveName(path: TreePath, sample: { client: { name: string }; branch: { name: string } | null } | undefined) {
+  const parts: string[] = []
+
+  if (path.year != null) parts.push(String(path.year))
+  if (path.type) parts.push(fileSegment(REPORT_TYPE_FOLDER[path.type]))
+  if (path.clientId && sample) parts.push(clientAcronym(sample.client.name))
+  if (path.branchId) {
+    parts.push(
+      path.branchId === NO_BRANCH
+        ? "NO-BRANCH"
+        : fileSegment(sample?.branch?.name ?? "BRANCH")
+    )
+  }
+  if (path.month != null) parts.push(fileSegment(monthFolder(path.month)))
+
+  return parts.length ? parts.join("_") : "Documents"
+}
+
+/**
+ * The files behind a download, and where each one sits inside the archive.
+ *
+ * The folder structure below the level being downloaded is kept, and the levels
+ * above it are dropped — unzipping the August folder gives you the reports, not
+ * five nested folders with one thing at the bottom. Selected files (`ids`) are
+ * named the same way, relative to the folder they were selected in, so a
+ * selection out of a search result still arrives sorted into its tree.
+ */
+export async function planDownload(
+  path: TreePath,
+  ids?: string[]
+): Promise<DownloadPlan> {
+  const where: Prisma.AttendanceReportWhereInput = ids?.length
+    ? { id: { in: ids } }
+    : scopeOf(path)
+
+  const [total, rows] = await Promise.all([
+    prisma.attendanceReport.count({ where }),
+    prisma.attendanceReport.findMany({
+      where,
+      select: DOWNLOAD_SELECT,
+      // Filing order, oldest first: an archive is read start to end, unlike the
+      // screen it came from, where the newest report is the one you want.
+      orderBy: [{ attendance: { date: "asc" } }, { serialNo: "asc" }],
+      take: MAX_ZIP_FILES,
+    }),
+  ])
+
+  // Two reports can carry the same composed name — same serial typed twice, or
+  // a client whose acronym collides. In the bucket they were separated by the
+  // key; in here they would silently become one file, so the second one is
+  // numbered.
+  const taken = new Set<string>()
+
+  const files = rows.map((row) => {
+    const date = row.attendance.date
+    const segments: string[] = []
+
+    // Only the levels the archive doesn't already stand at.
+    if (path.year == null) segments.push(String(date.getFullYear()))
+    if (!path.type) segments.push(fileSegment(REPORT_TYPE_FOLDER[row.type]))
+    if (!path.clientId) segments.push(fileSegment(row.client.name, "CLIENT"))
+    if (!path.branchId && row.branch) segments.push(fileSegment(row.branch.name))
+    if (path.month == null) segments.push(fileSegment(monthFolder(date.getMonth())))
+
+    const leaf = safeLeaf(row.fileName)
+    let name = [...segments, leaf].join("/")
+    for (let n = 2; taken.has(name); n++) {
+      const dot = leaf.lastIndexOf(".")
+      const numbered =
+        dot > 0 ? `${leaf.slice(0, dot)}-${n}${leaf.slice(dot)}` : `${leaf}-${n}`
+      name = [...segments, numbered].join("/")
+    }
+    taken.add(name)
+
+    return { key: row.fileKey, path: name, date }
+  })
+
+  return { name: archiveName(path, rows[0]), files, total }
 }
 
 /**

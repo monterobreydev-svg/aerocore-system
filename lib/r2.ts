@@ -226,6 +226,26 @@ export async function presignDownload(key: string, filename?: string) {
   )
 }
 
+/**
+ * One object's bytes, read on the server.
+ *
+ * Only for building an archive — anything a browser is meant to *see* goes out
+ * as a presigned URL instead, so the file travels from storage to the phone
+ * directly rather than through here twice. Missing objects come back null
+ * rather than throwing: one deleted file should not take a folder download
+ * down with it.
+ */
+export async function getObjectBytes(key: string) {
+  try {
+    const object = await r2().send(
+      new GetObjectCommand({ Bucket: BUCKET, Key: key })
+    )
+    return (await object.Body?.transformToByteArray()) ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function deleteObject(key: string) {
   await r2().send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
 }

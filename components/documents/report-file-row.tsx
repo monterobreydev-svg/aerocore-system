@@ -24,6 +24,11 @@ function serviceDate(iso: string) {
  * The download link is fetched on the click, never rendered with the page — a
  * presigned URL for every row would expire before half of them were used, and
  * signing twenty of them to show a list is work nobody asked for.
+ *
+ * The download arrow on the right is the whole point of the row: it takes this
+ * one report and nothing else, which is why there is no "download this folder"
+ * button sitting above the list competing with it. Anywhere on the row does the
+ * same thing — the arrow is where the eye goes, not the only place that works.
  */
 export function ReportFileRow({
   file,
@@ -57,13 +62,9 @@ export function ReportFileRow({
           setBusy(false)
         }
       }}
-      className="group flex w-full min-w-0 items-center gap-3 py-2 pr-2 pl-1 text-left outline-none transition-colors hover:bg-muted/50 disabled:opacity-60"
+      className="group flex min-w-0 flex-1 items-center gap-3 py-2 pr-2 pl-1 text-left outline-none transition-colors hover:bg-muted/50 disabled:opacity-60"
     >
-      {busy ? (
-        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-      ) : (
-        <FileText className="size-4 shrink-0 text-rose-600 dark:text-rose-400" />
-      )}
+      <FileText className="size-4 shrink-0 text-rose-600 dark:text-rose-400" />
 
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm">{file.fileName}</span>
@@ -79,7 +80,19 @@ export function ReportFileRow({
         {serviceDate(file.servicedOn)}
       </span>
 
-      <Download className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      {/* The wait belongs here rather than on the file icon: this is the thing
+          that was pressed, so this is where something has to happen.
+
+          Hidden until hover only where there is a mouse to hover with.
+          Tailwind gates `group-hover` behind `@media (hover: hover)`, so on a
+          touch screen a hover-revealed icon is one that never appears at all —
+          `pointer-fine` is what keeps the list clean on a desktop without
+          hiding the action from a phone. */}
+      {busy ? (
+        <Loader2 className="size-4 shrink-0 animate-spin text-foreground" />
+      ) : (
+        <Download className="size-4 shrink-0 text-muted-foreground transition-opacity pointer-fine:opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+      )}
     </button>
   )
 }
