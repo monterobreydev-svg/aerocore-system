@@ -13,6 +13,7 @@ export default async function Page({ searchParams }: PageProps<"/admin/settings"
 
   return (
     <AccountSettings
+        vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
       account={account}
       section="admin"
       defaultTab={settingsTabFrom(params.tab)}

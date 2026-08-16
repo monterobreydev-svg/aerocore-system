@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react"
 import {
   BadgeCheck,
+  Bell,
   Briefcase,
   CheckCircle2,
   IdCard,
@@ -56,6 +57,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RoleBadge } from "@/components/admin/role-badge"
+import { PushToggle } from "@/components/dashboard/push-toggle"
 
 function initials(firstName: string, lastName: string) {
   return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase()
@@ -487,9 +489,12 @@ function EmploymentTab({ account }: { account: AccountSettingsData }) {
 function SecurityTab({
   account,
   section,
+  vapidPublicKey,
 }: {
   account: AccountSettingsData
   section: "admin" | "employee"
+  /** Null when push isn't configured on this deployment. */
+  vapidPublicKey: string | null
 }) {
   const [state, action, pending] = useActionState<PasswordState, FormData>(
     changePassword,
@@ -506,6 +511,22 @@ function SecurityTab({
 
   return (
     <div className="grid gap-3 lg:grid-cols-2">
+      {/* Beside the password rather than in its own tab: both are things you
+          set once per device or per account and then forget about. */}
+      <SectionCard
+        title="Notifications"
+        description="Alerts on this device, even when the app is closed"
+        icon={Bell}
+      >
+        {vapidPublicKey ? (
+          <PushToggle publicKey={vapidPublicKey} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Browser notifications aren&apos;t set up on this server yet.
+          </p>
+        )}
+      </SectionCard>
+
       <SectionCard
         title="Password"
         description="Used together with your username to sign in"
@@ -667,10 +688,13 @@ export function AccountSettings({
   account,
   section,
   defaultTab = "profile",
+  vapidPublicKey = null,
 }: {
   account: AccountSettingsData
   section: "admin" | "employee"
   defaultTab?: string
+  /** The server's push key, or null when push isn't configured. */
+  vapidPublicKey?: string | null
 }) {
   const [activeTab, setActiveTab] = useState<string>(defaultTab)
   const e = account.employee
@@ -739,7 +763,11 @@ export function AccountSettings({
         </TabsContent>
 
         <TabsContent value="security" className="pt-4">
-          <SecurityTab account={account} section={section} />
+          <SecurityTab
+            account={account}
+            section={section}
+            vapidPublicKey={vapidPublicKey}
+          />
         </TabsContent>
       </Tabs>
     </div>

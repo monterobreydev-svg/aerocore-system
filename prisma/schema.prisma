@@ -98,6 +98,42 @@ model UserAccount {
   overtimeReviews      OvertimeRequest[] @relation("OvertimeReviewedBy")
   payrollAdjustments   PayrollAdjustment[] @relation("PayrollAdjustmentsMade")
   payrollReleases      PayrollRelease[]    @relation("PayrollReleases")
+  pushSubscriptions    PushSubscription[]  @relation("AccountPushSubscriptions")
+}
+
+// One browser that has agreed to receive notifications.
+//
+// Per *device*, not per person: an administrator with the portal open on a
+// desktop and installed on their phone is two rows, and both should buzz. The
+// endpoint is the address the browser's push service gave us and is unique by
+// construction — re-subscribing on the same device returns the same one, which
+// is what makes this an upsert rather than a growing pile of duplicates.
+//
+// The two keys are the browser's half of the encryption: every payload is
+// sealed to them so the push service in the middle — Google, Mozilla, Apple —
+// carries ciphertext it cannot read.
+model PushSubscription {
+  id String @id @default(uuid())
+
+  accountId String
+  account   UserAccount @relation("AccountPushSubscriptions", fields: [accountId], references: [id], onDelete: Cascade)
+
+  /** Where the browser's push service wants deliveries posted. */
+  endpoint String @unique
+  /** The device's public key, for sealing the payload. */
+  p256dh   String
+  /** The device's auth secret, the other half of the same. */
+  auth     String
+
+  /** Roughly which device this is, so somebody can recognise their own. */
+  userAgent String?
+
+  createdAt DateTime @default(now())
+  /** Last time a delivery to this endpoint was accepted. */
+  lastSeenAt DateTime @default(now())
+
+  // "Everyone to tell about this" is the only question ever asked of it.
+  @@index([accountId])
 }
 
 // ---------------------------------------------------------------------------

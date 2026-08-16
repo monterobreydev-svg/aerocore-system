@@ -51,12 +51,17 @@ const ALL = "*"
 /**
  * How often the browser asks whether anything has arrived.
  *
- * Only while the tab is actually being looked at — a phone in a pocket polls
- * nothing, which is the case that matters when the person holding it is paying
- * for the data. A minute is well inside "did anyone notice my overtime
- * request" and costs a few hundred bytes an hour with the app open.
+ * A fallback now rather than the delivery mechanism. Push notifications carry
+ * the news the moment it happens (see components/dashboard/push-toggle), so
+ * this only has to cover the people who refused permission, the browsers that
+ * can't do it, and the phones whose battery saver quietly dropped a delivery.
+ *
+ * It was a minute while polling was the only route, which is background
+ * traffic every open tab pays for — including a field employee's, on data they
+ * bought. Five minutes is the right frequency for a safety net, and the tab
+ * still refreshes the moment somebody looks at it.
  */
-const PULSE_MS = 60_000
+const PULSE_MS = 5 * 60_000
 
 export function NotificationBell({
   items,

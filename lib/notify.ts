@@ -2,6 +2,7 @@ import "server-only"
 import { prisma } from "@/lib/prisma"
 import type { NotificationType, Role } from "@/app/generated/prisma/client"
 import { isAdminPathAllowedForRole, isAdminSideRole } from "@/lib/roles"
+import { sendPush } from "@/lib/push"
 
 // Writing the inbox rows. Every caller is a server action that has already done
 // the thing being announced, which is why nothing here throws: a notification
@@ -82,6 +83,39 @@ async function insert(recipients: Recipient[], draft: Draft) {
     })
   } catch (error) {
     console.error("[notify] could not write notification", error)
+  }
+
+  // The row is the record; this is the nudge. Sent after the write and never
+  // allowed to fail the caller — a push that doesn't go out must not undo the
+  // thing it was announcing.
+  //
+  // Grouped by the link rather than sent one at a time, because the link is the
+  // only part of a notification that differs between recipients: an employee is
+  // sent to /employee/schedule and an engineer to /admin/schedules for the same
+  // job. Recipients sharing a destination share one call.
+  try {
+    const byHref = new Map<string | null, string[]>()
+    for (const recipient of recipients) {
+      const href = draft.destination
+        ? hrefFor(draft.destination, recipient.role, draft.focusDate)
+        : null
+      byHref.set(href, [...(byHref.get(href) ?? []), recipient.id])
+    }
+
+    await Promise.all(
+      [...byHref].map(([href, accountIds]) =>
+        sendPush(accountIds, {
+          title: draft.title,
+          body: draft.body,
+          href,
+          // One notification per kind: a second schedule assignment replaces
+          // the first in the shade rather than stacking beside it.
+          tag: draft.type,
+        })
+      )
+    )
+  } catch (error) {
+    console.error("[notify] could not push notification", error)
   }
 }
 
