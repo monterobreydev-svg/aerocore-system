@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — every real one stays out of the repository
 .env*
+# ...except the template, which holds no secrets and is what tells the next
+# person what has to be set. `.env*` above would otherwise swallow it.
+!.env.example
 
 # vercel
 .vercel
