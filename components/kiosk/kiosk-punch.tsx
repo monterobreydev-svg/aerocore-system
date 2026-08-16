@@ -52,6 +52,77 @@ import {
 
 type Known = Extract<KioskWho, { ok: true }>
 
+/**
+ * What became of the last overtime request.
+ *
+ * The kiosk could file overtime and then said nothing — the crew asked for
+ * hours into a machine and had to ring the office to find out whether they had
+ * them. Rejections carry the office's note, because "no" without a reason is
+ * the version that gets argued about at the gate.
+ */
+function OvertimeStatusCard({
+  request,
+}: {
+  request: Known["overtimeRequest"]
+}) {
+  if (!request) return null
+
+  const granted = request.approvedHours ?? request.hours
+  // "asked for 4, granted 3" is the case worth spelling out — a bare "3h
+  // approved" against a request for 4 reads as the office losing an hour.
+  const trimmed =
+    request.status === "APPROVED" && granted !== request.hours
+
+  const tone =
+    request.status === "APPROVED"
+      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
+      : request.status === "REJECTED"
+        ? "border-destructive/30 bg-destructive/5 text-destructive"
+        : "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400"
+
+  const Icon =
+    request.status === "APPROVED"
+      ? Check
+      : request.status === "REJECTED"
+        ? X
+        : Clock
+
+  const headline =
+    request.status === "APPROVED"
+      ? trimmed
+        ? `Overtime approved — ${granted}h of the ${request.hours}h you asked for`
+        : `Overtime approved — ${granted}h`
+      : request.status === "REJECTED"
+        ? "Overtime not approved"
+        : `Overtime requested — ${request.hours}h, waiting for the office`
+
+  return (
+    <div className={cn("flex items-start gap-2.5 rounded-xl border px-3 py-2.5", tone)}>
+      <Icon className="mt-0.5 size-4 shrink-0" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{headline}</span>
+        <span className="mt-0.5 block text-xs opacity-80">
+          {/* Which day it was for, so an answer arriving the next morning
+              isn't mistaken for one about today. */}
+          Requested {dayAndTime(request.requestedAt)}
+          {request.reviewedAt && ` · answered ${dayAndTime(request.reviewedAt)}`}
+        </span>
+        {request.reviewNote && (
+          <span className="mt-1 block text-xs opacity-90">
+            “{request.reviewNote}”
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
+/** "Mon 8:30 PM" — enough to place an answer against the shift it is about. */
+function dayAndTime(iso: string) {
+  const date = new Date(iso)
+  return `${date.toLocaleDateString(undefined, { weekday: "short" })} ${clockTime(iso)}`
+}
+
 /** What this thing does, said before anyone has typed anything. */
 const CAPABILITIES = [
   { icon: LogIn, label: "Time in" },
@@ -459,6 +530,12 @@ export function KioskPunch({ storageReady }: { storageReady: boolean }) {
       </div>
 
       {storageWarning}
+
+      {/* Above the buttons and outside every branch: the answer matters
+          whether they are about to time in, already on the clock, or finished
+          for the day — and the day they finished is often the day the office
+          gets round to deciding. */}
+      <OvertimeStatusCard request={who.overtimeRequest} />
 
       {who.state === "done" ? (
         <div className="rounded-2xl border border-dashed px-6 py-10 text-center">

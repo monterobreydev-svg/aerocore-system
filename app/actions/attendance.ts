@@ -2,7 +2,7 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import type { Role } from "@/app/generated/prisma/client"
+import type { OvertimeStatus, Role } from "@/app/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import { verifySession } from "@/lib/auth"
 import {
@@ -831,6 +831,29 @@ export async function timeOut(
 // same ones the signed-in path runs.
 // ---------------------------------------------------------------------------
 
+/**
+ * How far back the kiosk looks for a decision on somebody's overtime.
+ *
+ * The office usually answers the same day, but a request filed at 18:00 is
+ * often reviewed the next morning — by which time the person who asked is
+ * standing at the gate about to time in. Three days covers that and a weekend
+ * without turning the kiosk into a history screen.
+ */
+const KIOSK_OVERTIME_DAYS = 3
+
+/** The answer to somebody's last overtime request, for the kiosk to show. */
+export type KioskOvertimeRequest = {
+  status: OvertimeStatus
+  /** What was asked for. */
+  hours: number
+  /** What the office granted. Null while it is still pending. */
+  approvedHours: number | null
+  reviewNote: string | null
+  reviewedAt: string | null
+  /** The day the request was filed, so an old answer says which day it is for. */
+  requestedAt: string
+}
+
 /** What the kiosk knows about a person after they type their name. */
 export type KioskWho =
   | { ok: false; message: string }
@@ -845,6 +868,16 @@ export type KioskWho =
       /** Whether an overtime request may be filed right now, and why not. */
       overtime: OvertimeGate
       overtimeRequested: boolean
+      /**
+       * Their last request and what became of it.
+       *
+       * The kiosk could file overtime but never told anyone the answer — the
+       * crew asked for hours into a machine that then said nothing, and had to
+       * ring the office to find out whether they had been granted. Carried
+       * separately from `overtimeRequested`, which is about *this* punch and
+       * decides whether the button is available.
+       */
+      overtimeRequest: KioskOvertimeRequest | null
     }
 
 /**
@@ -904,7 +937,10 @@ export async function kioskWhoIs(username: string): Promise<KioskWho> {
   const now = new Date()
   const day = attendanceDay(now)
 
-  const [open, todayRow, shift] = await Promise.all([
+  const since = new Date(day)
+  since.setDate(since.getDate() - KIOSK_OVERTIME_DAYS)
+
+  const [open, todayRow, shift, lastOvertime] = await Promise.all([
     prisma.attendance.findFirst({
       where: {
         employeeId: who.employeeId,
@@ -919,6 +955,21 @@ export async function kioskWhoIs(username: string): Promise<KioskWho> {
       select: { timeIn: true, timeOut: true, overtime: { select: { id: true } } },
     }),
     shiftForDay(who.employeeId, day),
+    // Their last request, whichever punch it hangs off — a decision made this
+    // morning is about last night's shift, and that row is filed under
+    // yesterday.
+    prisma.overtimeRequest.findFirst({
+      where: { employeeId: who.employeeId, requestedAt: { gte: since } },
+      orderBy: { requestedAt: "desc" },
+      select: {
+        status: true,
+        hours: true,
+        approvedHours: true,
+        reviewNote: true,
+        reviewedAt: true,
+        requestedAt: true,
+      },
+    }),
   ])
 
   // An overnight shift is filed under the day it began, so the live punch —
@@ -943,6 +994,19 @@ export async function kioskWhoIs(username: string): Promise<KioskWho> {
       alreadyRequested: requested,
     }),
     overtimeRequested: requested,
+    overtimeRequest: lastOvertime
+      ? {
+          status: lastOvertime.status,
+          hours: Number(lastOvertime.hours),
+          approvedHours:
+            lastOvertime.approvedHours === null
+              ? null
+              : Number(lastOvertime.approvedHours),
+          reviewNote: lastOvertime.reviewNote,
+          reviewedAt: lastOvertime.reviewedAt?.toISOString() ?? null,
+          requestedAt: lastOvertime.requestedAt.toISOString(),
+        }
+      : null,
   }
 }
 
