@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { hashPassword } from "@/lib/password"
 import { verifySession } from "@/lib/auth"
-import { assignableRoles } from "@/lib/roles"
+import type { Role } from "@/app/generated/prisma/client"
+import { assignableRoles, roleLabel } from "@/lib/roles"
 import { SKILL_OPTIONS } from "@/lib/employee"
 
 // Checkboxes arrive as repeated `skills` entries; nothing outside the fixed
@@ -280,6 +281,7 @@ const UpdateStaffSchema = z.object({
 export type UpdateStaffState =
   | {
       errors?: {
+        role?: string[]
         firstName?: string[]
         lastName?: string[]
         middleName?: string[]
@@ -361,6 +363,42 @@ export async function updateStaffAccount(
     validatedFields.data.employeeId === session.employeeId
   ) {
     return { message: "You can't edit your own account." }
+  }
+
+  // ---- access level ------------------------------------------------------
+  //
+  // Read separately from everything else, and only for a Director. An
+  // Administrator may edit staff records all day but must not be able to
+  // promote themselves or anyone else — the whole point of the role is that
+  // somebody above them set it.
+  //
+  // Nobody changes their own, including a Director. That single rule is what
+  // guarantees the company can never be left without one: the person making
+  // the change is a Director by definition, so demoting anybody else still
+  // leaves them standing.
+  const requestedRole = formData.get("role")
+  let nextRole: Role | null = null
+
+  if (requestedRole != null && requestedRole !== "") {
+    if (session.role !== "DIRECTOR") {
+      return { message: "Only a Director can change an access level." }
+    }
+
+    const parsed = z
+      .enum(["DIRECTOR", "ADMINISTRATOR", "ENGINEER", "EMPLOYEE"])
+      .safeParse(requestedRole)
+    if (!parsed.success) {
+      return { errors: { role: ["That isn't a role."] } }
+    }
+
+    if (validatedFields.data.employeeId === session.employeeId) {
+      return {
+        message:
+          "You can't change your own access level — ask another Director.",
+      }
+    }
+
+    nextRole = parsed.data
   }
 
   const {
@@ -474,6 +512,18 @@ export async function updateStaffAccount(
     })
   }
 
+  // Who can reach what is the single most consequential thing on this form, so
+  // it lands in the same edit log as everything else — with both roles named,
+  // not as ids nobody reads back.
+  const roleChanged = nextRole !== null && nextRole !== employee.account.role
+  if (roleChanged) {
+    changes.push({
+      field: "role",
+      oldValue: roleLabel(employee.account.role),
+      newValue: roleLabel(nextRole!),
+    })
+  }
+
   if (changes.length > 0) {
     await prisma.$transaction(async (tx) => {
       await tx.employee.update({
@@ -507,7 +557,24 @@ export async function updateStaffAccount(
 
       await tx.userAccount.update({
         where: { id: employee.account!.id },
-        data: { isActive: nextIsActive },
+        data: {
+          isActive: nextIsActive,
+          ...(roleChanged ? { role: nextRole! } : {}),
+          // A role change signs them out everywhere.
+          //
+          // Every page gate reads the role from the database, so a demotion
+          // takes hold on the next request either way. A *promotion* would
+          // not: proxy.ts can only see the JWT, and a token still claiming
+          // EMPLOYEE gets bounced off /admin however senior the account has
+          // just become. Forcing a fresh sign-in is what makes both directions
+          // work the moment they are saved.
+          //
+          // Truncated to the second for the same reason changePassword does
+          // it — a JWT's `iat` has no sub-second part.
+          ...(roleChanged
+            ? { sessionsRevokedAt: new Date(Math.floor(Date.now() / 1000) * 1000) }
+            : {}),
+        },
       })
 
       await tx.staffEditLog.createMany({

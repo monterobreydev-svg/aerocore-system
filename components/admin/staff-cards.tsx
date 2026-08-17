@@ -195,6 +195,12 @@ export function StaffCards({
         readOnly={
           selected.id === currentAccountId && currentRole === "ADMINISTRATOR"
         }
+        // A Director may set anybody's access level except their own — see
+        // updateStaffAccount for why that single exclusion is what keeps the
+        // company from ending up without a Director.
+        canChangeRole={
+          currentRole === "DIRECTOR" && selected.id !== currentAccountId
+        }
       />
     )
   }

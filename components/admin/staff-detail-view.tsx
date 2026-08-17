@@ -17,7 +17,7 @@ import {
   updateStaffAccount,
   type UpdateStaffState,
 } from "@/app/actions/staff"
-import { roleAccessLabel } from "@/lib/roles"
+import { roleAccessLabel, roleLabel } from "@/lib/roles"
 import {
   CIVIL_STATUS_OPTIONS,
   EMPLOYMENT_TYPE_OPTIONS,
@@ -42,6 +42,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -62,6 +63,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RoleBadge } from "@/components/admin/role-badge"
 import { SkillsPicker } from "@/components/admin/skills-picker"
 import type { StaffMember } from "@/components/admin/staff-cards"
+
+/** Every role, for the access-level picker. Only a Director ever sees it. */
+const ALL_ROLE_OPTIONS = [
+  "DIRECTOR",
+  "ADMINISTRATOR",
+  "ENGINEER",
+  "EMPLOYEE",
+] as const
 
 // A table, a pager and the liquidation dialog — none of it needed to read
 // someone's profile, so it stays out of the chunk that renders one.
@@ -235,10 +244,17 @@ export function StaffDetailView({
   staff,
   onBack,
   readOnly = false,
+  canChangeRole = false,
 }: {
   staff: StaffMember
   onBack: () => void
   readOnly?: boolean
+  /**
+   * Whether the viewer may set this person's access level: a Director, on
+   * somebody else's record. The server checks both again — this only decides
+   * whether the control is worth showing.
+   */
+  canChangeRole?: boolean
 }) {
   const [state, action, pending] = useActionState<UpdateStaffState, FormData>(
     updateStaffAccount,
@@ -628,6 +644,55 @@ export function StaffDetailView({
                             }))}
                           />
                         </Field>
+                        {/* Only a Director sees this, and never on their own
+                            record — the server refuses both regardless, since
+                            hiding a field is not a permission. */}
+                        {canChangeRole && (
+                          <Field data-invalid={!!state?.errors?.role}>
+                            <FieldLabel htmlFor={`role-${staff.id}`}>
+                              Access level
+                            </FieldLabel>
+                            <Select
+                              name="role"
+                              defaultValue={initial.role}
+                              disabled={pending}
+                              items={Object.fromEntries(
+                                ALL_ROLE_OPTIONS.map((option) => [
+                                  option,
+                                  roleLabel(option),
+                                ])
+                              )}
+                            >
+                              <SelectTrigger
+                                id={`role-${staff.id}`}
+                                className="w-full"
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ALL_ROLE_OPTIONS.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    <span className="flex flex-col">
+                                      <span>{roleLabel(option)}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {roleAccessLabel(option)}
+                                      </span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FieldDescription>
+                              Changing this signs them out — they&apos;ll sign
+                              back in with the new access.
+                            </FieldDescription>
+                            <FieldError
+                              errors={state?.errors?.role?.map((m) => ({
+                                message: m,
+                              }))}
+                            />
+                          </Field>
+                        )}
                         <Field>
                           <FieldLabel htmlFor={`isActive-${staff.id}`}>
                             Status
