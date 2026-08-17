@@ -10,6 +10,23 @@ export function isAdminSideRole(role: Role) {
   return ADMIN_SIDE_ROLES.has(role)
 }
 
+/**
+ * May this person change their own name, birth date and civil status?
+ *
+ * Only a Director. Everyone else's identity is an HR fact: it is what payslips
+ * are issued against, what government contributions are filed under, and what
+ * a filed report is signed with. Somebody quietly correcting their own name the
+ * week before payroll is not a correction anyone asked for — the office makes
+ * that change, and the staff edit log carries who made it.
+ *
+ * Contact details are deliberately *not* covered. A new phone number or
+ * emergency contact is exactly the sort of thing that should not need a ticket,
+ * and getting it wrong costs nobody any money.
+ */
+export function canEditOwnIdentity(role: Role) {
+  return role === "DIRECTOR"
+}
+
 const ROLE_LABELS: Record<Role, string> = {
   DIRECTOR: "Director",
   ADMINISTRATOR: "Administrator",

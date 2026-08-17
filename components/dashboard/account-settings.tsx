@@ -22,7 +22,7 @@ import {
   type ProfileState,
 } from "@/app/actions/profile"
 import type { AccountSettings as AccountSettingsData } from "@/lib/dal"
-import { roleAccessLabel } from "@/lib/roles"
+import { canEditOwnIdentity, roleAccessLabel } from "@/lib/roles"
 import {
   CIVIL_STATUS_OPTIONS,
   civilStatusLabel,
@@ -59,6 +59,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RoleBadge } from "@/components/admin/role-badge"
 import { PushToggle } from "@/components/dashboard/push-toggle"
+import { UsernameForm } from "@/components/dashboard/username-form"
 
 function initials(firstName: string, lastName: string) {
   return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase()
@@ -142,6 +143,7 @@ function ProfileTab({
   account: AccountSettingsData
   section: "admin" | "employee"
 }) {
+  const editableIdentity = canEditOwnIdentity(account.role)
   const [state, action, pending] = useActionState<ProfileState, FormData>(
     updateProfile,
     undefined
@@ -159,9 +161,41 @@ function ProfileTab({
       <div className="grid gap-3 lg:grid-cols-2">
         <SectionCard
           title="Personal"
-          description="Your legal name as it should appear on payroll"
+          description={
+            editableIdentity
+              ? "Your legal name as it should appear on payroll"
+              : "Set by the office — payslips and contributions are filed against it"
+          }
           icon={UserRound}
         >
+          {/* Read-only for everyone but a Director. Shown rather than hidden:
+              somebody checking whether the office has their name right should
+              be able to see it without asking, and see who to ask if it's
+              wrong. The server ignores these fields regardless of what is
+              posted — see canEditOwnIdentity. */}
+          {!editableIdentity ? (
+            <dl className="flex flex-col">
+              <Row label="First name" value={initial.firstName} />
+              <Row label="Last name" value={initial.lastName} />
+              <Row label="Middle name" value={initial.middleName} />
+              <Row
+                label="Date of birth"
+                value={initial.birthDate ? formatDate(initial.birthDate) : null}
+              />
+              <Row
+                label="Civil status"
+                value={
+                  initial.civilStatus
+                    ? civilStatusLabel(initial.civilStatus)
+                    : null
+                }
+              />
+              <p className="pt-2 text-xs text-muted-foreground">
+                Ask the office to correct any of these. Your contact details
+                below are yours to change.
+              </p>
+            </dl>
+          ) : (
           <FieldGroup className="gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field data-invalid={!!state?.errors?.firstName}>
@@ -244,6 +278,7 @@ function ProfileTab({
               </Field>
             </div>
           </FieldGroup>
+          )}
         </SectionCard>
 
         <SectionCard
@@ -632,11 +667,16 @@ function SecurityTab({
 
       <SectionCard
         title="Sign-in account"
-        description="Managed by a Director"
+        description="Your username is yours; the rest is set by a Director"
         icon={ShieldCheck}
       >
         <dl className="flex flex-col">
-          <Row label="Username" value={account.username} mono />
+          <div className="border-b py-1 last:border-b-0">
+            <dt className="text-xs text-muted-foreground">Username</dt>
+            <dd>
+              <UsernameForm username={account.username} section={section} />
+            </dd>
+          </div>
           <Row
             label="Access level"
             value={
