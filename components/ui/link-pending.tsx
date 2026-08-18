@@ -37,3 +37,31 @@ export function LinkPending({ className }: { className?: string }) {
     </span>
   )
 }
+
+/**
+ * A nav item's icon, which becomes a spinner while that item is navigating.
+ *
+ * The same job as `LinkPending`, for the case where there is nowhere to put an
+ * extra spinner: a tab bar item is an icon above a label in a fixed-width
+ * column, and adding a slot beside the icon would push the label off centre.
+ * Swapping the glyph in place costs no layout at all — the box is the same size
+ * before and after — and it points at the tab being waited on rather than at
+ * the page in general.
+ *
+ * Must be rendered inside a `<Link>`; `useLinkStatus` returns a permanent
+ * `false` anywhere else.
+ */
+export function LinkPendingIcon({
+  icon: Icon,
+  className,
+}: {
+  icon: React.ElementType
+  className?: string
+}) {
+  const { pending } = useLinkStatus()
+
+  if (pending) {
+    return <Spinner className={className} label="Loading page" />
+  }
+  return <Icon className={className} aria-hidden />
+}

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { EMPLOYEE_NAV } from "@/components/dashboard/nav-items"
+import { LinkPendingIcon } from "@/components/ui/link-pending"
 
 export function MobileTabBar() {
   const pathname = usePathname()
@@ -31,7 +32,12 @@ export function MobileTabBar() {
                   "text-brand before:absolute before:top-0 before:h-0.5 before:w-8 before:rounded-full before:bg-brand"
               )}
             >
-              <item.icon
+              {/* The icon becomes a spinner while this tab is loading. On a
+                  slow connection the server can take seconds to answer, and
+                  without this the old page just sits there — so the tap looks
+                  like it missed and gets repeated. */}
+              <LinkPendingIcon
+                icon={item.icon}
                 className={cn("size-5", isActive && "fill-brand/15")}
               />
               <span>{item.title}</span>

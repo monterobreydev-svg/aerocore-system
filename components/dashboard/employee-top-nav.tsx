@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { EMPLOYEE_NAV } from "@/components/dashboard/nav-items"
+import { LinkPendingIcon } from "@/components/ui/link-pending"
 
 export function EmployeeTopNav() {
   const pathname = usePathname()
@@ -29,7 +30,7 @@ export function EmployeeTopNav() {
                 isActive && "border-brand text-brand"
               )}
             >
-              <item.icon className="size-4" />
+              <LinkPendingIcon icon={item.icon} className="size-4" />
               {item.title}
             </Link>
           )
