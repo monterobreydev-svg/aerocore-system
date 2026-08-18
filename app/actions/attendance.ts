@@ -32,6 +32,7 @@ import {
   MAX_SHIFT_HOURS,
   nextDay,
   overtimeGate,
+  shiftEndFor,
   workedMinutes,
   type OvertimeGate,
 } from "@/lib/attendance"
@@ -982,9 +983,14 @@ export async function kioskWhoIs(username: string): Promise<KioskWho> {
   // An overnight shift is filed under the day it began, so the live punch —
   // not today's row — is what says whether somebody is still on the clock.
   const state = open ? "in" : todayRow?.timeOut ? "done" : "out"
-  const shiftEnd = open
-    ? (await shiftForDay(who.employeeId, open.date))?.endsAt ?? null
+  const scheduledEnd = open
+    ? ((await shiftForDay(who.employeeId, open.date))?.endsAt ?? null)
     : (shift?.endsAt ?? null)
+  // Somebody on the clock with nothing scheduled is working an implied day
+  // measured from when they timed in — that is what opens their overtime
+  // window and what eventually closes the punch. Off the clock there is no
+  // time-in to measure from, so there is nothing to imply.
+  const shiftEnd = open ? shiftEndFor(open.timeIn, scheduledEnd) : scheduledEnd
   const requested = Boolean(open?.overtime ?? todayRow?.overtime)
 
   return {
@@ -1399,18 +1405,26 @@ async function fileOvertime(
 
   const attendance = await prisma.attendance.findUnique({
     where: { id: open.id },
-    select: { id: true, timeOut: true, overtime: { select: { id: true } } },
+    select: {
+      id: true,
+      timeIn: true,
+      timeOut: true,
+      overtime: { select: { id: true } },
+    },
   })
   if (!attendance) return { message: "Time in first, then request overtime." }
 
   // Measured against the day the shift *started*, so an overnight shift's end
-  // time is still found after midnight.
+  // time is still found after midnight. With nothing scheduled — which is the
+  // ordinary case for admin-side staff — the shift is implied from the punch,
+  // so office hours can be extended like anyone else's.
   const shift = await shiftForDay(employeeId, open.date)
+  const shiftEndsAt = shiftEndFor(attendance.timeIn, shift?.endsAt ?? null)
 
   // The window is re-checked here rather than trusted from the browser. A
   // disabled button is a courtesy; this is the rule.
   const gate = overtimeGate({
-    shiftEndsAt: shift?.endsAt ?? null,
+    shiftEndsAt,
     now,
     isWorking: !attendance.timeOut,
     alreadyRequested: Boolean(attendance.overtime),
@@ -1436,7 +1450,7 @@ async function fileOvertime(
       employeeId: employeeId,
       hours,
       reason,
-      shiftEndsAt: shift!.endsAt,
+      shiftEndsAt,
     },
   })
 

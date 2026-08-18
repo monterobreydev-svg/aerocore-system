@@ -18,6 +18,7 @@ import {
   durationLabel,
   overtimeGate,
   OVERTIME_WINDOW_MINUTES,
+  shiftEndFor,
 } from "@/lib/attendance"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -145,15 +146,26 @@ export function AttendanceView({
   const working = Boolean(punch && !punch.timeOut)
   const done = Boolean(punch?.timeOut)
 
+  // When this shift ends: the roster if there is one, otherwise the nine hours
+  // implied by the punch. Admin-side staff work office hours nobody schedules,
+  // and without this their overtime button could never open.
+  const scheduledEnd = shift?.endsAt ?? null
+  const timedInAt = punch?.timeIn ?? null
+  const shiftEndsAt = useMemo(() => {
+    const scheduled = scheduledEnd ? new Date(scheduledEnd) : null
+    if (!timedInAt) return scheduled
+    return shiftEndFor(new Date(timedInAt), scheduled)
+  }, [scheduledEnd, timedInAt])
+
   const gate = useMemo(
     () =>
       overtimeGate({
-        shiftEndsAt: shift ? new Date(shift.endsAt) : null,
+        shiftEndsAt,
         now: new Date(now),
         isWorking: working,
         alreadyRequested: Boolean(punch?.overtime),
       }),
-    [shift, now, working, punch]
+    [shiftEndsAt, now, working, punch]
   )
 
   return (
@@ -174,7 +186,12 @@ export function AttendanceView({
               </p>
               <p className="mt-2 text-sm text-sidebar-foreground/70">
                 Since {clockTime(punch.timeIn)}
-                {shift && ` · shift ends ${clockTime(shift.endsAt)}`}
+                {/* Said for an implied shift too. Someone working office hours
+                    nobody scheduled is still closed automatically an hour
+                    after this, and finding that out from a payslip is too
+                    late. */}
+                {shiftEndsAt &&
+                  ` · shift ends ${clockTime(shiftEndsAt.toISOString())}`}
               </p>
             </>
           ) : done && punch ? (

@@ -7,6 +7,10 @@
 
 import type { Role } from "@/app/generated/prisma/client"
 import { isAdminSideRole } from "@/lib/roles"
+// The same two numbers payroll pays by, so an implied shift is the ordinary
+// day and not a second opinion about how long one is.
+import { HOURS_PER_DAY } from "@/lib/employee"
+import { UNPAID_BREAK_HOURS } from "@/lib/payroll"
 
 /**
  * Whether this person may punch on a day with nothing scheduled.
@@ -137,6 +141,37 @@ export function autoTimeOut({
  */
 export function photoRetentionCutoff(now: Date = new Date()) {
   return new Date(now.getFullYear(), now.getMonth() - 1, 1)
+}
+
+/**
+ * When a shift ends for somebody nobody scheduled.
+ *
+ * Admin-side staff punch without a roster — see `canPunchWithoutSchedule` —
+ * which left them with no shift end at all. Nothing could work out when their
+ * overtime window opened, so they could never request any, and nothing could
+ * close an abandoned punch, so a forgotten time-out stayed open indefinitely
+ * and the day paid nothing.
+ *
+ * So the clock they started is the roster. Nine hours from timing in: eight
+ * paid and the unpaid break, exactly the ordinary day the rest of payroll is
+ * built around. Overtime opens in the final hour of that, at the eight-hour
+ * mark, the same rule a scheduled shift follows.
+ */
+export function impliedShiftEndsAt(timeIn: Date) {
+  return new Date(
+    timeIn.getTime() + (HOURS_PER_DAY + UNPAID_BREAK_HOURS) * 3_600_000
+  )
+}
+
+/**
+ * The end of the shift this punch belongs to.
+ *
+ * A scheduled end wins whenever there is one — an admin-side person assigned to
+ * a job is on that job's hours like anyone else. Only when nobody wrote a shift
+ * down does the punch imply its own.
+ */
+export function shiftEndFor(timeIn: Date, scheduledEndsAt: Date | null) {
+  return scheduledEndsAt ?? impliedShiftEndsAt(timeIn)
 }
 
 export type OvertimeGate =

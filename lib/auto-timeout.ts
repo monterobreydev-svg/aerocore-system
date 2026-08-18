@@ -1,7 +1,7 @@
 import "server-only"
 
 import { prisma } from "@/lib/prisma"
-import { autoTimeOut, dayParam } from "@/lib/attendance"
+import { autoTimeOut, dayParam, shiftEndFor } from "@/lib/attendance"
 
 // ---------------------------------------------------------------------------
 // Closing the punches nobody closed
@@ -23,10 +23,10 @@ import { autoTimeOut, dayParam } from "@/lib/attendance"
 // it can simply run whenever the app is used, and a real cron calling
 // /api/attendance/auto-timeout is an optimisation rather than a requirement.
 //
-// Only punches with a scheduled shift are closed. Admin-side staff may punch
-// without one (see `canPunchWithoutSchedule`), and with no scheduled end there
-// is no honest time to stamp — inventing one would be worse than leaving the
-// row open for the office to correct.
+// Every punch is closable. A scheduled shift supplies its own end; a punch
+// with nothing scheduled — the ordinary case for admin-side staff, who keep no
+// roster — implies one nine hours from timing in, which is the same ordinary
+// day payroll pays by. See `shiftEndFor`.
 
 /**
  * How far back to look for punches to close.
@@ -68,6 +68,7 @@ export async function closeAbandonedPunches(
       id: true,
       employeeId: true,
       date: true,
+      timeIn: true,
       overtime: {
         select: { status: true, hours: true, approvedHours: true },
       },
@@ -105,8 +106,14 @@ export async function closeAbandonedPunches(
   const closed: ClosedPunch[] = []
 
   for (const row of open) {
-    const shiftEndsAt = endsAt.get(`${row.employeeId}|${dayParam(row.date)}`)
-    if (!shiftEndsAt) continue
+    // Scheduled end where there is one; otherwise the nine hours the punch
+    // implies. Admin-side staff keep no roster, so before this their punches
+    // were the one kind nothing could ever close — a forgotten time-out on a
+    // Friday afternoon stayed open, and the day paid nothing.
+    const shiftEndsAt = shiftEndFor(
+      row.timeIn,
+      endsAt.get(`${row.employeeId}|${dayParam(row.date)}`) ?? null
+    )
 
     // Only overtime the office actually granted extends the shift. A request
     // still pending, or refused, moves nothing.
