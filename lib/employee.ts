@@ -100,16 +100,3 @@ export function nextEmployeeNo(current: string | null | undefined) {
   return `E-${String(next).padStart(4, "0")}`
 }
 
-// "Jose", "Dela Cruz" → "jose.delacruz@aerocoole.ph"
-export function suggestUsername(firstName: string, lastName: string) {
-  const clean = (value: string) =>
-    value
-      .normalize("NFD")
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "")
-
-  const first = clean(firstName)
-  const last = clean(lastName)
-  if (!first && !last) return ""
-  return `${[first, last].filter(Boolean).join(".")}@aerocoole.ph`
-}

@@ -20,7 +20,6 @@ import {
   civilStatusLabel,
   employmentTypeLabel,
   monthlyFromHourly,
-  suggestUsername,
 } from "@/lib/employee"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/format-date"
@@ -227,10 +226,10 @@ export function CreateStaffDialog({
   // mounted — and swapping defaultValue underneath an uncontrolled field is
   // exactly what Base UI warns about. Re-seeded each time the dialog opens.
   const [employeeNo, setEmployeeNo] = useState(suggestedEmployeeNo)
-  // Username is derived from the name until someone types their own, at
-  // which point we stop overwriting whatever they entered.
+  // Whatever the office wants it to be. Nothing is derived from the name and
+  // no pattern is suggested — the only rule is the one the server enforces,
+  // that it is at least three characters and not already taken.
   const [username, setUsername] = useState("")
-  const [usernameEdited, setUsernameEdited] = useState(false)
   const [role, setRole] = useState<string>("EMPLOYEE")
   const [state, action, pending] = useActionState<StaffState, FormData>(
     createStaffAccount,
@@ -260,7 +259,6 @@ export function CreateStaffDialog({
       setHourlyRate("")
       setEmployeeNo(suggestedEmployeeNo)
       setUsername("")
-      setUsernameEdited(false)
       setRole("EMPLOYEE")
     }
   }
@@ -274,11 +272,6 @@ export function CreateStaffDialog({
     // skills checkboxes to whichever one happened to be ticked last.
     if (form) data.skills = form.getAll("skills").join(", ")
 
-    // Fill the username in as they arrive at the account step, not earlier —
-    // by then the name is entered, and it's still theirs to overwrite.
-    if (target === 4 && !usernameEdited) {
-      setUsername(suggestUsername(data.firstName ?? "", data.lastName ?? ""))
-    }
     if (target === 5) {
       const monthly = Number(data.hourlyRate)
       setReview({
@@ -840,23 +833,19 @@ export function CreateStaffDialog({
                   <FieldLabel htmlFor="username">
                     Username <Req />
                   </FieldLabel>
+                  {/* No placeholder: any example here would read as the house
+                      format, which is the thing being removed. */}
                   <Input
                     id="username"
                     name="username"
-                    placeholder="jose.delacruz@aerocoole.ph"
                     autoComplete="off"
                     value={username}
-                    onChange={(event) => {
-                      setUsername(event.target.value)
-                      setUsernameEdited(true)
-                    }}
+                    onChange={(event) => setUsername(event.target.value)}
                     disabled={pending}
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    {usernameEdited
-                      ? "This is what they type to sign in."
-                      : "Filled in from their name — edit it if you need to."}
+                    This is what they type to sign in.
                   </p>
                   <FieldError
                     errors={state?.errors?.username?.map((message) => ({
