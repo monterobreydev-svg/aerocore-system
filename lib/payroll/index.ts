@@ -2,7 +2,6 @@ import {
   HOURS_PER_DAY,
   REST_DAY_RATE,
   isRestDay,
-  monthlyFromHourly,
 } from "@/lib/employee"
 import { holidayOn } from "@/lib/payroll/holidays"
 
@@ -25,8 +24,13 @@ import { holidayOn } from "@/lib/payroll/holidays"
 //               it is what earns it. Not worked, it pays a normal day — but
 //               only to someone who was present on the workday before it.
 //               Absent before it and absent on it, the day pays nothing.
-//   Deductions  SSS, PhilHealth and Pag-IBIG are monthly, and payroll runs
-//               twice a month, so half comes off each cutoff.
+//   Rest day    Sunday is everyone's rest day. Worked, every hour the day
+//               pays — regular hours and approved overtime alike — carries
+//               an extra 30%.
+//   Deductions  SSS on gross pay, read off the bracket table in SSS Circular
+//               2024-006; PhilHealth 2.5% of basic salary; Pag-IBIG a flat 200.
+//               All three are monthly schedules and payroll runs twice a
+//               month, so half comes off each cutoff.
 //
 // One of those is a deliberate house rule rather than the statutory minimum,
 // and it is one constant if that ever changes: overtime is paid flat where the
@@ -462,7 +466,10 @@ export type AdjustmentInput = { label: string; amount: number }
 
 export type Payslip = {
   hourlyRate: number
-  monthlyBasis: number
+  /** The gross pay SSS was assessed on — this payslip's own gross. */
+  sssBasis: number
+  /** The basic pay PhilHealth was assessed on — this payslip's own basic. */
+  philhealthBasis: number
   days: PayrollDay[]
   /**
    * Regular holidays in the cutoff the employee did not work.
@@ -626,16 +633,33 @@ export function computePayslip({
       adjustmentAdditions
   )
 
-  // Contributions follow the contractual monthly salary, not what the cutoff
-  // happened to earn — a light fortnight doesn't move somebody's SSS bracket.
-  const monthlyBasis = monthlyFromHourly(hourlyRate)
-  const sss = sssEmployeeShare(monthlyBasis)
+  // ---- contributions ------------------------------------------------------
+  //
+  // Each of the three is assessed on a different figure, and feeding the wrong
+  // pay into an otherwise correct schedule is invisible on the payslip and
+  // wrong on every one of them.
+  //
+  //   SSS         the gross pay on this payslip, read straight off the bracket
+  //               table in Circular 2024-006. No projection and no doubling:
+  //               what was earned is what the range of compensation is.
+  //   PhilHealth  2.5% of the basic pay on this payslip — the pay for ordinary
+  //               hours, before any premium is added to it.
+  //   Pag-IBIG    a flat 200 a month, whatever anybody earns, so half of it
+  //               comes off each of the two cutoffs.
+  const sss = sssEmployeeShare(gross)
 
-  const perCutoff = (monthly: number) => money(monthly / CUTOFFS_PER_MONTH)
+  // Counted from the hours rather than from `basicPay`: that line has the night
+  // hours moved off it onto their own, which is presentational and must not
+  // change what PhilHealth is assessed on. Premiums are excluded — they are
+  // paid *for* a circumstance, not part of the basic rate.
+  const basicEarned = money(sum((day) => day.regularHours) * hourlyRate)
+
   const scheduled = {
-    sss: perCutoff(sss.total),
-    philhealth: perCutoff(monthlyBasis * PHILHEALTH_EMPLOYEE_RATE),
-    pagibig: perCutoff(PAGIBIG_MONTHLY),
+    sss: money(sss.total),
+    philhealth: money(basicEarned * PHILHEALTH_EMPLOYEE_RATE),
+    // The only one of the three that is a monthly figure rather than a rate on
+    // this payslip, so the only one that is halved.
+    pagibig: money(PAGIBIG_MONTHLY / CUTOFFS_PER_MONTH),
   }
   const due = money(
     scheduled.sss +
@@ -657,7 +681,8 @@ export function computePayslip({
 
   return {
     hourlyRate,
-    monthlyBasis,
+    sssBasis: gross,
+    philhealthBasis: basicEarned,
     days: computed,
     unworkedHolidays,
     daysWorked: worked,

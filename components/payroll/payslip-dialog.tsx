@@ -15,6 +15,7 @@ import { peso } from "@/lib/reimbursement"
 import {
   NIGHT_DIFFERENTIAL_RATE,
   OVERTIME_STARTS_AFTER_HOURS,
+  PAGIBIG_MONTHLY,
   PHILHEALTH_EMPLOYEE_RATE,
   REGULAR_HOURS_PER_DAY,
 } from "@/lib/payroll"
@@ -546,21 +547,21 @@ export function PayslipDialog({
                         still owed rather than as money that moved. */}
                     <Line
                       label="SSS"
-                      basis={`MSC ${peso(slip.sss.monthlySalaryCredit)} · half`}
+                      basis={`gross ${peso(slip.sssBasis)} · MSC ${peso(slip.sss.monthlySalaryCredit)}`}
                       amount={slip.deductions.sss}
                       negative={!uncollected}
                       due={uncollected}
                     />
                     <Line
                       label="PhilHealth"
-                      basis={`${PHILHEALTH_EMPLOYEE_RATE * 100}% · half`}
+                      basis={`${PHILHEALTH_EMPLOYEE_RATE * 100}% of basic ${peso(slip.philhealthBasis)}`}
                       amount={slip.deductions.philhealth}
                       negative={!uncollected}
                       due={uncollected}
                     />
                     <Line
                       label="Pag-IBIG"
-                      basis="half"
+                      basis={`${peso(PAGIBIG_MONTHLY)}/mo · half`}
                       amount={slip.deductions.pagibig}
                       negative={!uncollected}
                       due={uncollected}

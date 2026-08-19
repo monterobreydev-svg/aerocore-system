@@ -3,6 +3,8 @@ import "server-only"
 import { renderPdf, monoColumns, type PdfBlock } from "@/lib/formats/pdf"
 import {
   NIGHT_DIFFERENTIAL_RATE,
+  PAGIBIG_MONTHLY,
+  PHILHEALTH_EMPLOYEE_RATE,
   REST_DAY_RATE,
   OVERTIME_STARTS_AFTER_HOURS,
   REGULAR_HOURS_PER_DAY,
@@ -286,9 +288,18 @@ export function payslipBlocks(doc: PayslipDocument): PdfBlock[] {
   })
 
   const taken: [string, string][] = [
-    ["SSS", amount(slip.deductions.sss)],
-    ["PhilHealth", amount(slip.deductions.philhealth)],
-    ["Pag-IBIG", amount(slip.deductions.pagibig)],
+    [
+      `SSS (gross ${amount(slip.sssBasis)}, MSC ${amount(slip.sss.monthlySalaryCredit)})`,
+      amount(slip.deductions.sss),
+    ],
+    [
+      `PhilHealth (${PHILHEALTH_EMPLOYEE_RATE * 100}% of basic ${amount(slip.philhealthBasis)})`,
+      amount(slip.deductions.philhealth),
+    ],
+    [
+      `Pag-IBIG (${amount(PAGIBIG_MONTHLY)}/mo, half)`,
+      amount(slip.deductions.pagibig),
+    ],
   ]
   if (slip.deductions.adjustments > 0) {
     taken.push(["Adjustments deducted", amount(slip.deductions.adjustments)])
