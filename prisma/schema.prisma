@@ -88,14 +88,14 @@ model UserAccount {
   // instead of surviving until the 7-day token expires.
   sessionsRevokedAt   DateTime?
 
-  createdEmployees     Employee[]        @relation("EmployeeCreatedBy")
-  staffEdits           StaffEditLog[]    @relation("StaffEditsMade")
-  createdSchedules     Schedule[]        @relation("ScheduleCreatedBy")
-  scheduleEdits        ScheduleEditLog[] @relation("ScheduleEditsMade")
-  reimbursementReviews Reimbursement[]   @relation("ReimbursementReviewedBy")
-  fundReleases         FundRelease[]     @relation("FundReleasedBy")
-  notifications        Notification[]    @relation("NotificationRecipient")
-  overtimeReviews      OvertimeRequest[] @relation("OvertimeReviewedBy")
+  createdEmployees     Employee[]          @relation("EmployeeCreatedBy")
+  staffEdits           StaffEditLog[]      @relation("StaffEditsMade")
+  createdSchedules     Schedule[]          @relation("ScheduleCreatedBy")
+  scheduleEdits        ScheduleEditLog[]   @relation("ScheduleEditsMade")
+  reimbursementReviews Reimbursement[]     @relation("ReimbursementReviewedBy")
+  fundReleases         FundRelease[]       @relation("FundReleasedBy")
+  notifications        Notification[]      @relation("NotificationRecipient")
+  overtimeReviews      OvertimeRequest[]   @relation("OvertimeReviewedBy")
   payrollAdjustments   PayrollAdjustment[] @relation("PayrollAdjustmentsMade")
   payrollReleases      PayrollRelease[]    @relation("PayrollReleases")
   pushSubscriptions    PushSubscription[]  @relation("AccountPushSubscriptions")
@@ -118,18 +118,28 @@ model PushSubscription {
   accountId String
   account   UserAccount @relation("AccountPushSubscriptions", fields: [accountId], references: [id], onDelete: Cascade)
 
-  /** Where the browser's push service wants deliveries posted. */
+  /**
+   * Where the browser's push service wants deliveries posted.
+   */
   endpoint String @unique
-  /** The device's public key, for sealing the payload. */
+  /**
+   * The device's public key, for sealing the payload.
+   */
   p256dh   String
-  /** The device's auth secret, the other half of the same. */
+  /**
+   * The device's auth secret, the other half of the same.
+   */
   auth     String
 
-  /** Roughly which device this is, so somebody can recognise their own. */
+  /**
+   * Roughly which device this is, so somebody can recognise their own.
+   */
   userAgent String?
 
-  createdAt DateTime @default(now())
-  /** Last time a delivery to this endpoint was accepted. */
+  createdAt  DateTime @default(now())
+  /**
+   * Last time a delivery to this endpoint was accepted.
+   */
   lastSeenAt DateTime @default(now())
 
   // "Everyone to tell about this" is the only question ever asked of it.
@@ -207,21 +217,26 @@ enum TaxStatus {
 // Clients are companies/customers AeroCoole services. They never log in —
 // no UserAccount, no role — this is purely business/contact record-keeping.
 model Client {
-  id   String @id @default(uuid())
-  name String
+  id           String     @id @default(uuid())
+  name         String
   // The short form the office actually says out loud — "ACS" for AEON CREDIT
   // SERVICE (Philippines) INC. Null means nobody has set one, and the acronym
   // is derived from the registered name instead (see clientAcronym in
   // lib/documents.ts). Deliberately not unique: two clients can genuinely
   // abbreviate the same, and the serial in front of it is what makes a report
   // filename unique.
-  acronym   String?
-  tin       String?
-  taxStatus TaxStatus?
-  address   String
-  phoneNo   String?
-  email     String?
-  createdAt DateTime   @default(now())
+  acronym      String?
+  // The code the office files this customer under — theirs, not ours, and the
+  // one they quote on a purchase order. Unique because a code that identifies
+  // two customers identifies neither; optional because plenty of clients never
+  // get one, and Postgres lets a unique column hold as many nulls as it likes.
+  customerCode String?    @unique
+  tin          String?
+  taxStatus    TaxStatus?
+  address      String
+  phoneNo      String?
+  email        String?
+  createdAt    DateTime   @default(now())
 
   branches           Branch[]
   contacts           ClientContact[]
@@ -497,7 +512,7 @@ model Attendance {
   // regardless of what hour the shift starts.
   date       DateTime
 
-  timeIn DateTime
+  timeIn          DateTime
   // Nullable because the photograph is deleted once the punch is old enough to
   // be past dispute — see lib/purge-photos.ts. Null means "there is no photo",
   // and the type is what forces every reader to say so rather than presigning a
@@ -569,11 +584,17 @@ model PayrollAdjustment {
   id          String      @id @default(uuid())
   employeeId  String
   employee    Employee    @relation("EmployeePayrollAdjustments", fields: [employeeId], references: [id], onDelete: Cascade)
-  /** Local midnight of the first day of the cutoff it applies to. */
+  /**
+   * Local midnight of the first day of the cutoff it applies to.
+   */
   cutoffStart DateTime
-  /** What it is, in the office's words — "Transport allowance", "Cash advance". */
+  /**
+   * What it is, in the office's words — "Transport allowance", "Cash advance".
+   */
   label       String
-  /** Positive pays more, negative pays less. Never zero. */
+  /**
+   * Positive pays more, negative pays less. Never zero.
+   */
   amount      Decimal
   note        String?
   createdById String
@@ -600,7 +621,9 @@ model PayrollAdjustment {
 model PayrollRelease {
   id String @id @default(uuid())
 
-  /** Local midnight of the cutoff's first day — the key adjustments use too. */
+  /**
+   * Local midnight of the cutoff's first day — the key adjustments use too.
+   */
   cutoffStart DateTime @unique
   cutoffEnd   DateTime
 

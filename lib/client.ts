@@ -12,3 +12,12 @@ export function taxStatusLabel(status: TaxStatus) {
 }
 
 export const TAX_STATUS_OPTIONS = Object.keys(TAX_STATUS_LABELS) as TaxStatus[]
+
+/**
+ * How long a customer code may be.
+ *
+ * Generous, because the code belongs to the customer rather than to us — it is
+ * whatever their own filing uses, and some of those are long. The cap is here
+ * to stop a pasted paragraph, not to impose a house format.
+ */
+export const CUSTOMER_CODE_MAX_LENGTH = 32

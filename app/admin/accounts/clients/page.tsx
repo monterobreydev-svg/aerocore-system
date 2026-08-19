@@ -39,6 +39,7 @@ export default async function ClientsPage() {
     id: client.id,
     name: client.name,
     acronym: client.acronym,
+    customerCode: client.customerCode,
     tin: client.tin,
     taxStatus: client.taxStatus,
     address: client.address,

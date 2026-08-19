@@ -5,6 +5,7 @@ import { Building2, MapPin, Plus, UserRound } from "lucide-react"
 import { createClient, type ClientState } from "@/app/actions/clients"
 import { TAX_STATUS_OPTIONS, taxStatusLabel } from "@/lib/client"
 import { ACRONYM_MAX_LENGTH } from "@/lib/documents"
+import { CUSTOMER_CODE_MAX_LENGTH } from "@/lib/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -155,6 +156,32 @@ export function CreateClientDialog() {
                   />
                   <FieldError
                     errors={state?.errors?.acronym?.map((message) => ({
+                      message,
+                    }))}
+                  />
+                </Field>
+
+                {/* The customer's own code, not one this system issues — it is
+                    what they quote back on a purchase order, so it is theirs to
+                    dictate and ours to record verbatim. */}
+                <Field data-invalid={!!state?.errors?.customerCode}>
+                  <FieldLabel htmlFor="customerCode">
+                    Customer code
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Optional — must be unique
+                    </span>
+                  </FieldLabel>
+                  <Input
+                    id="customerCode"
+                    name="customerCode"
+                    placeholder="AC-1042"
+                    maxLength={CUSTOMER_CODE_MAX_LENGTH}
+                    autoComplete="off"
+                    disabled={pending}
+                    className="font-mono uppercase"
+                  />
+                  <FieldError
+                    errors={state?.errors?.customerCode?.map((message) => ({
                       message,
                     }))}
                   />

@@ -56,6 +56,8 @@ export type ClientRecord = {
   name: string
   /** What the office set. Null falls back to the acronym derived from `name`. */
   acronym: string | null
+  /** The customer’s own reference for this account. Unique when set. */
+  customerCode: string | null
   tin: string | null
   taxStatus: TaxStatus | null
   address: string
@@ -151,6 +153,8 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
         // Searchable by the short form too — being able to type "ACS" instead
         // of the registered name is most of the reason to keep one.
         client.acronym,
+        // And by the code they quote at us on their own paperwork.
+        client.customerCode,
         client.tin,
         client.address,
         ...client.branches.map((branch) => branch.name),
@@ -359,8 +363,9 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
       ) : (
         <>
           <div className="overflow-hidden rounded-xl ring-1 ring-foreground/10">
-            <div className="hidden items-center gap-4 border-b bg-muted/40 px-4 py-2.5 text-xs font-medium tracking-wide text-muted-foreground uppercase md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <div className="hidden items-center gap-4 border-b bg-muted/40 px-4 py-2.5 text-xs font-medium tracking-wide text-muted-foreground uppercase md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
               <span>Client</span>
+              <span>Code</span>
               <span>Address</span>
               <span>Locations</span>
               <span className="text-right">Contacts</span>
@@ -375,7 +380,7 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
                     key={client.id}
                     type="button"
                     onClick={() => setSelectedId(client.id)}
-                    className="group flex w-full items-center gap-4 px-4 py-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+                    className="group flex w-full items-center gap-4 px-4 py-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-600/10">
@@ -392,10 +397,19 @@ export function ClientList({ clients }: { clients: ClientRecord[] }) {
                             </span>
                           )}
                           {client.acronym && " · "}
+                          {client.customerCode && (
+                            <span className="md:hidden">{client.customerCode} · </span>
+                          )}
                           {client.tin ?? "No TIN"}
                         </p>
                       </div>
                     </div>
+
+                    <span className="hidden truncate font-mono text-xs md:block">
+                      {client.customerCode ?? (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </span>
 
                     <span className="hidden truncate text-sm text-muted-foreground md:block">
                       {client.address}

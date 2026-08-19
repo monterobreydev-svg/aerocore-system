@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
 import { ACRONYM_MAX_LENGTH } from "@/lib/documents"
+import { CUSTOMER_CODE_MAX_LENGTH } from "@/lib/client"
 
 async function requireClientAccess() {
   const session = await verifySession()
@@ -47,9 +48,25 @@ const optionalAcronym = z
   )
   .optional()
 
+/**
+ * The customer's own code, normalised so that two spellings of one code cannot
+ * both be stored.
+ *
+ * Upper-cased and stripped to letters, digits and hyphens, which is what makes
+ * the uniqueness check mean anything: without it "ac-100" and "AC-100" are two
+ * different rows in the database and one code to everybody reading it.
+ */
+const optionalCustomerCode = z
+  .string()
+  .trim()
+  .max(CUSTOMER_CODE_MAX_LENGTH, "That's too long for a code.")
+  .transform((value) => value.toUpperCase().replace(/[^A-Z0-9-]+/g, ""))
+  .optional()
+
 const ClientSchema = z.object({
   name: z.string().trim().min(1, "Registered name is required."),
   acronym: optionalAcronym,
+  customerCode: optionalCustomerCode,
   tin: z.string().trim().optional(),
   taxStatus: optionalTaxStatus,
   address: z.string().trim().min(1, "Address is required."),
@@ -62,6 +79,7 @@ export type ClientState =
       errors?: {
         name?: string[]
         acronym?: string[]
+        customerCode?: string[]
         tin?: string[]
         taxStatus?: string[]
         address?: string[]
@@ -98,6 +116,7 @@ export async function createClient(
   const validatedFields = CreateClientSchema.safeParse({
     name: formData.get("name"),
     acronym: formData.get("acronym"),
+    customerCode: formData.get("customerCode"),
     tin: formData.get("tin"),
     taxStatus: formData.get("taxStatus"),
     address: formData.get("address"),
@@ -116,6 +135,7 @@ export async function createClient(
   const {
     name,
     acronym,
+    customerCode,
     tin,
     taxStatus,
     address,
@@ -127,12 +147,30 @@ export async function createClient(
     contactEmail,
   } = validatedFields.data
 
+
+  // A unique column would reject this anyway, but as a database error with no
+  // field attached — the form would just fail with nothing marked. Asking first
+  // puts the message on the input that caused it.
+  if (customerCode) {
+    const clash = await prisma.client.findUnique({
+      where: { customerCode },
+      select: { name: true },
+    })
+    if (clash) {
+      return {
+        errors: {
+          customerCode: [`That code is already used by ${clash.name}.`],
+        },
+      }
+    }
+  }
   await prisma.client.create({
     data: {
       name,
       // Null rather than "", so "nobody set one" is one state and not two —
       // `clientShortName` falls back on null and would keep an empty string.
       acronym: acronym || null,
+      customerCode: customerCode || null,
       tin: tin || null,
       taxStatus: taxStatus || null,
       address,
@@ -177,6 +215,7 @@ export async function updateClient(
     clientId: formData.get("clientId"),
     name: formData.get("name"),
     acronym: formData.get("acronym"),
+    customerCode: formData.get("customerCode"),
     tin: formData.get("tin"),
     taxStatus: formData.get("taxStatus"),
     address: formData.get("address"),
@@ -188,15 +227,42 @@ export async function updateClient(
     return { errors: validatedFields.error.flatten().fieldErrors }
   }
 
-  const { clientId, name, acronym, tin, taxStatus, address, phoneNo, email } =
-    validatedFields.data
+  const {
+    clientId,
+    name,
+    acronym,
+    customerCode,
+    tin,
+    taxStatus,
+    address,
+    phoneNo,
+    email,
+  } = validatedFields.data
 
+
+  // A unique column would reject this anyway, but as a database error with no
+  // field attached — the form would just fail with nothing marked. Asking first
+  // puts the message on the input that caused it.
+  if (customerCode) {
+    const clash = await prisma.client.findUnique({
+      where: { customerCode },
+      select: { name: true, id: true },
+    })
+    if (clash && clash.id !== clientId) {
+      return {
+        errors: {
+          customerCode: [`That code is already used by ${clash.name}.`],
+        },
+      }
+    }
+  }
   await prisma.client.update({
     where: { id: clientId },
     data: {
       name,
       // Cleared back to null puts the client on the derived acronym again.
       acronym: acronym || null,
+      customerCode: customerCode || null,
       tin: tin || null,
       taxStatus: taxStatus || null,
       address,

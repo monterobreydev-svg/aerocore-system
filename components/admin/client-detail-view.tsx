@@ -25,7 +25,11 @@ import {
   type ClientState,
   type ContactState,
 } from "@/app/actions/clients"
-import { TAX_STATUS_OPTIONS, taxStatusLabel } from "@/lib/client"
+import {
+  CUSTOMER_CODE_MAX_LENGTH,
+  TAX_STATUS_OPTIONS,
+  taxStatusLabel,
+} from "@/lib/client"
 import {
   ACRONYM_MAX_LENGTH,
   clientAcronym,
@@ -173,6 +177,36 @@ function EditClientDialog({ client }: { client: ClientRecord }) {
               </FieldDescription>
               <FieldError
                 errors={state?.errors?.acronym?.map((message) => ({ message }))}
+              />
+            </Field>
+            {/* Theirs, not ours: this is the code the customer files us under
+                and quotes on their paperwork. Unique across clients, so the
+                action checks before saving rather than letting the database
+                reject it with nothing marked. */}
+            <Field data-invalid={!!state?.errors?.customerCode}>
+              <FieldLabel htmlFor={`client-customer-code-${client.id}`}>
+                Customer code
+                <span className="text-xs font-normal text-muted-foreground">
+                  Optional
+                </span>
+              </FieldLabel>
+              <Input
+                id={`client-customer-code-${client.id}`}
+                name="customerCode"
+                placeholder="AC-1042"
+                defaultValue={initial.customerCode ?? ""}
+                maxLength={CUSTOMER_CODE_MAX_LENGTH}
+                disabled={pending}
+                className="font-mono uppercase"
+              />
+              <FieldDescription>
+                The customer’s own reference for this account. No two clients
+                can share one.
+              </FieldDescription>
+              <FieldError
+                errors={state?.errors?.customerCode?.map((message) => ({
+                  message,
+                }))}
               />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -925,6 +959,15 @@ export function ClientDetailView({
                   title="Short form used on report filenames"
                 >
                   {client.acronym}
+                </Badge>
+              )}
+              {client.customerCode && (
+                <Badge
+                  variant="outline"
+                  className="font-mono"
+                  title="The customer's own code for this account"
+                >
+                  {client.customerCode}
                 </Badge>
               )}
               <Badge className={locationBadgeClass(client)}>
