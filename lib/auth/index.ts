@@ -2,9 +2,9 @@ import "server-only"
 import { cache } from "react"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { prisma } from "@/lib/prisma"
-import { COOKIE_NAME, decrypt } from "@/lib/session"
-import { isAdminSideRole } from "@/lib/roles"
+import { prisma } from "@/lib/db/prisma"
+import { COOKIE_NAME, decrypt } from "@/lib/auth/session"
+import { isAdminSideRole } from "@/lib/auth/roles"
 
 // The authoritative session check, used by every page and every server action.
 //

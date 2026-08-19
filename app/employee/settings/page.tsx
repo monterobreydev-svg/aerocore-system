@@ -1,4 +1,4 @@
-import { getAccountSettings } from "@/lib/dal"
+import { getAccountSettings } from "@/lib/db/dal"
 import { AccountSettings } from "@/components/dashboard/account-settings"
 import { settingsTabFrom } from "@/lib/settings-tabs"
 

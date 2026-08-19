@@ -1,8 +1,8 @@
 import "server-only"
 
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { photoRetentionCutoff } from "@/lib/attendance"
-import { deleteObjects, isR2Configured } from "@/lib/r2"
+import { deleteObjects, isR2Configured } from "@/lib/storage/r2"
 
 // ---------------------------------------------------------------------------
 // Forgetting faces

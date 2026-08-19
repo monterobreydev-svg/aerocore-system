@@ -2,7 +2,7 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
 import { ACRONYM_MAX_LENGTH } from "@/lib/documents"
 

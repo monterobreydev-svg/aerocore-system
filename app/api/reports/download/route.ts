@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server"
 
 import { verifySession } from "@/lib/auth"
 import { buildReport } from "@/lib/reports"
-import { reportFileName, reportPdf } from "@/lib/report-pdf"
+import { reportFileName, reportPdf } from "@/lib/reports/pdf"
 
 // The report on screen, as a document — same period, same figures, with the
 // working written out in sentences rather than left to the charts.

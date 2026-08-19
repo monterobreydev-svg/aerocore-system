@@ -1,9 +1,9 @@
 import { after } from "next/server"
 import type { Prisma } from "@/app/generated/prisma/client"
 import { requireManager } from "@/lib/auth"
-import { closeAbandonedPunches } from "@/lib/auto-timeout"
-import { purgePunchPhotos } from "@/lib/purge-photos"
-import { prisma } from "@/lib/prisma"
+import { closeAbandonedPunches } from "@/lib/attendance/auto-timeout"
+import { purgePunchPhotos } from "@/lib/attendance/purge-photos"
+import { prisma } from "@/lib/db/prisma"
 import {
   attendanceDay,
   dayParam,
@@ -14,7 +14,7 @@ import {
 import {
   ATTENDANCE_DETAIL_SELECT,
   toAttendanceRow,
-} from "@/lib/attendance-query"
+} from "@/lib/attendance/query"
 import { AdminAttendanceView } from "@/components/attendance/admin-attendance-view"
 import {
   DAY_ROW_LIMIT,

@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import { logout } from "@/app/actions/auth"
 import type { Role } from "@/app/generated/prisma/client"
-import { isAdminSideRole, roleLabel } from "@/lib/roles"
+import { isAdminSideRole, roleLabel } from "@/lib/auth/roles"
 import type { InboxItem } from "@/lib/notifications"
 import { NotificationBell } from "@/components/dashboard/notification-bell"
 import { Button } from "@/components/ui/button"

@@ -19,7 +19,7 @@ import {
   type InboxItem,
 } from "@/lib/notifications"
 import { formatDayAndMonth } from "@/lib/format-date"
-import { useNow } from "@/lib/use-now"
+import { useNow } from "@/lib/hooks/use-now"
 import {
   clearNotifications,
   dismissNotification,

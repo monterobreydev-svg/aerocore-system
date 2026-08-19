@@ -29,7 +29,7 @@ import {
   HOLIDAY_PAY_NOTE,
   HOLIDAY_TEXT,
   holidayOn,
-} from "@/lib/holidays"
+} from "@/lib/payroll/holidays"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"

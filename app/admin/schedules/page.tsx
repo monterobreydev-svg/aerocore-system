@@ -1,5 +1,5 @@
 import { CalendarClock, CheckCircle2, Clock, Undo2, UserX } from "lucide-react"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { isSameDay, type EmployeeBusyBlock } from "@/lib/schedule"
 import { SchedulesView } from "@/components/admin/schedules-view"
 import { Card, CardContent } from "@/components/ui/card"

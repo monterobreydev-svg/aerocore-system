@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { decrypt } from "@/lib/session"
+import { decrypt } from "@/lib/auth/session"
 import {
   homeRouteForRole,
   isAdminPathAllowedForRole,
   isAdminSideRole,
-} from "@/lib/roles"
+} from "@/lib/auth/roles"
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { requireManager } from "@/lib/auth"
 import { ClientList, type ClientRecord } from "@/components/admin/client-list"
 

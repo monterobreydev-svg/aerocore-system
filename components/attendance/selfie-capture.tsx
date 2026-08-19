@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Camera, RotateCcw, ShieldAlert } from "lucide-react"
-import { useBrowserCapability } from "@/lib/use-browser-capability"
+import { useBrowserCapability } from "@/lib/hooks/use-browser-capability"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 

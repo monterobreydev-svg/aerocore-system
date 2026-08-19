@@ -1,5 +1,5 @@
 import type { Role } from "@/app/generated/prisma/client"
-import { getNotificationInbox } from "@/lib/dal"
+import { getNotificationInbox } from "@/lib/db/dal"
 import { EmployeeHeader } from "@/components/dashboard/employee-header"
 import { EmployeeTopNav } from "@/components/dashboard/employee-top-nav"
 import { MobileTabBar } from "@/components/dashboard/mobile-tab-bar"

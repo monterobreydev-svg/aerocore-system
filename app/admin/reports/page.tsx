@@ -1,6 +1,6 @@
 import { requireManager } from "@/lib/auth"
 import { buildReport } from "@/lib/reports"
-import { buildPresets, dayValue, parseDay } from "@/lib/report-range"
+import { buildPresets, dayValue, parseDay } from "@/lib/reports/range"
 import { ReportsView } from "@/components/reports/reports-view"
 
 // ---------------------------------------------------------------------------

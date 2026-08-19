@@ -1,7 +1,7 @@
-import { prisma } from "@/lib/prisma"
-import { getCurrentEmployee } from "@/lib/dal"
+import { prisma } from "@/lib/db/prisma"
+import { getCurrentEmployee } from "@/lib/db/dal"
 import { dayParam } from "@/lib/attendance"
-import { buildPayslip } from "@/lib/payslip-query"
+import { buildPayslip } from "@/lib/payroll/payslip-query"
 import {
   EmployeePayslipsView,
   type PayslipSummary,

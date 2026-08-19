@@ -1,5 +1,5 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell"
-import { getCurrentEmployee } from "@/lib/dal"
+import { getCurrentEmployee } from "@/lib/db/dal"
 import { requireAdminSide } from "@/lib/auth"
 
 export default async function AdminLayout({

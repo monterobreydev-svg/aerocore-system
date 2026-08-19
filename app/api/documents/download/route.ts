@@ -6,9 +6,9 @@ import {
   parseTreePath,
   planDownload,
   type DownloadPlan,
-} from "@/lib/document-tree"
-import { getObjectBytes, isR2Configured } from "@/lib/r2"
-import { zipStream, type ZipEntry } from "@/lib/zip"
+} from "@/lib/documents/tree"
+import { getObjectBytes, isR2Configured } from "@/lib/storage/r2"
+import { zipStream, type ZipEntry } from "@/lib/formats/zip"
 
 // A folder of filed reports, as one archive.
 //

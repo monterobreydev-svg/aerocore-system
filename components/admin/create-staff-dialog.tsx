@@ -12,7 +12,7 @@ import {
 } from "lucide-react"
 import { createStaffAccount, type StaffState } from "@/app/actions/staff"
 import type { Role } from "@/app/generated/prisma/client"
-import { assignableRoles, roleAccessLabel, roleLabel } from "@/lib/roles"
+import { assignableRoles, roleAccessLabel, roleLabel } from "@/lib/auth/roles"
 import {
   CIVIL_STATUS_OPTIONS,
   EMPLOYMENT_TYPE_OPTIONS,

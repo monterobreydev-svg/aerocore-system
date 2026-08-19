@@ -1,10 +1,10 @@
 import type { NextRequest } from "next/server"
 
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
 import { cutoffStart, parseDayParam } from "@/lib/attendance"
-import { buildPayslip } from "@/lib/payslip-query"
-import { payslipFileName, payslipPdf } from "@/lib/payslip-pdf"
+import { buildPayslip } from "@/lib/payroll/payslip-query"
+import { payslipFileName, payslipPdf } from "@/lib/payroll/payslip-pdf"
 
 // One person's payslip, in full, as a PDF.
 //

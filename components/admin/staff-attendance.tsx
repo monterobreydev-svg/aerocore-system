@@ -12,7 +12,7 @@ import {
   decimalHours,
   minutesLabel,
 } from "@/lib/attendance"
-import { useNow } from "@/lib/use-now"
+import { useNow } from "@/lib/hooks/use-now"
 import { cn } from "@/lib/utils"
 import { Pager } from "@/components/ui/pager"
 import {

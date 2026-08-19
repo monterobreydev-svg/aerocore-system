@@ -1,5 +1,5 @@
 import { EmployeeShell } from "@/components/dashboard/employee-shell"
-import { getCurrentEmployee } from "@/lib/dal"
+import { getCurrentEmployee } from "@/lib/db/dal"
 
 export default async function EmployeeLayout({
   children,

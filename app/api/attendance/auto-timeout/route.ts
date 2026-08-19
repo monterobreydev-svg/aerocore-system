@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server"
 
-import { closeAbandonedPunches } from "@/lib/auto-timeout"
-import { purgePunchPhotos } from "@/lib/purge-photos"
+import { closeAbandonedPunches } from "@/lib/attendance/auto-timeout"
+import { purgePunchPhotos } from "@/lib/attendance/purge-photos"
 
 // Closing abandoned punches on a timer, for whoever wants to run one.
 //

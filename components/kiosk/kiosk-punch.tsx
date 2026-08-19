@@ -39,8 +39,8 @@ import {
   COARSE_FIX_METRES,
   MAX_OVERTIME_HOURS,
 } from "@/lib/attendance"
-import { compressImage } from "@/lib/compress-image"
-import { useGeolocationFix } from "@/lib/use-geolocation"
+import { compressImage } from "@/lib/storage/compress-image"
+import { useGeolocationFix } from "@/lib/hooks/use-geolocation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

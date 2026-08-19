@@ -1,10 +1,10 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
-import { isAdminSideRole } from "@/lib/roles"
-import { sendPush } from "@/lib/push"
+import { isAdminSideRole } from "@/lib/auth/roles"
+import { sendPush } from "@/lib/notifications/push"
 
 // The bell lives in the layout, so that's what has to be re-rendered — a
 // server action refreshes the page it was called from, not the shell above it.

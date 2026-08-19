@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Image from "next/image"
 import { CalendarDays, Clock } from "lucide-react"
-import { useNow } from "@/lib/use-now"
+import { useNow } from "@/lib/hooks/use-now"
 import { cn } from "@/lib/utils"
 import { KioskPunch } from "@/components/kiosk/kiosk-punch"
 import {

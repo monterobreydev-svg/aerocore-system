@@ -2,11 +2,11 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import { prisma } from "@/lib/prisma"
-import { hashPassword, verifyPassword } from "@/lib/password"
+import { prisma } from "@/lib/db/prisma"
+import { hashPassword, verifyPassword } from "@/lib/auth/password"
 import { verifySession } from "@/lib/auth"
-import { createSession } from "@/lib/session"
-import { canEditOwnIdentity } from "@/lib/roles"
+import { createSession } from "@/lib/auth/session"
+import { canEditOwnIdentity } from "@/lib/auth/roles"
 import { isValidGovId, isValidPhone } from "@/lib/employee"
 
 const optionalEmail = z

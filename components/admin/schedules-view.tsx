@@ -16,7 +16,7 @@ import {
   todayKey,
   type EmployeeBusyBlock,
 } from "@/lib/schedule"
-import { HOLIDAY_PAY_NOTE } from "@/lib/holidays"
+import { HOLIDAY_PAY_NOTE } from "@/lib/payroll/holidays"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import dynamic from "next/dynamic"

@@ -1,6 +1,6 @@
-import { prisma } from "@/lib/prisma"
-import { getCurrentEmployee } from "@/lib/dal"
-import { isR2Configured } from "@/lib/r2"
+import { prisma } from "@/lib/db/prisma"
+import { getCurrentEmployee } from "@/lib/db/dal"
+import { isR2Configured } from "@/lib/storage/r2"
 import {
   attendanceDay,
   canPunchWithoutSchedule,

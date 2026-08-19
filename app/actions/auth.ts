@@ -2,17 +2,17 @@
 
 import { z } from "zod"
 import { redirect } from "next/navigation"
-import { prisma } from "@/lib/prisma"
-import { verifyPassword } from "@/lib/password"
-import { createSession, deleteSession } from "@/lib/session"
-import { homeRouteForRole } from "@/lib/roles"
+import { prisma } from "@/lib/db/prisma"
+import { verifyPassword } from "@/lib/auth/password"
+import { createSession, deleteSession } from "@/lib/auth/session"
+import { homeRouteForRole } from "@/lib/auth/roles"
 import {
   AFTER_SUCCESS,
   LOCKOUT_MINUTES,
   afterFailedAttempt,
   isLockedOut,
   minutesRemaining,
-} from "@/lib/login-throttle"
+} from "@/lib/auth/login-throttle"
 
 const LoginSchema = z.object({
   username: z.string().trim().min(1, "Username is required."),

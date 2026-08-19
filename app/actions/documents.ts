@@ -1,8 +1,8 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { requireManager } from "@/lib/auth"
-import { isR2Configured, presignDownload } from "@/lib/r2"
+import { isR2Configured, presignDownload } from "@/lib/storage/r2"
 
 /**
  * A short-lived link to one filed report.

@@ -33,7 +33,7 @@ import {
   type NavGroup,
 } from "@/components/dashboard/nav-items"
 import type { Role } from "@/app/generated/prisma/client"
-import { isAdminPathAllowedForRole } from "@/lib/roles"
+import { isAdminPathAllowedForRole } from "@/lib/auth/roles"
 import { LinkPending } from "@/components/ui/link-pending"
 
 function filterGroupsForRole(groups: NavGroup[], role: Role): NavGroup[] {

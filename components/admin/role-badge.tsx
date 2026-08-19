@@ -1,5 +1,5 @@
 import type { Role } from "@/app/generated/prisma/client"
-import { roleLabel } from "@/lib/roles"
+import { roleLabel } from "@/lib/auth/roles"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 

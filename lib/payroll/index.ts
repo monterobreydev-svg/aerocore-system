@@ -1,5 +1,5 @@
 import { HOURS_PER_DAY, monthlyFromHourly } from "@/lib/employee"
-import { holidayOn } from "@/lib/holidays"
+import { holidayOn } from "@/lib/payroll/holidays"
 
 // ---------------------------------------------------------------------------
 // Payroll

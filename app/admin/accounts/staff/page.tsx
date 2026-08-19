@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { requireManager } from "@/lib/auth"
 import { nextEmployeeNo } from "@/lib/employee"
 import { StaffCards, type StaffMember } from "@/components/admin/staff-cards"

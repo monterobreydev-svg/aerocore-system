@@ -2,7 +2,7 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
 import {
   buildObjectKey,
@@ -13,7 +13,7 @@ import {
   presignDownload,
   presignUpload,
   uniqueObjectKey,
-} from "@/lib/r2"
+} from "@/lib/storage/r2"
 import {
   buildFundContexts,
   FUND_RELEASE_METHODS,
@@ -26,8 +26,8 @@ import {
   CLAIM_DETAIL_SELECT,
   loadFunders,
   toAdminClaim,
-} from "@/lib/claim-query"
-import { notifyEmployee, notifyReviewers } from "@/lib/notify"
+} from "@/lib/reimbursement/query"
+import { notifyEmployee, notifyReviewers } from "@/lib/notifications/notify"
 import {
   CLAIM_PAGE_SIZE,
   type AdminClaim,

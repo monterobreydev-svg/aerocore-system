@@ -10,8 +10,8 @@ import {
   Timer,
   Wallet,
 } from "lucide-react"
-import { prisma } from "@/lib/prisma"
-import { getCurrentEmployee } from "@/lib/dal"
+import { prisma } from "@/lib/db/prisma"
+import { getCurrentEmployee } from "@/lib/db/dal"
 import {
   attendanceDay,
   canPunchWithoutSchedule,

@@ -20,7 +20,7 @@ import {
   minutesLabel,
   parseDayParam,
 } from "@/lib/attendance"
-import { useNow } from "@/lib/use-now"
+import { useNow } from "@/lib/hooks/use-now"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

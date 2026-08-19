@@ -1,6 +1,6 @@
 import "server-only"
 
-import { renderPdf, monoColumns, type PdfBlock } from "@/lib/pdf"
+import { renderPdf, monoColumns, type PdfBlock } from "@/lib/formats/pdf"
 import type { ReportData, Slice } from "@/lib/reports"
 
 // ---------------------------------------------------------------------------

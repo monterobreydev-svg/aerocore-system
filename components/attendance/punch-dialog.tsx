@@ -14,8 +14,8 @@ import {
   type PunchState,
 } from "@/app/actions/attendance"
 import { COARSE_FIX_METRES, coordinateLabel } from "@/lib/attendance"
-import { compressImage, formatBytes } from "@/lib/compress-image"
-import { useGeolocationFix } from "@/lib/use-geolocation"
+import { compressImage, formatBytes } from "@/lib/storage/compress-image"
+import { useGeolocationFix } from "@/lib/hooks/use-geolocation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {

@@ -8,7 +8,7 @@ import {
   type UploadContext,
 } from "@/app/actions/reimbursements"
 import { cn } from "@/lib/utils"
-import { compressImage, formatBytes } from "@/lib/compress-image"
+import { compressImage, formatBytes } from "@/lib/storage/compress-image"
 import { Button } from "@/components/ui/button"
 
 export type UploadedFile = {

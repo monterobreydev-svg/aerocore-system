@@ -1,8 +1,8 @@
 import "server-only"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import type { NotificationType, Role } from "@/app/generated/prisma/client"
-import { isAdminPathAllowedForRole, isAdminSideRole } from "@/lib/roles"
-import { sendPush } from "@/lib/push"
+import { isAdminPathAllowedForRole, isAdminSideRole } from "@/lib/auth/roles"
+import { sendPush } from "@/lib/notifications/push"
 
 // Writing the inbox rows. Every caller is a server action that has already done
 // the thing being announced, which is why nothing here throws: a notification

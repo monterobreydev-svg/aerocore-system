@@ -1,6 +1,6 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { attendanceDay } from "@/lib/attendance"
 import type { KioskJob } from "@/components/kiosk/kiosk-schedule"
 

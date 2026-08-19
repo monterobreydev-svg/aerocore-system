@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/prisma"
-import { getCurrentEmployee } from "@/lib/dal"
+import { prisma } from "@/lib/db/prisma"
+import { getCurrentEmployee } from "@/lib/db/dal"
 import { EmployeeScheduleView } from "@/components/employee/employee-schedule-view"
 import type { ScheduleRecord } from "@/components/admin/schedule-types"
 

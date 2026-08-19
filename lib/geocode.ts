@@ -1,5 +1,5 @@
 import "server-only"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 
 // ---------------------------------------------------------------------------
 // Turning a GPS fix into a place name

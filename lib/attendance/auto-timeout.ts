@@ -1,6 +1,6 @@
 import "server-only"
 
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { autoTimeOut, dayParam, shiftEndFor } from "@/lib/attendance"
 
 // ---------------------------------------------------------------------------

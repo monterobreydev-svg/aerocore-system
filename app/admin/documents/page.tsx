@@ -8,7 +8,7 @@ import {
   Wrench,
 } from "lucide-react"
 import { requireManager } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import {
   MONTH_NAMES,
   REPORT_TYPE_FOLDER,
@@ -29,7 +29,7 @@ import {
   searchFiles,
   searchFolders,
   type TreePath,
-} from "@/lib/document-tree"
+} from "@/lib/documents/tree"
 import type { ReportType } from "@/components/attendance/admin-attendance"
 import { LinkPending } from "@/components/ui/link-pending"
 import { DocumentSearch } from "@/components/documents/document-search"

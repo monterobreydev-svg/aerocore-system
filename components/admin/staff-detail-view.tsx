@@ -17,7 +17,7 @@ import {
   updateStaffAccount,
   type UpdateStaffState,
 } from "@/app/actions/staff"
-import { roleAccessLabel, roleLabel } from "@/lib/roles"
+import { roleAccessLabel, roleLabel } from "@/lib/auth/roles"
 import {
   CIVIL_STATUS_OPTIONS,
   EMPLOYMENT_TYPE_OPTIONS,

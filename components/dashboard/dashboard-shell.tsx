@@ -1,5 +1,5 @@
 import type { Role } from "@/app/generated/prisma/client"
-import { getNotificationInbox } from "@/lib/dal"
+import { getNotificationInbox } from "@/lib/db/dal"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AppSidebar } from "@/components/dashboard/app-sidebar"

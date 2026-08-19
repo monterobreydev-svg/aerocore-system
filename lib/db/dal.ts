@@ -1,6 +1,6 @@
 import "server-only"
 import { cache } from "react"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
 import { NOTIFICATION_LIMIT, type InboxItem } from "@/lib/notifications"
 

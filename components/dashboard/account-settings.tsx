@@ -21,8 +21,8 @@ import {
   type PasswordState,
   type ProfileState,
 } from "@/app/actions/profile"
-import type { AccountSettings as AccountSettingsData } from "@/lib/dal"
-import { canEditOwnIdentity, roleAccessLabel } from "@/lib/roles"
+import type { AccountSettings as AccountSettingsData } from "@/lib/db/dal"
+import { canEditOwnIdentity, roleAccessLabel } from "@/lib/auth/roles"
 import {
   CIVIL_STATUS_OPTIONS,
   civilStatusLabel,

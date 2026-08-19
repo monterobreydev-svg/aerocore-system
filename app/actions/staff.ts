@@ -2,11 +2,11 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import { prisma } from "@/lib/prisma"
-import { hashPassword } from "@/lib/password"
+import { prisma } from "@/lib/db/prisma"
+import { hashPassword } from "@/lib/auth/password"
 import { verifySession } from "@/lib/auth"
 import type { Role } from "@/app/generated/prisma/client"
-import { assignableRoles, roleLabel } from "@/lib/roles"
+import { assignableRoles, roleLabel } from "@/lib/auth/roles"
 import { SKILL_OPTIONS, isValidGovId, isValidPhone } from "@/lib/employee"
 
 // Checkboxes arrive as repeated `skills` entries; nothing outside the fixed

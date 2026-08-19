@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useBrowserCapability } from "@/lib/use-browser-capability"
+import { useBrowserCapability } from "@/lib/hooks/use-browser-capability"
 
 export type Fix = {
   latitude: number

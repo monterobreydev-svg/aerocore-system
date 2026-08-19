@@ -16,7 +16,7 @@ import {
   HOLIDAY_CELL,
   HOLIDAY_TEXT,
   holidayOn,
-} from "@/lib/holidays"
+} from "@/lib/payroll/holidays"
 import {
   addDays,
   formatTimeRange,

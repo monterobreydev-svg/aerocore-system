@@ -12,7 +12,7 @@ import {
 } from "lucide-react"
 
 import type { ReportData } from "@/lib/reports"
-import type { Preset } from "@/lib/report-range"
+import type { Preset } from "@/lib/reports/range"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 import { RangePicker } from "@/components/reports/range-picker"

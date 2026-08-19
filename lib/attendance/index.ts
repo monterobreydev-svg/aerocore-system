@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Role } from "@/app/generated/prisma/client"
-import { isAdminSideRole } from "@/lib/roles"
+import { isAdminSideRole } from "@/lib/auth/roles"
 // The same two numbers payroll pays by, so an implied shift is the ordinary
 // day and not a second opinion about how long one is.
 import { HOURS_PER_DAY } from "@/lib/employee"

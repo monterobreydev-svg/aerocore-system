@@ -3,7 +3,7 @@
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import type { OvertimeStatus, Role } from "@/app/generated/prisma/client"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
 import {
   buildObjectKey,
@@ -15,7 +15,7 @@ import {
   presignDownload,
   presignUpload,
   uniqueObjectKey,
-} from "@/lib/r2"
+} from "@/lib/storage/r2"
 import {
   monthFolder,
   REPORT_TYPE_FOLDER,
@@ -39,7 +39,7 @@ import {
 import {
   ATTENDANCE_DETAIL_SELECT,
   toAttendanceRow,
-} from "@/lib/attendance-query"
+} from "@/lib/attendance/query"
 import { reverseGeocode } from "@/lib/geocode"
 import {
   STAFF_DAY_LIMIT,
@@ -49,8 +49,8 @@ import {
   type StaffAttendancePage,
   type StaffAttendanceSummary,
 } from "@/components/attendance/admin-attendance"
-import { notifyEmployee, notifyReviewers } from "@/lib/notify"
-import { closeAbandonedPunches } from "@/lib/auto-timeout"
+import { notifyEmployee, notifyReviewers } from "@/lib/notifications/notify"
+import { closeAbandonedPunches } from "@/lib/attendance/auto-timeout"
 
 function revalidateAll() {
   revalidatePath("/employee/attendance")

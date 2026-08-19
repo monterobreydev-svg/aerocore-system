@@ -2,7 +2,7 @@ import "server-only"
 
 import type { OvertimeStatus } from "@/app/generated/prisma/client"
 import type { Decimal } from "@/app/generated/prisma/internal/prismaNamespace"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { cutoffEnd, cutoffLabel, cutoffStart, nextDay } from "@/lib/attendance"
 import {
   computePayslip,

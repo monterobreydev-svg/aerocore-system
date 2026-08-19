@@ -17,7 +17,7 @@ import type {
   EmploymentType,
   Role,
 } from "@/app/generated/prisma/client"
-import { roleLabel } from "@/lib/roles"
+import { roleLabel } from "@/lib/auth/roles"
 import { employmentTypeLabel } from "@/lib/employee"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"

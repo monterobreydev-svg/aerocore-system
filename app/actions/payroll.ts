@@ -2,7 +2,7 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { requireManager } from "@/lib/auth"
 import {
   attendanceDay,
@@ -11,8 +11,8 @@ import {
   cutoffStart,
   parseDayParam,
 } from "@/lib/attendance"
-import { buildPayslip } from "@/lib/payslip-query"
-import { notifyEmployees } from "@/lib/notify"
+import { buildPayslip } from "@/lib/payroll/payslip-query"
+import { notifyEmployees } from "@/lib/notifications/notify"
 import type { Payslip } from "@/lib/payroll"
 
 export type AdjustmentRow = {

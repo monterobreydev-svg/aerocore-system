@@ -10,8 +10,8 @@ import {
   ChevronRight,
 } from "lucide-react"
 
-import type { Preset } from "@/lib/report-range"
-import { stepRange } from "@/lib/report-range"
+import type { Preset } from "@/lib/reports/range"
+import { stepRange } from "@/lib/reports/range"
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
 import {
   dateKey,
@@ -14,7 +14,7 @@ import {
   WORK_TYPE_LABELS,
 } from "@/lib/schedule"
 import { MAX_SHIFT_HOURS } from "@/lib/attendance"
-import { notifyEmployees } from "@/lib/notify"
+import { notifyEmployees } from "@/lib/notifications/notify"
 import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
 
 async function requireScheduleAccess() {
