@@ -24,12 +24,15 @@ import {
   civilStatusLabel,
   employmentTypeLabel,
   monthlyFromHourly,
+  sanitizeGovId,
   MONTHLY_RATE_BASIS,
 } from "@/lib/employee"
 import { cn } from "@/lib/utils"
 import { formatDate, formatDateTime } from "@/lib/format-date"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ConstrainedInput } from "@/components/ui/constrained-input"
+import { PhoneInput } from "@/components/ui/phone-input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -493,10 +496,10 @@ export function StaffDetailView({
                           <FieldLabel htmlFor={`phoneNo-${staff.id}`}>
                             Mobile number
                           </FieldLabel>
-                          <Input
+                          <PhoneInput
                             id={`phoneNo-${staff.id}`}
                             name="phoneNo"
-                            placeholder="0917 123 4567"
+                            placeholder="917 123 4567"
                             defaultValue={initial.employee.phoneNo ?? ""}
                             disabled={pending}
                           />
@@ -759,10 +762,10 @@ export function StaffDetailView({
                           <FieldLabel htmlFor={`emergencyContactNo-${staff.id}`}>
                             Contact number
                           </FieldLabel>
-                          <Input
+                          <PhoneInput
                             id={`emergencyContactNo-${staff.id}`}
                             name="emergencyContactNo"
-                            placeholder="0918 220 3341"
+                            placeholder="918 220 3341"
                             defaultValue={
                               initial.employee.emergencyContactNo ?? ""
                             }
@@ -805,7 +808,9 @@ export function StaffDetailView({
                             <FieldLabel htmlFor={`tinNo-${staff.id}`}>
                               TIN
                             </FieldLabel>
-                            <Input
+                            <ConstrainedInput
+                              sanitize={sanitizeGovId}
+                              inputMode="numeric"
                               id={`tinNo-${staff.id}`}
                               name="tinNo"
                               placeholder="123-456-789-000"
@@ -818,7 +823,9 @@ export function StaffDetailView({
                             <FieldLabel htmlFor={`sssNo-${staff.id}`}>
                               SSS
                             </FieldLabel>
-                            <Input
+                            <ConstrainedInput
+                              sanitize={sanitizeGovId}
+                              inputMode="numeric"
                               id={`sssNo-${staff.id}`}
                               name="sssNo"
                               placeholder="34-1234567-8"
@@ -831,7 +838,9 @@ export function StaffDetailView({
                             <FieldLabel htmlFor={`philhealthNo-${staff.id}`}>
                               PhilHealth
                             </FieldLabel>
-                            <Input
+                            <ConstrainedInput
+                              sanitize={sanitizeGovId}
+                              inputMode="numeric"
                               id={`philhealthNo-${staff.id}`}
                               name="philhealthNo"
                               placeholder="12-345678901-2"
@@ -844,7 +853,9 @@ export function StaffDetailView({
                             <FieldLabel htmlFor={`pagibigNo-${staff.id}`}>
                               Pag-IBIG
                             </FieldLabel>
-                            <Input
+                            <ConstrainedInput
+                              sanitize={sanitizeGovId}
+                              inputMode="numeric"
                               id={`pagibigNo-${staff.id}`}
                               name="pagibigNo"
                               placeholder="1234-5678-9012"

@@ -7,7 +7,7 @@ import { hashPassword } from "@/lib/password"
 import { verifySession } from "@/lib/auth"
 import type { Role } from "@/app/generated/prisma/client"
 import { assignableRoles, roleLabel } from "@/lib/roles"
-import { SKILL_OPTIONS } from "@/lib/employee"
+import { SKILL_OPTIONS, isValidGovId, isValidPhone } from "@/lib/employee"
 
 // Checkboxes arrive as repeated `skills` entries; nothing outside the fixed
 // list is accepted, so a hand-rolled POST can't seed free-text values that
@@ -46,11 +46,30 @@ const optionalMoney = z
     message: "Enter a valid amount.",
   })
 
+// The server never trusts the form's filtering — a hand-rolled POST skips it
+// entirely, so the same rules from the same module are applied again here.
+const optionalPhone = z
+  .string()
+  .trim()
+  .optional()
+  .refine((value) => !value || isValidPhone(value), {
+    message:
+      "Use digits only — spaces, dashes and a leading +63 are fine, letters are not.",
+  })
+
+const optionalGovId = z
+  .string()
+  .trim()
+  .optional()
+  .refine((value) => !value || isValidGovId(value), {
+    message: "Use digits only — dashes and spaces are fine, letters are not.",
+  })
+
 const StaffSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required."),
   lastName: z.string().trim().min(1, "Last name is required."),
   middleName: z.string().trim().optional(),
-  phoneNo: z.string().trim().optional(),
+  phoneNo: optionalPhone,
   email: optionalEmail,
   birthDate: z.string().trim().optional(),
   civilStatus: optionalCivilStatus,
@@ -62,12 +81,12 @@ const StaffSchema = z.object({
   hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
   skills: skillSet,
   emergencyContactPerson: z.string().trim().optional(),
-  emergencyContactNo: z.string().trim().optional(),
+  emergencyContactNo: optionalPhone,
   emergencyContactRelationship: z.string().trim().optional(),
-  tinNo: z.string().trim().optional(),
-  sssNo: z.string().trim().optional(),
-  philhealthNo: z.string().trim().optional(),
-  pagibigNo: z.string().trim().optional(),
+  tinNo: optionalGovId,
+  sssNo: optionalGovId,
+  philhealthNo: optionalGovId,
+  pagibigNo: optionalGovId,
   username: z
     .string()
     .trim()
@@ -257,7 +276,7 @@ const UpdateStaffSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required."),
   lastName: z.string().trim().min(1, "Last name is required."),
   middleName: z.string().trim().optional(),
-  phoneNo: z.string().trim().optional(),
+  phoneNo: optionalPhone,
   email: optionalEmail,
   birthDate: z.string().trim().optional(),
   civilStatus: optionalCivilStatus,
@@ -269,12 +288,12 @@ const UpdateStaffSchema = z.object({
   hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
   skills: skillSet,
   emergencyContactPerson: z.string().trim().optional(),
-  emergencyContactNo: z.string().trim().optional(),
+  emergencyContactNo: optionalPhone,
   emergencyContactRelationship: z.string().trim().optional(),
-  tinNo: z.string().trim().optional(),
-  sssNo: z.string().trim().optional(),
-  philhealthNo: z.string().trim().optional(),
-  pagibigNo: z.string().trim().optional(),
+  tinNo: optionalGovId,
+  sssNo: optionalGovId,
+  philhealthNo: optionalGovId,
+  pagibigNo: optionalGovId,
   isActive: z.enum(["true", "false"]),
 })
 

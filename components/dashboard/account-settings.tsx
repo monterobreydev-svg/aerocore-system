@@ -34,6 +34,9 @@ import { cn } from "@/lib/utils"
 import { formatDate, formatDateTime } from "@/lib/format-date"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { PhoneInput } from "@/components/ui/phone-input"
+import { ConstrainedInput } from "@/components/ui/constrained-input"
+import { sanitizeGovId } from "@/lib/employee"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -289,11 +292,10 @@ function ProfileTab({
           <FieldGroup className="gap-4">
             <Field data-invalid={!!state?.errors?.phoneNo}>
               <FieldLabel htmlFor="phoneNo">Mobile number</FieldLabel>
-              <Input
+              <PhoneInput
                 id="phoneNo"
                 name="phoneNo"
-                placeholder="0917 123 4567"
-                inputMode="tel"
+                placeholder="917 123 4567"
                 defaultValue={initial.phoneNo ?? ""}
                 disabled={pending}
               />
@@ -387,7 +389,9 @@ function ProfileTab({
             <div className="grid gap-3 sm:grid-cols-2">
               <Field data-invalid={!!state?.errors?.tinNo}>
                 <FieldLabel htmlFor="tinNo">TIN</FieldLabel>
-                <Input
+                <ConstrainedInput
+                  sanitize={sanitizeGovId}
+                  inputMode="numeric"
                   id="tinNo"
                   name="tinNo"
                   placeholder="123-456-789-000"
@@ -398,7 +402,9 @@ function ProfileTab({
               </Field>
               <Field data-invalid={!!state?.errors?.sssNo}>
                 <FieldLabel htmlFor="sssNo">SSS</FieldLabel>
-                <Input
+                <ConstrainedInput
+                  sanitize={sanitizeGovId}
+                  inputMode="numeric"
                   id="sssNo"
                   name="sssNo"
                   placeholder="34-1234567-8"
@@ -409,7 +415,9 @@ function ProfileTab({
               </Field>
               <Field data-invalid={!!state?.errors?.philhealthNo}>
                 <FieldLabel htmlFor="philhealthNo">PhilHealth</FieldLabel>
-                <Input
+                <ConstrainedInput
+                  sanitize={sanitizeGovId}
+                  inputMode="numeric"
                   id="philhealthNo"
                   name="philhealthNo"
                   placeholder="12-345678901-2"
@@ -420,7 +428,9 @@ function ProfileTab({
               </Field>
               <Field data-invalid={!!state?.errors?.pagibigNo}>
                 <FieldLabel htmlFor="pagibigNo">Pag-IBIG</FieldLabel>
-                <Input
+                <ConstrainedInput
+                  sanitize={sanitizeGovId}
+                  inputMode="numeric"
                   id="pagibigNo"
                   name="pagibigNo"
                   placeholder="1234-5678-9012"

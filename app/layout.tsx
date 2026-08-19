@@ -32,7 +32,19 @@ export default function RootLayout({
       lang="en"
       className={`${fontSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/*
+        Browser extensions write to <body> before React hydrates — Grammarly
+        adds data-gr-ext-installed and friends, password managers do the same —
+        and React reports the difference as a hydration mismatch the app has no
+        way to prevent.
+
+        This suppresses it for <body> only. The flag reaches exactly one level:
+        this element’s own attributes and text, never its children, so a genuine
+        mismatch anywhere inside the app still reports as loudly as before.
+      */}
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

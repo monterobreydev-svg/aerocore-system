@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword } from "@/lib/password"
 import { verifySession } from "@/lib/auth"
 import { createSession } from "@/lib/session"
 import { canEditOwnIdentity } from "@/lib/roles"
+import { isValidGovId, isValidPhone } from "@/lib/employee"
 
 const optionalEmail = z
   .string()
@@ -40,17 +41,36 @@ const IdentitySchema = z.object({
 // Deliberately excludes position, employment type, date hired, pay, employee
 // number, role and account status. Those are HR facts an admin sets and the
 // staff edit log audits — letting someone edit their own would defeat both.
+// The same rules the staff forms use — a profile edit is another way into the
+// same columns, and a number that only one of the two routes validates is a
+// number that gets in.
+const optionalPhone = z
+  .string()
+  .trim()
+  .optional()
+  .refine((value) => !value || isValidPhone(value), {
+    message: "Enter a Philippine number: +63 followed by 9 or 10 digits.",
+  })
+
+const optionalGovId = z
+  .string()
+  .trim()
+  .optional()
+  .refine((value) => !value || isValidGovId(value), {
+    message: "Use digits only — dashes and spaces are fine, letters are not.",
+  })
+
 const ProfileSchema = z.object({
-  phoneNo: z.string().trim().optional(),
+  phoneNo: optionalPhone,
   email: optionalEmail,
   address: z.string().trim().optional(),
   emergencyContactPerson: z.string().trim().optional(),
-  emergencyContactNo: z.string().trim().optional(),
+  emergencyContactNo: optionalPhone,
   emergencyContactRelationship: z.string().trim().optional(),
-  tinNo: z.string().trim().optional(),
-  sssNo: z.string().trim().optional(),
-  philhealthNo: z.string().trim().optional(),
-  pagibigNo: z.string().trim().optional(),
+  tinNo: optionalGovId,
+  sssNo: optionalGovId,
+  philhealthNo: optionalGovId,
+  pagibigNo: optionalGovId,
 })
 
 export type ProfileState =

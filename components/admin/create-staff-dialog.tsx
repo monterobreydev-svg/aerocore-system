@@ -20,11 +20,14 @@ import {
   civilStatusLabel,
   employmentTypeLabel,
   monthlyFromHourly,
+  sanitizeGovId,
 } from "@/lib/employee"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/format-date"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ConstrainedInput } from "@/components/ui/constrained-input"
+import { PhoneInput } from "@/components/ui/phone-input"
 import { Separator } from "@/components/ui/separator"
 import {
   Dialog,
@@ -474,10 +477,10 @@ export function CreateStaffDialog({
                 </Field>
                 <Field data-invalid={!!state?.errors?.phoneNo}>
                   <FieldLabel htmlFor="phoneNo">Mobile number</FieldLabel>
-                  <Input
+                  <PhoneInput
                     id="phoneNo"
                     name="phoneNo"
-                    placeholder="0917 123 4567"
+                    placeholder="917 123 4567"
                     disabled={pending}
                   />
                   <FieldError
@@ -549,10 +552,10 @@ export function CreateStaffDialog({
                     <FieldLabel htmlFor="emergencyContactNo">
                       Contact number
                     </FieldLabel>
-                    <Input
+                    <PhoneInput
                       id="emergencyContactNo"
                       name="emergencyContactNo"
-                      placeholder="0918 220 3341"
+                      placeholder="918 220 3341"
                       disabled={pending}
                     />
                     <FieldError
@@ -761,7 +764,9 @@ export function CreateStaffDialog({
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field data-invalid={!!state?.errors?.tinNo}>
                       <FieldLabel htmlFor="tinNo">TIN</FieldLabel>
-                      <Input
+                      <ConstrainedInput
+                        sanitize={sanitizeGovId}
+                        inputMode="numeric"
                         id="tinNo"
                         name="tinNo"
                         placeholder="123-456-789-000"
@@ -776,7 +781,9 @@ export function CreateStaffDialog({
                     </Field>
                     <Field data-invalid={!!state?.errors?.sssNo}>
                       <FieldLabel htmlFor="sssNo">SSS</FieldLabel>
-                      <Input
+                      <ConstrainedInput
+                        sanitize={sanitizeGovId}
+                        inputMode="numeric"
                         id="sssNo"
                         name="sssNo"
                         placeholder="34-1234567-8"
@@ -791,7 +798,9 @@ export function CreateStaffDialog({
                     </Field>
                     <Field data-invalid={!!state?.errors?.philhealthNo}>
                       <FieldLabel htmlFor="philhealthNo">PhilHealth</FieldLabel>
-                      <Input
+                      <ConstrainedInput
+                        sanitize={sanitizeGovId}
+                        inputMode="numeric"
                         id="philhealthNo"
                         name="philhealthNo"
                         placeholder="12-345678901-2"
@@ -806,7 +815,9 @@ export function CreateStaffDialog({
                     </Field>
                     <Field data-invalid={!!state?.errors?.pagibigNo}>
                       <FieldLabel htmlFor="pagibigNo">Pag-IBIG</FieldLabel>
-                      <Input
+                      <ConstrainedInput
+                        sanitize={sanitizeGovId}
+                        inputMode="numeric"
                         id="pagibigNo"
                         name="pagibigNo"
                         placeholder="1234-5678-9012"

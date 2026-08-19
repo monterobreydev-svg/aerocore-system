@@ -100,3 +100,119 @@ export function nextEmployeeNo(current: string | null | undefined) {
   return `E-${String(next).padStart(4, "0")}`
 }
 
+
+// ---------------------------------------------------------------------------
+// What may be typed into a formatted field
+// ---------------------------------------------------------------------------
+//
+// One definition each, shared by the input that filters keystrokes and the
+// server action that validates the submission. Two copies of a rule like this
+// drift, and the copy that matters is always the one nobody remembered to
+// update — so the form and the action read the same functions.
+//
+// Phone numbers are Philippine numbers, so the country code is not something
+// anyone should have to type, get wrong, or type twice. The field carries a
+// fixed "+63" and the person fills in the rest.
+//
+// The lengths below are the real ones. A mobile subscriber number is 10 digits
+// (9XX XXX XXXX); a landline is its area code plus a 7-or-8 digit number, which
+// comes to 9 or 10 after the country code — Metro Manila 2 8XXX XXXX, Cebu
+// 32 XXX XXXX. Nothing Philippine is longer than 10, which is why 20 digits
+// should never have been possible to type.
+export const PH_COUNTRY_CODE = "+63"
+export const PH_SUBSCRIBER_MIN_DIGITS = 9
+export const PH_SUBSCRIBER_MAX_DIGITS = 10
+
+/** Just the digits, for counting them. */
+export function phoneDigits(value: string) {
+  return value.replace(/\D/g, "")
+}
+
+/**
+ * Whatever was typed or pasted, reduced to the part that follows "+63".
+ *
+ * Handles the three ways a number arrives: already local ("917 123 4567"), in
+ * national form with the trunk zero ("0917 123 4567"), or international
+ * ("+63 917 123 4567"). The trunk zero and the country code are both dropped,
+ * because "+63 0917" and "+63 63917" are the two mistakes this field exists to
+ * make impossible.
+ *
+ * A leading "63" is only treated as the country code when the value was written
+ * as international with a "+". Typed bare it is left alone — 63 is a plausible
+ * start to a local number and guessing would corrupt it.
+ *
+ * Spaces survive, so numbers can still be grouped by hand. Digits past the
+ * maximum are dropped rather than accepted and rejected later.
+ */
+export function toPhoneSubscriber(value: string) {
+  const international = value.trimStart().startsWith("+")
+  let rest = value.replace(/[^\d\s]/g, "")
+
+  if (international) rest = rest.replace(/^(\s*)63/, "$1")
+  rest = rest.replace(/^(\s*)0+/, "$1")
+
+  // Trim from the right, counting digits only, so the spacing already typed is
+  // preserved instead of being rebuilt.
+  let digits = 0
+  let cut = rest.length
+  for (let index = 0; index < rest.length; index++) {
+    if (/\d/.test(rest[index])) digits++
+    if (digits > PH_SUBSCRIBER_MAX_DIGITS) {
+      cut = index
+      break
+    }
+  }
+  return rest.slice(0, cut).replace(/^\s+/, "")
+}
+
+/** The subscriber part as it is stored: "+63 917 123 4567". */
+export function toStoredPhone(subscriber: string) {
+  const trimmed = subscriber.trim()
+  return trimmed ? `${PH_COUNTRY_CODE} ${trimmed}` : ""
+}
+
+export function isValidPhone(value: string) {
+  if (!value.startsWith(PH_COUNTRY_CODE)) return false
+  const rest = value.slice(PH_COUNTRY_CODE.length)
+  if (!/^[\d\s]*$/.test(rest)) return false
+  const digits = phoneDigits(rest)
+  return (
+    digits.length >= PH_SUBSCRIBER_MIN_DIGITS &&
+    digits.length <= PH_SUBSCRIBER_MAX_DIGITS
+  )
+}
+
+/**
+ * The longest of the four is 12 digits — PhilHealth and Pag-IBIG both, and a
+ * TIN carrying a branch code. Nothing here is longer.
+ */
+export const GOV_ID_MAX_DIGITS = 12
+
+/** Government IDs are digits with separators — never letters. */
+export function sanitizeGovId(value: string) {
+  const cleaned = value.replace(/[^\d\s-]/g, "").replace(/^\s+/, "")
+
+  // Capped as it is typed, for the same reason the phone field is: a limit that
+  // only fires on submit lets someone type twenty digits before finding out.
+  let digits = 0
+  for (let index = 0; index < cleaned.length; index++) {
+    if (/\d/.test(cleaned[index])) digits++
+    if (digits > GOV_ID_MAX_DIGITS) return cleaned.slice(0, index)
+  }
+  return cleaned
+}
+
+/**
+ * Deliberately a range rather than the exact length of each ID.
+ *
+ * TIN, SSS, PhilHealth and Pag-IBIG each have a canonical digit count, but
+ * records predating a format change would fail a strict check and there is no
+ * way for whoever is typing to fix a number that is simply what the card says.
+ * The character rule catches the mistake this exists for — a letter where a
+ * digit belongs.
+ */
+export function isValidGovId(value: string) {
+  if (!/^[\d\s-]*$/.test(value)) return false
+  const digits = value.replace(/\D/g, "")
+  return digits.length >= 6 && digits.length <= GOV_ID_MAX_DIGITS
+}
