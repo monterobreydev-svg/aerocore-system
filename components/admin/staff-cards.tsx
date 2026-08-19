@@ -17,7 +17,7 @@ import type {
   EmploymentType,
   Role,
 } from "@/app/generated/prisma/client"
-import { roleLabel } from "@/lib/auth/roles"
+import { roleLabel, visibleRolesFor } from "@/lib/auth/roles"
 import { employmentTypeLabel } from "@/lib/employee"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
@@ -94,12 +94,9 @@ function peso(amount: number) {
   })
 }
 
-const ROLE_FILTERS: Role[] = [
-  "DIRECTOR",
-  "ADMINISTRATOR",
-  "ENGINEER",
-  "EMPLOYEE",
-]
+// Derived from the same rule the query uses, so an Administrator is never
+// offered a "Director" chip that filters an already-filtered list down to
+// nothing and reads as a bug.
 
 function StatusBadge({ isActive }: { isActive: boolean }) {
   return (
@@ -307,7 +304,7 @@ export function StaffCards({
             label="All"
             onClick={() => setRoleFilter("all")}
           />
-          {ROLE_FILTERS.map((role) => (
+          {visibleRolesFor(currentRole).map((role) => (
             <FilterChip
               key={role}
               active={roleFilter === role}

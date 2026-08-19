@@ -4,7 +4,8 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/db/prisma"
 import { COOKIE_NAME, decrypt } from "@/lib/auth/session"
-import { isAdminSideRole } from "@/lib/auth/roles"
+import { canManageRole, isAdminSideRole } from "@/lib/auth/roles"
+import type { Role } from "@/app/generated/prisma/client"
 
 // The authoritative session check, used by every page and every server action.
 //
@@ -86,4 +87,29 @@ export async function requireManager() {
     redirect("/admin")
   }
   return session
+}
+
+/**
+ * Is this employee one the signed-in user is allowed to reach?
+ *
+ * Every action that takes an `employeeId` from the client needs this. Hiding a
+ * Director from the staff list stops them being browsed to; it does nothing
+ * about a request that names their id directly, and the actions behind that
+ * page — their attendance, their claims, their record — all take an id and
+ * would otherwise answer for anyone.
+ *
+ * An employee with no account (staff who never got a login) is reachable by any
+ * manager: there is no role there to be outranked by.
+ */
+export async function canReachEmployee(actorRole: Role, employeeId: string) {
+  if (!employeeId) return false
+  if (actorRole === "DIRECTOR") return true
+
+  const account = await prisma.userAccount.findUnique({
+    where: { employeeId },
+    select: { role: true },
+  })
+  if (!account) return true
+
+  return canManageRole(actorRole, account.role)
 }

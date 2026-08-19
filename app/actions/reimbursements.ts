@@ -3,7 +3,7 @@
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db/prisma"
-import { verifySession } from "@/lib/auth"
+import { canReachEmployee, verifySession } from "@/lib/auth"
 import {
   buildObjectKey,
   isAllowedUploadType,
@@ -221,6 +221,7 @@ export async function listEmployeeReimbursements(
 
   const session = await requireAdmin()
   if (!session || !employeeId) return empty
+  if (!(await canReachEmployee(session.role, employeeId))) return empty
 
   // The running balance has to see everything this person has ever been given
   // and spent, or "fund before" on an old claim would be wrong. Narrow columns,

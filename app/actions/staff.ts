@@ -4,7 +4,7 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db/prisma"
 import { hashPassword } from "@/lib/auth/password"
-import { verifySession } from "@/lib/auth"
+import { canReachEmployee, verifySession } from "@/lib/auth"
 import type { Role } from "@/app/generated/prisma/client"
 import { assignableRoles, roleLabel } from "@/lib/auth/roles"
 import { SKILL_OPTIONS, isValidGovId, isValidPhone } from "@/lib/employee"
@@ -372,6 +372,13 @@ export async function updateStaffAccount(
 
   if (!validatedFields.success) {
     return { errors: validatedFields.error.flatten().fieldErrors }
+  }
+
+  // Nor anyone above them. The staff list already withholds Directors, but this
+  // action takes an employeeId straight off the form and would otherwise act on
+  // whatever id it was handed.
+  if (!(await canReachEmployee(session.role, validatedFields.data.employeeId))) {
+    return { message: "You don't have permission to edit that account." }
   }
 
   // An Administrator can't edit their own record (e.g. to quietly bump their

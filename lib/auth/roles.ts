@@ -73,3 +73,33 @@ const ALL_ROLES: Role[] = ["DIRECTOR", "ADMINISTRATOR", "ENGINEER", "EMPLOYEE"]
 export function assignableRoles(currentRole: Role): Role[] {
   return currentRole === "DIRECTOR" ? ALL_ROLES : ["EMPLOYEE"]
 }
+
+/**
+ * May an actor see and manage an account holding this role?
+ *
+ * A Director is above an Administrator, so an Administrator does not get to
+ * look at one: not their record, not their pay rate, not their attendance, not
+ * their claims. Being able to read the account of the person who governs you is
+ * most of the way to being able to act on it, and the whole point of the
+ * Director role is that somebody above the Administrator holds it.
+ *
+ * A Director sees everyone, including other Directors — the role has to be
+ * administrable by its own holders or the company can be left with an account
+ * nobody can touch.
+ */
+export function canManageRole(actor: Role, target: Role) {
+  if (actor === "DIRECTOR") return true
+  if (actor === "ADMINISTRATOR") return target !== "DIRECTOR"
+  return false
+}
+
+/**
+ * The roles an actor is allowed to load, as a Prisma `in` filter.
+ *
+ * Returned as a list rather than a "not Director" clause so the rule lives in
+ * one place: a role added later is invisible to an Administrator until somebody
+ * decides otherwise, which is the safe direction for a permission to fail in.
+ */
+export function visibleRolesFor(actor: Role): Role[] {
+  return ALL_ROLES.filter((role) => canManageRole(actor, role))
+}

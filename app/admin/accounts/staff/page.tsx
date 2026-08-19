@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma"
 import { requireManager } from "@/lib/auth"
+import { visibleRolesFor } from "@/lib/auth/roles"
 import { nextEmployeeNo } from "@/lib/employee"
 import { StaffCards, type StaffMember } from "@/components/admin/staff-cards"
 
@@ -54,7 +55,12 @@ export default async function StaffPage() {
   // mapper below threw most of it away. A password hash should never be read
   // into a page's memory to render a name, and an audit log that grows forever
   // is the unbounded relation AGENTS.md rules out.
+  // Filtered in the query, not in the mapper below: an Administrator must not
+  // receive a Director's record at all. Sending it down and hiding it in the
+  // component would still put their pay rate and government IDs in the page's
+  // payload, where anyone can read it out of devtools.
   const accounts = await prisma.userAccount.findMany({
+    where: { role: { in: visibleRolesFor(session.role) } },
     select: {
       id: true,
       username: true,

@@ -4,7 +4,7 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import type { OvertimeStatus, Role } from "@/app/generated/prisma/client"
 import { prisma } from "@/lib/db/prisma"
-import { verifySession } from "@/lib/auth"
+import { canReachEmployee, verifySession } from "@/lib/auth"
 import {
   buildObjectKey,
   buildReportKey,
@@ -1157,6 +1157,8 @@ export async function listEmployeeAttendance(
     },
   }
   if (!session || !employeeId) return empty
+  // The tab is only reachable from a staff record, but the action takes an id.
+  if (!(await canReachEmployee(session.role, employeeId))) return empty
 
   const since = new Date()
   since.setDate(since.getDate() - STAFF_SUMMARY_DAYS)
