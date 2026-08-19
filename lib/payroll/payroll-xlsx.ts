@@ -1,5 +1,6 @@
 import "server-only"
 
+import { COMPANY_NAME } from "@/lib/company"
 import { STYLE, columnName, xlsxStream, type Cell, type Row } from "@/lib/formats/xlsx"
 
 // ---------------------------------------------------------------------------
@@ -11,8 +12,6 @@ import { STYLE, columnName, xlsxStream, type Cell, type Row } from "@/lib/format
 // lands in the bank. A different document from the payslip an employee
 // downloads — that one explains one person's fortnight day by day; this one is
 // the run, for filing and for handing to whoever moves the money.
-
-export const COMPANY_NAME = "Aerocoole Airconditioning Services"
 
 export type PayrollSheetRow = {
   employeeNo: string | null

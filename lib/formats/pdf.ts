@@ -15,10 +15,12 @@ import "server-only"
 //   nothing is embedded and the file stays a few kilobytes rather than the
 //   hundreds a subsetted font costs.
 //
-//   *Monospace for anything in columns.* Right-aligning proportional text needs
-//   a per-glyph width table; in Courier every glyph is exactly 0.6 em, so a row
-//   composed with `padStart`/`padEnd` lands where it is put. The tables here are
-//   built as text, not as a layout.
+//   *Two ways to put things in columns.* A report flows: blocks stack down the
+//   page, and a row of figures is composed as monospace text, where every glyph
+//   is exactly 0.6 em and `padStart` lands where it is put. A form is ruled:
+//   `{ kind: "table" }` draws the boxes and places each cell inside its own,
+//   which is what a payslip is read as. That one needs real glyph widths, so
+//   the Helvetica tables below exist for it.
 
 const PAGE_WIDTH = 595 // A4 at 72dpi
 const PAGE_HEIGHT = 842
@@ -39,8 +41,46 @@ export type PdfBlock =
   | { kind: "text"; text: string; font?: PdfFont; size?: number; indent?: number }
   | { kind: "rule"; light?: boolean }
   | { kind: "space"; height: number }
+  | PdfTable
 
-type PdfFont = "sans" | "sans-bold" | "mono" | "mono-bold"
+/**
+ * A ruled table — the boxed grid a payslip or any other form is read as.
+ *
+ * `widths` are relative weights, not points: the table always fills the page's
+ * content width, so a caller says "this column is twice that one" and never has
+ * to know what the margins are. Rows carry cells left to right; a cell may span
+ * several columns, which is what makes a heading band across a group of them.
+ */
+export type PdfTable = {
+  kind: "table"
+  widths: number[]
+  rows: PdfTableRow[]
+  /** Default size for cells that don't name one. */
+  size?: number
+}
+
+export type PdfTableRow = {
+  cells: PdfCell[]
+  /** Points. Defaults to the row's largest text, with room around it. */
+  height?: number
+  /** Shade every cell — a heading band. */
+  fill?: boolean
+}
+
+export type PdfCell = {
+  text: string
+  /** Columns this cell covers. Default 1. */
+  span?: number
+  align?: PdfAlign
+  font?: PdfFont
+  size?: number
+  /** Shade this cell alone. */
+  fill?: boolean
+}
+
+export type PdfAlign = "left" | "center" | "right"
+
+export type PdfFont = "sans" | "sans-bold" | "mono" | "mono-bold"
 
 const FONT_KEYS: Record<PdfFont, string> = {
   sans: "F1",
@@ -57,6 +97,231 @@ const FONT_NAMES: Record<PdfFont, string> = {
 }
 
 const FONT_ORDER: PdfFont[] = ["sans", "sans-bold", "mono", "mono-bold"]
+
+// ---------------------------------------------------------------------------
+// How wide a string is
+// ---------------------------------------------------------------------------
+//
+// Courier needs no table — every glyph is 0.6 em — which is why the flowing
+// half of this renderer composes its columns with `padStart`. A ruled form
+// can't: a heading is centred in its cell and a figure sits against the right
+// edge of one, and neither can be done by counting characters in a proportional
+// face. These are the AFM advance widths for printable ASCII in 1/1000 em,
+// which is every character a form here is written in.
+
+// prettier-ignore
+const HELVETICA = [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+  556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+]
+
+// prettier-ignore
+const HELVETICA_BOLD = [
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
+  975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
+  333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+  611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+]
+
+/** Lowercase 'e', near enough for the accented characters outside the table. */
+const AVERAGE_WIDTH = 556
+
+export function textWidth(text: string, font: PdfFont, size: number) {
+  if (font === "mono" || font === "mono-bold") {
+    return text.length * size * MONO_ADVANCE
+  }
+
+  const table = font === "sans-bold" ? HELVETICA_BOLD : HELVETICA
+  let mille = 0
+  for (const char of text) {
+    const code = char.codePointAt(0)!
+    mille += code >= 32 && code <= 126 ? table[code - 32] : AVERAGE_WIDTH
+  }
+  return (mille * size) / 1000
+}
+
+/**
+ * The text as lines that fit the page, broken between words.
+ *
+ * A `text` block is one line and nothing measures it, so a sentence longer than
+ * the page runs off the right edge and out of the document — invisible in the
+ * source, invisible until somebody prints it. Anything written as prose rather
+ * than composed into columns goes through here first.
+ */
+export function wrapText(
+  text: string,
+  font: PdfFont,
+  size: number,
+  width = CONTENT_WIDTH
+) {
+  const lines: string[] = []
+  let line = ""
+
+  for (const word of text.split(" ")) {
+    const candidate = line ? `${line} ${word}` : word
+    if (line && textWidth(candidate, font, size) > width) {
+      lines.push(line)
+      line = word
+    } else {
+      line = candidate
+    }
+  }
+
+  if (line) lines.push(line)
+  return lines
+}
+
+/**
+ * As much of the text as fits, ending in an ellipsis when something was cut.
+ *
+ * A cell that silently overflows writes across its neighbour's figure, which on
+ * a payslip is worse than a truncated job title.
+ */
+function fitted(text: string, font: PdfFont, size: number, room: number) {
+  if (textWidth(text, font, size) <= room) return text
+
+  let cut = text
+  while (cut.length > 1 && textWidth(`${cut}…`, font, size) > room) {
+    cut = cut.slice(0, -1)
+  }
+  return `${cut}…`
+}
+
+// ---------------------------------------------------------------------------
+// Ruled tables
+// ---------------------------------------------------------------------------
+
+/** Space either side of a cell's text. */
+const CELL_PADDING = 5
+
+/** A row is this many times its type size, so the text sits in a band. */
+const ROW_LEADING = 1.95
+
+const GRID_GREY = "0.45"
+const FILL_GREY = "0.90"
+
+function rowHeight(row: PdfTableRow, size: number) {
+  if (row.height) return row.height
+  const largest = row.cells.reduce(
+    (max, cell) => Math.max(max, cell.size ?? size),
+    size
+  )
+  return Math.round(largest * ROW_LEADING)
+}
+
+function line(x1: number, y1: number, x2: number, y2: number) {
+  return `${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`
+}
+
+/**
+ * As many rows of the table as the page has room for.
+ *
+ * Splitting between rows rather than refusing to split at all: a table of
+ * adjustments has no fixed length, and a form that silently drops its last
+ * three lines because they crossed a page boundary is worse than one that
+ * continues overleaf.
+ */
+function drawTable(table: PdfTable, from: number, top: number) {
+  const size = table.size ?? 9
+  const weight = table.widths.reduce((sum, value) => sum + value, 0)
+
+  // Left edge of every column, plus the right edge of the last.
+  const edges = [MARGIN]
+  for (const width of table.widths) {
+    edges.push(edges[edges.length - 1] + (CONTENT_WIDTH * width) / weight)
+  }
+  const right = edges[edges.length - 1]
+
+  const fills: string[] = []
+  const strokes: string[] = []
+  const text: string[] = []
+
+  let y = top
+  let index = from
+
+  while (index < table.rows.length) {
+    const row = table.rows[index]
+    const height = rowHeight(row, size)
+    if (y - height < BOTTOM) break
+
+    const bottom = y - height
+    // Cap height is about 0.72 em; centring on that rather than on the full
+    // size is what stops every band looking like its text sits low.
+    const baseline = bottom + (height - size * 0.72) / 2
+
+    let column = 0
+    for (const cell of row.cells) {
+      const span = cell.span ?? 1
+      const start = edges[Math.min(column, edges.length - 1)]
+      const stop = edges[Math.min(column + span, edges.length - 1)]
+      const font = cell.font ?? "sans"
+      const cellSize = cell.size ?? size
+
+      if (cell.fill ?? row.fill) {
+        fills.push(
+          `${FILL_GREY} g ${start.toFixed(2)} ${bottom.toFixed(2)} ${(stop - start).toFixed(2)} ${height.toFixed(2)} re f`
+        )
+      }
+
+      // Every internal boundary, drawn per row so a spanned cell has no line
+      // running through it.
+      if (column > 0) strokes.push(line(start, bottom, start, y))
+
+      if (cell.text) {
+        const shown = fitted(
+          cell.text,
+          font,
+          cellSize,
+          stop - start - CELL_PADDING * 2
+        )
+        const width = textWidth(shown, font, cellSize)
+        const x =
+          cell.align === "right"
+            ? stop - CELL_PADDING - width
+            : cell.align === "center"
+              ? start + (stop - start - width) / 2
+              : start + CELL_PADDING
+
+        text.push(
+          `BT /${FONT_KEYS[font]} ${cellSize} Tf 1 0 0 1 ${x.toFixed(2)} ${baseline.toFixed(2)} Tm (${literal(shown)}) Tj ET`
+        )
+      }
+
+      column += span
+    }
+
+    strokes.push(line(MARGIN, bottom, right, bottom))
+    y = bottom
+    index++
+  }
+
+  // Nothing was drawn, so nothing to box.
+  if (index === from) return { parts: [], y: top, next: from }
+
+  strokes.push(line(MARGIN, top, right, top))
+  strokes.push(line(MARGIN, y, MARGIN, top))
+  strokes.push(line(right, y, right, top))
+
+  return {
+    // Fills first or they cover the grid; the grid before the text for the
+    // same reason.
+    parts: [
+      ...fills,
+      `${GRID_GREY} G 0.6 w`,
+      ...strokes,
+      "0 g",
+      ...text,
+    ],
+    y,
+    next: index,
+  }
+}
 
 /**
  * A string as a PDF literal.
@@ -106,16 +371,41 @@ function literal(text: string) {
   return out
 }
 
+/**
+ * Where the last page stopped: a block, and how far into it.
+ *
+ * `row` is only ever non-zero for a table that ran off the bottom of a page —
+ * everything else is consumed whole or not at all.
+ */
+type Cursor = { index: number; row: number }
+
 function contentStream(
   blocks: PdfBlock[],
-  startAt: number
-): { stream: string; next: number } {
+  startAt: Cursor
+): { stream: string; next: Cursor } {
   const parts: string[] = []
   let y = PAGE_HEIGHT - MARGIN
-  let index = startAt
+  let index = startAt.index
+  let row = startAt.row
 
   while (index < blocks.length) {
     const block = blocks[index]
+
+    if (block.kind === "table") {
+      const drawn = drawTable(block, row, y)
+      parts.push(...drawn.parts)
+      y = drawn.y
+
+      // Nothing more of this table fits; the rest of it opens the next page.
+      if (drawn.next < block.rows.length) {
+        row = drawn.next
+        break
+      }
+
+      row = 0
+      index++
+      continue
+    }
 
     if (block.kind === "space") {
       y -= block.height
@@ -154,10 +444,13 @@ function contentStream(
   }
 
   // A block too tall for a fresh page would otherwise loop forever: nothing
-  // fits, nothing is consumed, and the next page starts at the same index.
-  if (index === startAt && index < blocks.length) index++
+  // fits, nothing is consumed, and the next page starts where this one did.
+  if (index === startAt.index && row === startAt.row && index < blocks.length) {
+    index++
+    row = 0
+  }
 
-  return { stream: parts.join("\n"), next: index }
+  return { stream: parts.join("\n"), next: { index, row } }
 }
 
 /**
@@ -168,13 +461,13 @@ function contentStream(
  */
 export function renderPdf(blocks: PdfBlock[]): Uint8Array<ArrayBuffer> {
   const streams: string[] = []
-  let at = 0
+  let at: Cursor = { index: 0, row: 0 }
 
   do {
     const { stream, next } = contentStream(blocks, at)
     streams.push(stream)
     at = next
-  } while (at < blocks.length)
+  } while (at.index < blocks.length)
 
   // Object numbering: 1 catalog, 2 pages, then a page and a stream per sheet,
   // then the four fonts. Worked out up front because a cross-reference table is

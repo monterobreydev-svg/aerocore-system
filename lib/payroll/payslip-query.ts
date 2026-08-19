@@ -23,6 +23,8 @@ export type PayslipRecord = {
   employeeName: string
   employeeNo: string | null
   position: string
+  /** Probationary, regular or contractual. Null when the file doesn't say. */
+  employmentType: string | null
   cutoffStart: string
   cutoffEnd: string
   cutoffLabel: string
@@ -91,6 +93,7 @@ export async function buildPayslip(
         lastName: true,
         employeeNo: true,
         position: true,
+        employmentType: true,
         hourlyRate: true,
         attendance: {
           where: {
@@ -134,6 +137,7 @@ export async function buildPayslip(
     employeeName: `${employee.firstName} ${employee.lastName}`,
     employeeNo: employee.employeeNo,
     position: employee.position,
+    employmentType: employee.employmentType,
     cutoffStart: start.toISOString(),
     cutoffEnd: end.toISOString(),
     cutoffLabel: cutoffLabel(start, end),

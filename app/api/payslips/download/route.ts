@@ -4,19 +4,25 @@ import { prisma } from "@/lib/db/prisma"
 import { verifySession } from "@/lib/auth"
 import { cutoffStart, parseDayParam } from "@/lib/attendance"
 import { buildPayslip } from "@/lib/payroll/payslip-query"
-import { payslipFileName, payslipPdf } from "@/lib/payroll/payslip-pdf"
+import { payslipResponse } from "@/lib/payroll/payslip-pdf"
 
-// One person's payslip, in full, as a PDF.
+// The employee's own payslip, as a PDF.
 //
-// The page they came from shows the summary; this is the working behind it —
-// every day, the hours it rendered and what each line of the summary is the
-// sum of. It is a route rather than a server action because the answer is a
-// file: the browser navigates, gets an attachment and files it in its own
-// downloads list, which survives leaving the page.
+// The same document the office downloads from /api/payroll/payslip, off the
+// same reader and the same renderer: what an administrator checked before
+// releasing the run is, to the centavo and to the byte, what the person is
+// handed. There is no second version of a payslip in this system, and there
+// should never be one — a document about somebody's pay that differs depending
+// on who asked for it is worse than no document.
+//
+// It is a route rather than a server action because the answer is a file: the
+// browser navigates, gets an attachment and files it in its own downloads
+// list, which survives leaving the page.
 //
 // Scoped to the session, always. The employee id is never read from the query
 // string — a payslip is the most personal record the system holds, and a URL
-// that takes an id is a URL somebody can edit.
+// that takes an id is a URL somebody can edit. The office's route does take
+// one, and pays for it with a manager check on every request.
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -47,25 +53,8 @@ export async function GET(request: NextRequest) {
     return new Response("No payslip for that period.", { status: 404 })
   }
 
-  const document = {
-    employeeName: record.employeeName,
-    employeeNo: record.employeeNo,
-    position: record.position,
-    cutoffLabel: record.cutoffLabel,
-    cutoffStart: record.cutoffStart,
-    cutoffEnd: record.cutoffEnd,
-    releasedAt: record.releasedAt,
-    payslip: record.payslip,
-    adjustments: record.adjustments,
-  }
-
-  return new Response(payslipPdf(document), {
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${payslipFileName(document)}"`,
-      // Pay is personal and the figures are recomputed on every read; neither
-      // is something a shared cache should be holding on to.
-      "Cache-Control": "no-store, private",
-    },
-  })
+  // The reader already answers in the document's own shape, and the response
+  // is built where the document is — so this route decides who may ask, and
+  // nothing about what comes back.
+  return payslipResponse(record)
 }

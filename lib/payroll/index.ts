@@ -90,6 +90,17 @@ export const NIGHT_DIFFERENTIAL_RATE = 0.1
 export const NIGHT_STARTS_HOUR = 22
 export const NIGHT_ENDS_HOUR = 6
 
+/**
+ * What a night hour is worth, as a percentage — 110.
+ *
+ * Rounded, and named, because `(1 + 0.1) * 100` is 110.00000000000001 in binary
+ * floating point, and every screen and document that explains the rule was
+ * printing it that way.
+ */
+export const NIGHT_HOUR_PERCENT = Math.round(
+  (1 + NIGHT_DIFFERENTIAL_RATE) * 100
+)
+
 export const PAGIBIG_MONTHLY = 200
 /** Employee share. The 5% total is split evenly with the employer. */
 export const PHILHEALTH_EMPLOYEE_RATE = 0.025

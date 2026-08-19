@@ -14,6 +14,7 @@ import { dayLabel, minutesLabel } from "@/lib/attendance"
 import { peso } from "@/lib/reimbursement"
 import {
   NIGHT_DIFFERENTIAL_RATE,
+  NIGHT_HOUR_PERCENT,
   OVERTIME_STARTS_AFTER_HOURS,
   PAGIBIG_MONTHLY,
   PHILHEALTH_EMPLOYEE_RATE,
@@ -682,7 +683,7 @@ export function PayslipDialog({
                 {OVERTIME_STARTS_AFTER_HOURS} hours on the clock, so an
                 approval on its own pays nothing. An hour between 22:00 and
                 06:00 pays the hourly rate plus a further{" "}
-                {NIGHT_DIFFERENTIAL_RATE * 100}% — {(1 + NIGHT_DIFFERENTIAL_RATE) * 100}% in
+                {NIGHT_DIFFERENTIAL_RATE * 100}% — {NIGHT_HOUR_PERCENT}% in
                 total — and is shown on the night line instead of in basic pay,
                 so no hour is counted twice. Contributions
                 are monthly and this is one of two cutoffs, so half of each is
@@ -696,11 +697,24 @@ export function PayslipDialog({
             carries `-mx-3 -mb-3` (and `sm:-mx-4 -mb-4`) to cancel the padding a
             normal dialog has — but this panel is full-bleed, so there is no
             padding to cancel and those negatives drag the footer past the
-            panel's edges, where overflow-hidden slices the last button in half.
-
-            Placeholders: present so the layout reads right, wired to nothing. */}
+            panel's edges, where overflow-hidden slices the last button in half. */}
         <DialogFooter className="mx-0 mb-0 px-4 sm:mx-0 sm:mb-0 sm:justify-end sm:px-5">
-          <Button variant="outline" title="Not wired up yet">
+          {/* An anchor, so the browser owns the download and files it in its
+              own list — which survives closing this dialog. The figures are
+              recomputed by the route rather than posted from here, so the link
+              is right before the fetch above has even answered.
+
+              It is the same document the employee downloads from their own
+              payslip, off the same reader: what the office checks here is what
+              the person is handed. */}
+          <Button
+            variant="outline"
+            render={
+              <a
+                href={`/api/payroll/payslip?employee=${employeeId}&cutoff=${cutoffDay}`}
+              />
+            }
+          >
             <Download />
             Download PDF
           </Button>
