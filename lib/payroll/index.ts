@@ -533,6 +533,34 @@ export type Payslip = {
   net: number
 }
 
+/**
+ * What was actually withheld, line by line.
+ *
+ * `deductions.sss` and its siblings are what the *schedules* ask for. When the
+ * cutoff cannot cover them — somebody who did not work at all still owes a
+ * contribution — only `deductions.total` is taken, and the rest is carried.
+ * A register that prints the scheduled figures next to a zero net pay does not
+ * add up, and a document about money that does not add up gets distrusted in
+ * every other column too.
+ *
+ * Allocated in the order the schedules are listed, until the pay runs out.
+ * Whoever is owed first is paid first; nothing is scaled or invented.
+ */
+export function withheldBreakdown(slip: Payslip) {
+  let left = slip.deductions.total
+  const take = (amount: number) => {
+    const taken = Math.min(amount, left)
+    left = money(left - taken)
+    return money(taken)
+  }
+  return {
+    sss: take(slip.deductions.sss),
+    philhealth: take(slip.deductions.philhealth),
+    pagibig: take(slip.deductions.pagibig),
+    adjustments: take(slip.deductions.adjustments),
+  }
+}
+
 export function computePayslip({
   hourlyRate,
   days,

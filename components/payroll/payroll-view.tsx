@@ -20,7 +20,7 @@ import { peso } from "@/lib/reimbursement"
 import { dayLabel } from "@/lib/attendance"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
@@ -241,12 +241,17 @@ export function PayrollView({
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          {/* Still a placeholder: the office's own copy of the whole run is a
-              different document from the payslip an employee downloads. */}
-          <Button variant="outline" size="lg" title="Not wired up yet">
+          {/* A plain anchor, so the browser owns the download and files it in
+              its own list. The cutoff on screen travels with it — the office's
+              copy is only ever of the run they are looking at. */}
+          <a
+            href={`/api/payroll/download?cutoff=${cutoff.day}`}
+            className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
+            title="The whole run as a spreadsheet"
+          >
             <Download />
-            <span className="hidden sm:inline">Download PDF</span>
-          </Button>
+            <span className="hidden sm:inline">Download Excel</span>
+          </a>
 
           {released ? (
             <div className="flex items-center gap-2">
