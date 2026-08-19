@@ -91,6 +91,28 @@ export function monthlyFromHourly(hourlyRate: number) {
   return hourlyRate * HOURS_PER_DAY * PAID_DAYS_PER_MONTH
 }
 
+/**
+ * Sunday is everyone's rest day — employees and admin staff alike.
+ *
+ * Kept here rather than in lib/payroll with the other pay rules, because both
+ * sides of the system need it: payroll to pay the premium, and the scheduling
+ * form to warn whoever is booking the job that the day costs more. This module
+ * is the light one both can import — pulling the payroll engine into the
+ * schedules bundle to read a single number is 31KB nobody asked for.
+ */
+export const REST_DAY_WEEKDAY = 0
+
+/** An hour worked on a rest day is worth the hourly rate plus this much. */
+export const REST_DAY_RATE = 0.3
+
+/**
+ * Read in server-local time, like every other date decision in this codebase —
+ * a UTC host would otherwise call Saturday evening a Sunday.
+ */
+export function isRestDay(date: Date) {
+  return date.getDay() === REST_DAY_WEEKDAY
+}
+
 export const MONTHLY_RATE_BASIS = `${HOURS_PER_DAY} hrs/day × ${PAID_DAYS_PER_MONTH} days`
 
 // "E-0114" → "E-0115". Falls back to E-0001 when nothing is numbered yet.

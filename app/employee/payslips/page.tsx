@@ -61,6 +61,7 @@ export default async function EmployeePayslipsPage() {
       overtimePay: slip.overtimePay,
       nightPay: slip.nightPay,
       holidayPay: slip.holidayPay,
+      restDayPay: slip.restDayPay,
       adjustmentAdditions: slip.adjustmentAdditions,
       gross: slip.gross,
       deductions: slip.deductions.total,

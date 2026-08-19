@@ -153,6 +153,7 @@ export default async function PayrollPage({
       overtimePay: payslip.overtimePay,
       nightPay: payslip.nightPay,
       holidayPay: payslip.holidayPay,
+      restDayPay: payslip.restDayPay,
       gross: payslip.gross,
       deductions: payslip.deductions.total,
       net: payslip.net,

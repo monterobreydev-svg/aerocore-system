@@ -87,13 +87,14 @@ export type ReportData = {
   /** Hours on the clock per day — the trend line. */
   hoursByDay: { date: string; hours: number; punches: number }[]
 
-  /** What made up the payroll, per cutoff. Four categorical series. */
+  /** What made up the payroll, per cutoff. Five categorical series. */
   payrollByCutoff: {
     label: string
     basic: number
     overtime: number
     night: number
     holiday: number
+    restDay: number
   }[]
 
   scheduleStatus: Slice[]
@@ -349,7 +350,7 @@ export async function buildReport(input: ReportRange): Promise<ReportData> {
     })
 
     for (const cutoff of cutoffs) {
-      const totals = { basic: 0, overtime: 0, night: 0, holiday: 0 }
+      const totals = { basic: 0, overtime: 0, night: 0, holiday: 0, restDay: 0 }
       const holidaysInCutoff = holidaysBetween(cutoff.start, cutoff.end)
 
       for (const employee of employees) {
@@ -376,6 +377,7 @@ export async function buildReport(input: ReportRange): Promise<ReportData> {
         totals.overtime += slip.overtimePay
         totals.night += slip.nightPay
         totals.holiday += slip.holidayPay
+        totals.restDay += slip.restDayPay
         grossPay += slip.gross
         netPay += slip.net
       }
@@ -386,6 +388,7 @@ export async function buildReport(input: ReportRange): Promise<ReportData> {
         overtime: Math.round(totals.overtime),
         night: Math.round(totals.night),
         holiday: Math.round(totals.holiday),
+        restDay: Math.round(totals.restDay),
       })
     }
   }

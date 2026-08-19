@@ -1,4 +1,9 @@
-import { HOURS_PER_DAY, monthlyFromHourly } from "@/lib/employee"
+import {
+  HOURS_PER_DAY,
+  REST_DAY_RATE,
+  isRestDay,
+  monthlyFromHourly,
+} from "@/lib/employee"
 import { holidayOn } from "@/lib/payroll/holidays"
 
 // ---------------------------------------------------------------------------
@@ -53,6 +58,11 @@ export const OVERTIME_MULTIPLIER = 1
 
 /** A regular holiday worked pays twice the day's rate. */
 export const HOLIDAY_MULTIPLIER = 2
+
+// Sunday is everyone's rest day. The rate and the weekday live in lib/employee
+// with the other working-time facts, so the scheduling form can read them too.
+// Re-exported here because payroll is where callers expect to find pay rules.
+export { REST_DAY_RATE, isRestDay } from "@/lib/employee"
 
 /**
  * How far back to look for the workday before a regular holiday.
@@ -226,6 +236,8 @@ export type PayrollDay = {
   /** Night hours that fall inside paid time, and so are paid at rate + 10%. */
   nightPaidHours: number
   holiday: string | null
+  /** Sunday. Worth the hourly rate plus 30% on every hour the day pays. */
+  restDay: boolean
   worked: boolean
   /** Regular hours at the plain rate, *excluding* the night hours below. */
   basicPay: number
@@ -233,6 +245,8 @@ export type PayrollDay = {
   nightPay: number
   /** Basic pay's holiday half — the second 100%, shown separately. */
   holidayPremium: number
+  /** The extra 30% for working a rest day, over regular and overtime hours. */
+  restDayPremium: number
   total: number
 }
 
@@ -255,11 +269,13 @@ export function computeDay(
       nightHours: 0,
       nightPaidHours: 0,
       holiday,
+      restDay: isRestDay(input.date),
       worked: true,
       basicPay: 0,
       overtimePay: 0,
       nightPay: 0,
       holidayPremium: 0,
+      restDayPremium: 0,
       total: 0,
     }
   }
@@ -319,6 +335,16 @@ export function computeDay(
   const holidayPremium = holiday ? regularPay * (HOLIDAY_MULTIPLIER - 1) : 0
   const overtimePay = overtimeHours * hourlyRate * OVERTIME_MULTIPLIER
 
+  // Thirty per cent over every hour the day pays at the hourly rate — the
+  // regular hours and the overtime alike, since a rest day changes the rate
+  // rather than one line of it. Taken against `regularPay` for the same reason
+  // the holiday premium is: a night shift moves hours off the basic line, and
+  // the rest day must not be lost on the hours that moved.
+  const restDay = isRestDay(input.date)
+  const restDayPremium = restDay
+    ? (regularPay + overtimePay) * REST_DAY_RATE
+    : 0
+
   return {
     date,
     renderedMinutes,
@@ -328,12 +354,16 @@ export function computeDay(
     nightHours,
     nightPaidHours,
     holiday,
+    restDay,
     worked: true,
     basicPay: money(basic),
     overtimePay: money(overtimePay),
     nightPay: money(nightPay),
     holidayPremium: money(holidayPremium),
-    total: money(basic + holidayPremium + overtimePay + nightPay),
+    restDayPremium: money(restDayPremium),
+    total: money(
+      basic + holidayPremium + restDayPremium + overtimePay + nightPay
+    ),
   }
 }
 
@@ -463,6 +493,8 @@ export type Payslip = {
   overtimePay: number
   /** The night hours in full: their own pay plus the 10% premium. */
   nightPay: number
+  /** The 30% earned across every rest day worked in the cutoff. */
+  restDayPay: number
   /** Adjustments that pay more, already inside `gross`. */
   adjustmentAdditions: number
   gross: number
@@ -570,6 +602,7 @@ export function computePayslip({
   )
   const overtimePay = money(sum((day) => day.overtimePay))
   const nightPay = money(sum((day) => day.nightPay))
+  const restDayPay = money(sum((day) => day.restDayPremium))
   // The sign is the whole meaning: what pays more joins the earnings, what
   // pays less joins the deductions. Split here so the payslip can show each in
   // the half it belongs to rather than as one net number nobody can check.
@@ -589,6 +622,7 @@ export function computePayslip({
       holidayPay +
       overtimePay +
       nightPay +
+      restDayPay +
       adjustmentAdditions
   )
 
@@ -636,6 +670,7 @@ export function computePayslip({
     holidayPay,
     overtimePay,
     nightPay,
+    restDayPay,
     adjustmentAdditions,
     gross,
     sss,

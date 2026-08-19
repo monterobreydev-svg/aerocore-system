@@ -29,6 +29,7 @@ export type PayslipSummary = {
   overtimePay: number
   nightPay: number
   holidayPay: number
+  restDayPay: number
   adjustmentAdditions: number
   gross: number
   deductions: number
@@ -164,6 +165,11 @@ function PayslipCard({
                 label={`Night · ${slip.nightPaidHours} h at rate +10%`}
                 value={peso(slip.nightPay)}
                 muted={slip.nightPay === 0}
+              />
+              <Line
+                label="Rest day (Sundays worked, +30%)"
+                value={peso(slip.restDayPay)}
+                muted={slip.restDayPay === 0}
               />
               <Line
                 label="Holiday pay"

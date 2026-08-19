@@ -3,6 +3,7 @@ import "server-only"
 import { renderPdf, monoColumns, type PdfBlock } from "@/lib/formats/pdf"
 import {
   NIGHT_DIFFERENTIAL_RATE,
+  REST_DAY_RATE,
   OVERTIME_STARTS_AFTER_HOURS,
   REGULAR_HOURS_PER_DAY,
   type Payslip,
@@ -218,7 +219,16 @@ export function payslipBlocks(doc: PayslipDocument): PdfBlock[] {
       [hours(slip.regularHours), HOURS],
       [hours(slip.overtimeHours), OT],
       [hours(slip.nightHours), NIGHT],
-      [amount(slip.basicPay + slip.overtimePay + slip.nightPay + slip.holidayPay), PAY],
+      [
+        amount(
+          slip.basicPay +
+            slip.overtimePay +
+            slip.nightPay +
+            slip.holidayPay +
+            slip.restDayPay
+        ),
+        PAY,
+      ],
     ]),
   })
 
@@ -239,6 +249,10 @@ export function payslipBlocks(doc: PayslipDocument): PdfBlock[] {
     [
       `Night hours (${slip.nightPaidHours} h @ ${rate} + ${NIGHT_DIFFERENTIAL_RATE * 100}%)`,
       amount(slip.nightPay),
+    ],
+    [
+      `Rest day premium (Sundays worked @ +${REST_DAY_RATE * 100}%)`,
+      amount(slip.restDayPay),
     ],
     ["Holiday pay", amount(slip.holidayPay)],
   ]

@@ -503,6 +503,15 @@ export function PayslipDialog({
                       amount={slip.nightPay}
                     />
                     <Line
+                      label="Rest day premium"
+                      basis={
+                        slip.restDayPay === 0
+                          ? "no Sunday worked this cutoff"
+                          : "Sundays worked — rate +30%"
+                      }
+                      amount={slip.restDayPay}
+                    />
+                    <Line
                       label="Holiday pay"
                       basis={
                         slip.holidayPay === 0

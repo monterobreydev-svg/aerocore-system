@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { MapPin, MoonStar } from "lucide-react"
+import { CalendarClock, MapPin, MoonStar } from "lucide-react"
 import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
 import { listBranches } from "@/app/actions/schedules"
+import { REST_DAY_RATE, isRestDay } from "@/lib/employee"
 import {
   SCHEDULE_STATUSES,
   SCHEDULE_STATUS_LABELS,
@@ -207,6 +208,12 @@ export function ScheduleFormFields({
     ? branches.find((branch) => branch.id === context.branchId)?.address
     : selectedClient?.address
 
+  // Parsed the same way dateKey writes it, so the browser and the server agree
+  // on which day a Sunday is.
+  const restDay = /^d{4}-d{2}-d{2}$/.test(context.date)
+    ? isRestDay(new Date(`${context.date}T00:00:00`))
+    : false
+
   const start = combineDateTime(context.date, context.startTime)
   // The employee picker checks for clashes against this, so it has to be the
   // real end — a night shift's end is on the next day, not eleven hours before
@@ -311,9 +318,23 @@ export function ScheduleFormFields({
                   rejected submit — the picker greys the days out but gives no
                   reason, and a greyed-out calendar with no explanation reads as
                   something broken. */}
-              {minDate && !errors?.date && (
+              {minDate && !errors?.date && !restDay && (
                 <p className="text-xs text-muted-foreground">
                   Today onwards.
+                </p>
+              )}
+              {/* Said before the job is booked, not discovered on the payslip
+                  two weeks later: a Sunday is everyone's rest day, and every
+                  hour worked on one costs the hourly rate plus 30%. Not a
+                  warning and not a block — scheduling Sunday work is a normal
+                  thing to do, it just costs more. */}
+              {restDay && !errors?.date && (
+                <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                  <CalendarClock className="mt-px size-3.5 shrink-0" />
+                  <span>
+                    That&rsquo;s a Sunday — a rest day. Hours worked pay at the
+                    hourly rate +{REST_DAY_RATE * 100}%.
+                  </span>
                 </p>
               )}
               <FieldError

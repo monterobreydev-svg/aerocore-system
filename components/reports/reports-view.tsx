@@ -99,11 +99,25 @@ const ACCENT = {
   claims: "var(--viz-4)",
 } as const
 
+/**
+ * Four series, not five.
+ *
+ * Payroll now has a fifth component — the rest day premium — and the honest
+ * options were to seat a fifth hue or to fold. A fifth was computed and put
+ * through the validator: a rose that separates cleanly in light mode fails
+ * against the violet in dark at ΔE 14.9, under the 15 floor where even
+ * full-colour vision struggles. Generating a hue that fails the check is the
+ * thing the palette rules exist to prevent.
+ *
+ * So the two premiums share a slot. They are the same kind of money — extra
+ * paid for working a day you were not meant to — and the table view behind
+ * this chart lists both in full, so nothing is lost by folding them here.
+ */
 const PAYROLL_SERIES = [
   { key: "basic", label: "Basic", color: "var(--viz-1)" },
   { key: "overtime", label: "Overtime", color: "var(--viz-2)" },
   { key: "night", label: "Night differential", color: "var(--viz-3)" },
-  { key: "holiday", label: "Holiday premium", color: "var(--viz-4)" },
+  { key: "premium", label: "Holiday & rest day", color: "var(--viz-4)" },
 ]
 
 /**
@@ -323,7 +337,13 @@ export function ReportsView({
   const payrollTotals = PAYROLL_SERIES.map((_, slot) =>
     data.payrollByCutoff.reduce(
       (total, cutoff) =>
-        total + [cutoff.basic, cutoff.overtime, cutoff.night, cutoff.holiday][slot],
+        total +
+        [
+          cutoff.basic,
+          cutoff.overtime,
+          cutoff.night,
+          cutoff.holiday + cutoff.restDay,
+        ][slot],
       0
     )
   )
@@ -583,14 +603,22 @@ export function ReportsView({
           summary={`${peso(headline.grossPay)} gross · ${data.payrollByCutoff.length} cutoff${data.payrollByCutoff.length === 1 ? "" : "s"}`}
         >
           <Block
-            caption="What earned the pay — ordinary hours, overtime, the night differential and holiday premium. The wide bar is the whole period; the rows below split it by cutoff, each drawn against the largest."
-            columns={["Cutoff", "Basic", "Overtime", "Night", "Holiday"]}
+            caption="What earned the pay — ordinary hours, overtime, the night differential, and the premiums for working a holiday or a Sunday. The wide bar is the whole period; the rows below split it by cutoff, each drawn against the largest. Switch to the table to see the two premiums apart."
+            columns={[
+              "Cutoff",
+              "Basic",
+              "Overtime",
+              "Night",
+              "Holiday",
+              "Rest day",
+            ]}
             rows={data.payrollByCutoff.map((c) => [
               c.label,
               peso(c.basic),
               peso(c.overtime),
               peso(c.night),
               peso(c.holiday),
+              peso(c.restDay),
             ])}
             empty="No payroll fell in this period."
           >
@@ -606,7 +634,12 @@ export function ReportsView({
                   series={PAYROLL_SERIES}
                   rows={data.payrollByCutoff.map((c) => ({
                     label: c.label,
-                    values: [c.basic, c.overtime, c.night, c.holiday],
+                    values: [
+                      c.basic,
+                      c.overtime,
+                      c.night,
+                      c.holiday + c.restDay,
+                    ],
                   }))}
                   format={peso}
                 />

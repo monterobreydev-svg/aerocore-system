@@ -58,6 +58,7 @@ export type PayrollRow = {
   overtimePay: number
   nightPay: number
   holidayPay: number
+  restDayPay: number
   gross: number
   deductions: number
   net: number
