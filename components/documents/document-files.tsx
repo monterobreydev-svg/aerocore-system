@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react"
 import { Download } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Pager } from "@/components/ui/pager"
 import { ReportFileRow } from "@/components/documents/report-file-row"
@@ -99,12 +100,14 @@ export function DocumentFiles({
             </Button>
           )}
           {/* A disabled anchor still follows its href, so with nothing ticked
-              there is no anchor to follow. */}
+              there is no anchor to follow. The live one is a styled <a> rather
+              than a <Button render={<a/>}>: Base UI's Button expects a native
+              <button> underneath, and this navigates. */}
           {href ? (
-            <Button size="sm" render={<a href={href} />}>
+            <a href={href} className={cn(buttonVariants({ size: "sm" }))}>
               <Download />
               Download {count} as ZIP
-            </Button>
+            </a>
           ) : (
             <Button size="sm" disabled>
               <Download />

@@ -12,7 +12,7 @@ import {
 
 import { peso } from "@/lib/reimbursement"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
 export type PayslipSummary = {
@@ -127,18 +127,16 @@ function PayslipCard({
           </Button>
 
           {/* A plain link, so the browser takes the download into its own list
-              rather than holding it in a page the employee might leave. */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-auto"
-            render={
-              <a href={`/api/payslips/download?cutoff=${slip.cutoffDay}`} />
-            }
+              rather than holding it in a page the employee might leave — and
+              styled rather than rendered through <Button>, because Base UI's
+              Button expects a native <button> underneath and says so. */}
+          <a
+            href={`/api/payslips/download?cutoff=${slip.cutoffDay}`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "ml-auto")}
           >
             <Download />
             Download PDF
-          </Button>
+          </a>
         </div>
 
         {open && (

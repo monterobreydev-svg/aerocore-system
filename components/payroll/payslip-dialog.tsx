@@ -21,7 +21,7 @@ import {
   REGULAR_HOURS_PER_DAY,
 } from "@/lib/payroll"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
@@ -699,25 +699,28 @@ export function PayslipDialog({
             padding to cancel and those negatives drag the footer past the
             panel's edges, where overflow-hidden slices the last button in half. */}
         <DialogFooter className="mx-0 mb-0 px-4 sm:mx-0 sm:mb-0 sm:justify-end sm:px-5">
-          {/* An anchor, so the browser owns the download and files it in its
-              own list — which survives closing this dialog. The figures are
-              recomputed by the route rather than posted from here, so the link
-              is right before the fetch above has even answered.
+          {/* An anchor wearing the button's clothes, so the browser owns the
+              download and files it in its own list — which survives closing
+              this dialog. The figures are recomputed by the route rather than
+              posted from here, so the link is right before the fetch above has
+              even answered.
+
+              Styled with `buttonVariants` rather than rendered through
+              <Button>: this is a link, not a button. Base UI's Button expects a
+              native <button> underneath and warns when it doesn't get one, and
+              the escape hatch — `nativeButton={false}` — is the wrong fix here,
+              because it would put button semantics on something that navigates.
 
               It is the same document the employee downloads from their own
               payslip, off the same reader: what the office checks here is what
               the person is handed. */}
-          <Button
-            variant="outline"
-            render={
-              <a
-                href={`/api/payroll/payslip?employee=${employeeId}&cutoff=${cutoffDay}`}
-              />
-            }
+          <a
+            href={`/api/payroll/payslip?employee=${employeeId}&cutoff=${cutoffDay}`}
+            className={cn(buttonVariants({ variant: "outline" }))}
           >
             <Download />
             Download PDF
-          </Button>
+          </a>
           <Button title="Not wired up yet">
             <Send />
             Release payslip
