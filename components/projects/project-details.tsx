@@ -40,6 +40,10 @@ const FIELD_LABELS: Record<string, string> = {
   cogs: "the COGS",
   cashCollection: "the cash collection",
   accrualRevenue: "the accrual revenue",
+  // Not used by the sentence below — these two are rendered as events — but
+  // kept so an old row still reads as something if the wording ever changes.
+  expenseAdded: "a recorded expense",
+  expenseRemoved: "a recorded expense",
 }
 
 /** An empty side of a change reads as a dash, not as nothing at all. */
@@ -85,23 +89,51 @@ function ProjectHistory({
           <div className="flex flex-col gap-3">
             {entries.map((entry) => (
               <div key={entry.id} className="flex gap-2.5 text-sm">
-                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-sky-500" />
+                <span
+                  className={cn(
+                    "mt-1.5 size-1.5 shrink-0 rounded-full",
+                    entry.field === "expenseAdded"
+                      ? "bg-rose-500"
+                      : entry.field === "expenseRemoved"
+                        ? "bg-emerald-500"
+                        : "bg-sky-500"
+                  )}
+                />
                 <div className="min-w-0">
-                  <p>
-                    <span className="font-medium">{entry.editedByName}</span>{" "}
-                    changed{" "}
-                    <span className="font-medium">
-                      {FIELD_LABELS[entry.field] ?? entry.field}
-                    </span>{" "}
-                    from{" "}
-                    <Badge variant="outline">
-                      {historyValue(entry.oldValue)}
-                    </Badge>{" "}
-                    to{" "}
-                    <Badge variant="outline">
-                      {historyValue(entry.newValue)}
-                    </Badge>
-                  </p>
+                  {/* An expense is an event, not a field that moved from one
+                      value to another — "changed the expense from — to Parts"
+                      is not a sentence anybody should have to decode. */}
+                  {entry.field === "expenseAdded" ||
+                  entry.field === "expenseRemoved" ? (
+                    <p>
+                      <span className="font-medium">{entry.editedByName}</span>{" "}
+                      {entry.field === "expenseAdded" ? "recorded" : "removed"}{" "}
+                      an expense{" "}
+                      <Badge variant="outline">
+                        {historyValue(
+                          entry.field === "expenseAdded"
+                            ? entry.newValue
+                            : entry.oldValue
+                        )}
+                      </Badge>
+                    </p>
+                  ) : (
+                    <p>
+                      <span className="font-medium">{entry.editedByName}</span>{" "}
+                      changed{" "}
+                      <span className="font-medium">
+                        {FIELD_LABELS[entry.field] ?? entry.field}
+                      </span>{" "}
+                      from{" "}
+                      <Badge variant="outline">
+                        {historyValue(entry.oldValue)}
+                      </Badge>{" "}
+                      to{" "}
+                      <Badge variant="outline">
+                        {historyValue(entry.newValue)}
+                      </Badge>
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {formatDateTime(entry.createdAt)}
                   </p>

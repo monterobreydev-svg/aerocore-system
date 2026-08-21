@@ -851,11 +851,14 @@ export async function recordCompanyExpenses(
   const projects = wanted.length
     ? await prisma.project.findMany({
         where: { salesOrderNo: { in: wanted } },
-        select: { salesOrderNo: true, clientId: true },
+        select: { id: true, salesOrderNo: true, clientId: true },
       })
     : []
   const clientBySalesOrder = new Map(
     projects.map((project) => [project.salesOrderNo, project.clientId])
+  )
+  const projectIdBySalesOrder = new Map(
+    projects.map((project) => [project.salesOrderNo, project.id])
   )
 
   const rowErrors: Record<number, string> = {}
@@ -872,19 +875,44 @@ export async function recordCompanyExpenses(
     return { message: "Some rows need fixing.", rowErrors }
   }
 
-  await prisma.companyExpense.createMany({
-    data: lines.map((line) => ({
-      kind: line.kind,
-      spentOn: localDay(line.spentOn),
-      description: line.description,
-      amount: line.amount,
-      // Overhead belongs to no job, and saying so explicitly keeps a stray
-      // client id from making one look like a job's cost later.
-      clientId: line.kind === "COGS" ? (line.clientId ?? null) : null,
-      salesOrderNo: line.kind === "COGS" ? (line.salesOrderNo ?? null) : null,
-      createdById: session.accountId,
-    })),
+  // A COGS row moves a project's cost, so it belongs in that project's
+  // history beside every other change to it. Overhead moves no project and
+  // gets no entry — the month's breakdown already names who recorded it.
+  const history = lines.flatMap((line) => {
+    if (line.kind !== "COGS") return []
+    const projectId = projectIdBySalesOrder.get(line.salesOrderNo!)
+    if (!projectId) return []
+    return [
+      {
+        projectId,
+        editedById: session.accountId,
+        field: "expenseAdded",
+        oldValue: null,
+        newValue: `${line.description} · ${amount(line.amount)}`,
+      },
+    ]
   })
+
+  // The rows and the record of them go in together, for the same reason the
+  // batch itself is one transaction.
+  await prisma.$transaction([
+    prisma.companyExpense.createMany({
+      data: lines.map((line) => ({
+        kind: line.kind,
+        spentOn: localDay(line.spentOn),
+        description: line.description,
+        amount: line.amount,
+        // Overhead belongs to no job, and saying so explicitly keeps a stray
+        // client id from making one look like a job's cost later.
+        clientId: line.kind === "COGS" ? (line.clientId ?? null) : null,
+        salesOrderNo: line.kind === "COGS" ? (line.salesOrderNo ?? null) : null,
+        createdById: session.accountId,
+      })),
+    }),
+    ...(history.length > 0
+      ? [prisma.projectEditLog.createMany({ data: history })]
+      : []),
+  ])
 
   revalidatePath("/admin/projects")
   return { success: true, recorded: lines.length }
@@ -908,6 +936,43 @@ export async function deleteCompanyExpense(expenseId: string) {
     throw new Error("You don't have permission to remove expenses.")
   }
 
-  await prisma.companyExpense.delete({ where: { id: expenseId } })
+  // Read before the delete: the history entry has to say what went, and after
+  // the row is gone there is nothing left to say it with.
+  const expense = await prisma.companyExpense.findUnique({
+    where: { id: expenseId },
+    select: {
+      kind: true,
+      description: true,
+      amount: true,
+      salesOrderNo: true,
+    },
+  })
+  if (!expense) return
+
+  const project =
+    expense.kind === "COGS" && expense.salesOrderNo
+      ? await prisma.project.findUnique({
+          where: { salesOrderNo: expense.salesOrderNo },
+          select: { id: true },
+        })
+      : null
+
+  await prisma.$transaction([
+    prisma.companyExpense.delete({ where: { id: expenseId } }),
+    ...(project
+      ? [
+          prisma.projectEditLog.create({
+            data: {
+              projectId: project.id,
+              editedById: session.accountId,
+              field: "expenseRemoved",
+              oldValue: `${expense.description} · ${amount(Number(expense.amount))}`,
+              newValue: null,
+            },
+          }),
+        ]
+      : []),
+  ])
+
   revalidatePath("/admin/projects")
 }

@@ -561,7 +561,9 @@ export function ExpensesDialog({
             >
               {pending
                 ? "Saving…"
-                : `Save ${ready.length || ""} expense${ready.length === 1 ? "" : "s"}`}
+                : ready.length === 0
+                  ? "Save expenses"
+                  : `Save ${ready.length} expense${ready.length === 1 ? "" : "s"}`}
             </Button>
           </div>
         </DialogFooter>
