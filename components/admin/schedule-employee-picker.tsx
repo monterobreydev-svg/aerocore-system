@@ -12,12 +12,30 @@ import { skillMatchCount } from "@/lib/employee"
 import {
   findBusyConflicts,
   formatTime,
+  formatTimeRange,
+  isSameDay,
   type EmployeeBusyBlock,
 } from "@/lib/schedule"
 import type { EmployeeOption } from "@/components/admin/schedule-types"
 
 function initials(first: string, last: string) {
   return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase()
+}
+
+/**
+ * "8:00 AM – 10:00 AM" — the whole block they're taken for.
+ *
+ * The start on its own doesn't answer the question being asked. "Busy 8:00 AM"
+ * gives no way to tell a two-hour service call from a full day on site, so the
+ * only way to know whether the person could still take this job was to open the
+ * other one. The full range was in the `title` all along — a tooltip, which on
+ * the phones this is used on doesn't exist.
+ */
+function busyLabel(block: EmployeeBusyBlock) {
+  // A night shift ends on the following day, and "8:00 PM – 6:00 AM" reads as
+  // going backwards unless that's said out loud.
+  const overnight = !isSameDay(new Date(block.start), new Date(block.end))
+  return `${formatTimeRange(block.start, block.end)}${overnight ? " +1d" : ""}`
 }
 
 export function ScheduleEmployeePicker({
@@ -304,7 +322,11 @@ export function ScheduleEmployeePicker({
                     )
                     .join("\n")}
                 >
-                  Busy {formatTime(clashes[0].start)}
+                  Busy {busyLabel(clashes[0])}
+                  {/* Two clashes in one shift is rare but real — a morning
+                      call and an afternoon one. Naming the count keeps the
+                      badge honest about showing only the first. */}
+                  {clashes.length > 1 && ` +${clashes.length - 1} more`}
                 </Badge>
               ) : start && end ? (
                 <span className="shrink-0 text-xs text-emerald-700 dark:text-emerald-400">
