@@ -99,6 +99,8 @@ model UserAccount {
   payrollAdjustments   PayrollAdjustment[] @relation("PayrollAdjustmentsMade")
   payrollReleases      PayrollRelease[]    @relation("PayrollReleases")
   pushSubscriptions    PushSubscription[]  @relation("AccountPushSubscriptions")
+  createdProjects      Project[]           @relation("ProjectCreatedBy")
+  projectEdits         ProjectEditLog[]    @relation("ProjectEditsMade")
 }
 
 // One browser that has agreed to receive notifications.
@@ -243,6 +245,7 @@ model Client {
   schedules          Schedule[]
   reimbursementItems ReimbursementItemClient[] @relation("ClientReimbursementItems")
   attendanceReports  AttendanceReport[]        @relation("ClientAttendanceReports")
+  projects           Project[]                 @relation("ClientProjects")
 }
 
 // A client can have any number of people you'd call — accounts payable,
@@ -747,4 +750,108 @@ model OvertimeRequest {
   reviewNote   String?
 
   @@index([employeeId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+//
+// The company's own order book: one row per job sold, tracked from the day it
+// starts to the day it is closed and paid. This is the ledger the office used
+// to keep on a spreadsheet, so it is deliberately shaped like one — a running
+// sales order number, the money as typed, and every derived figure left out.
+//
+// The VAT columns, gross profit and the monthly and yearly totals are NOT
+// stored. They are arithmetic on the four figures below, and a stored copy is
+// a second answer waiting to disagree with the first the moment somebody edits
+// an amount. See lib/projects, which is the one place that arithmetic lives.
+// ---------------------------------------------------------------------------
+
+enum ProjectStatus {
+  IN_PROGRESS
+  ACCOUNT_RECEIVABLE
+  BILLED
+  FOR_BILLING
+  ON_HOLD
+  CLOSED
+}
+
+// The terms as the office writes them on a quotation. An enum rather than free
+// text so the same terms can be counted and filtered later.
+enum PaymentTerms {
+  TWO_WEEKS
+  UPON_COMPLETION
+  NET_30
+  NET_60
+  DP30_PB60_RETENTION10
+  DP50_COMPLETION50
+}
+
+model Project {
+  id String @id @default(uuid())
+
+  /**
+   * "260001" — two digits of the year it was booked, then a running number.
+   * Issued by the system and never edited; unique is what makes the numbering
+   * safe when two people add a project at the same moment.
+   */
+  salesOrderNo String        @unique
+  status       ProjectStatus @default(IN_PROGRESS)
+
+  /**
+   * Local midnight. The month a project belongs to is this date's month —
+   * change it and the project moves, which is why nothing about its position
+   * in the list is stored.
+   */
+  startDate DateTime
+  endDate   DateTime?
+
+  /**
+   * Sales invoice number, once one has been issued.
+   */
+  siNo String?
+
+  name     String
+  clientId String
+  client   Client       @relation("ClientProjects", fields: [clientId], references: [id])
+  terms    PaymentTerms
+
+  // The four figures anybody types. Decimal, not Float: these are pesos, and
+  // binary floating point cannot hold 0.1 exactly — a column of them drifts.
+  projectAmount  Decimal
+  cogs           Decimal
+  cashCollection Decimal
+  accrualRevenue Decimal
+
+  createdById String
+  createdBy   UserAccount @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  editLogs ProjectEditLog[]
+
+  // The list is always "one year, grouped by month", and often "one client".
+  @@index([startDate])
+  @@index([clientId])
+}
+
+// Who changed what about a project, since it was booked.
+//
+// Same shape as ScheduleEditLog and for the same reason: a project carries
+// money, and "who moved the COGS" is a question that gets asked weeks later.
+// Values are resolved to the words the office uses — the client by name, the
+// status and terms by label, the money already formatted — so a row read a year
+// from now makes sense without joining anything back.
+model ProjectEditLog {
+  id         String      @id @default(uuid())
+  projectId  String
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  editedById String
+  editedBy   UserAccount @relation("ProjectEditsMade", fields: [editedById], references: [id])
+  field      String
+  oldValue   String?
+  newValue   String?
+  createdAt  DateTime    @default(now())
+
+  // Always read as "this project's history, newest first".
+  @@index([projectId, createdAt])
 }
