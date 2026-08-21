@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server"
 
 import { verifySession } from "@/lib/auth"
+import { roleLabel } from "@/lib/auth/roles"
+import { getCurrentEmployee } from "@/lib/db/dal"
 import { buildReport } from "@/lib/reports"
 import { reportFileName, reportPdf } from "@/lib/reports/pdf"
 
@@ -33,9 +35,22 @@ export async function GET(request: NextRequest) {
   )
   const to = parseDay(params.get("to"), today)
 
-  const data = await buildReport({ from, to })
+  // Whose name goes on it. A report is quoted back weeks later, and "who ran
+  // this, and when" is the first thing anybody asks of a figure they disagree
+  // with — so it is stamped in the footer of every page rather than left to
+  // whoever forwarded the file to remember.
+  const [data, employee] = await Promise.all([
+    buildReport({ from, to }),
+    getCurrentEmployee(),
+  ])
 
-  return new Response(reportPdf(data), {
+  const pdf = reportPdf(data, {
+    generatedBy: `${employee.firstName} ${employee.lastName}`,
+    role: roleLabel(employee.role),
+    generatedAt: new Date(),
+  })
+
+  return new Response(pdf, {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${reportFileName(data)}"`,

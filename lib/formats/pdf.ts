@@ -22,12 +22,61 @@ import "server-only"
 //   which is what a payslip is read as. That one needs real glyph widths, so
 //   the Helvetica tables below exist for it.
 
-const PAGE_WIDTH = 595 // A4 at 72dpi
-const PAGE_HEIGHT = 842
-const MARGIN = 48
+export const PAGE_WIDTH = 595 // A4 at 72dpi
+export const PAGE_HEIGHT = 842
+export const MARGIN = 48
 const BOTTOM = 56
 
 export const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2
+
+// ---------------------------------------------------------------------------
+// Colour
+// ---------------------------------------------------------------------------
+//
+// PDF wants three floats between nought and one, lower case for a fill and
+// upper case for a stroke. Callers hold hexes because that is what the rest of
+// this codebase holds — the report's palette is the same one the reports page
+// draws with — so the conversion happens once, here.
+//
+// Whatever sets a colour is responsible for putting it back. The content stream
+// is one long sequence and the graphics state carries across everything drawn
+// after it, so a fill left set is a fill that quietly recolours the next block.
+
+function channels(hex: string) {
+  const value = hex.replace("#", "")
+  const full =
+    value.length === 3
+      ? value
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : value
+  const packed = Number.parseInt(full, 16)
+  return [
+    ((packed >> 16) & 255) / 255,
+    ((packed >> 8) & 255) / 255,
+    (packed & 255) / 255,
+  ]
+}
+
+const three = (values: number[]) =>
+  values.map((value) => value.toFixed(4)).join(" ")
+
+/** `fill("#0092b7")` — the operator that makes the next shape that colour. */
+export function fill(hex: string) {
+  return `${three(channels(hex))} rg`
+}
+
+/** The same for a line. */
+export function stroke(hex: string) {
+  return `${three(channels(hex))} RG`
+}
+
+/** Back to black, which is what every block assumes when it starts. */
+export const RESET_COLOR = "0 g 0 G"
+
+/** Where a `draw` block has been given to put itself: top-left, and how wide. */
+export type PdfBox = { x: number; y: number; width: number }
 
 /** Courier's one and only advance width, as a fraction of the font size. */
 export const MONO_ADVANCE = 0.6
@@ -38,9 +87,41 @@ export function monoColumns(size: number) {
 }
 
 export type PdfBlock =
-  | { kind: "text"; text: string; font?: PdfFont; size?: number; indent?: number }
-  | { kind: "rule"; light?: boolean }
+  | {
+      kind: "text"
+      text: string
+      font?: PdfFont
+      size?: number
+      indent?: number
+      color?: string
+      /** Multiplier on the size. Defaults to 1.45. */
+      leading?: number
+    }
+  | { kind: "rule"; light?: boolean; color?: string; weight?: number }
   | { kind: "space"; height: number }
+  /**
+   * A shape the caller draws itself: a chart, a band, a card.
+   *
+   * It declares how much of the column it needs and is handed the box it got —
+   * top-left corner and width. What it draws inside that box is its own
+   * business, and it may reach outside it (a letterhead bleeding into the
+   * margin does exactly that), so long as it leaves the graphics state as it
+   * found it.
+   */
+  | {
+      kind: "draw"
+      height: number
+      render: (box: PdfBox) => string[]
+    }
+  /**
+   * Blocks that must not be split across a page.
+   *
+   * A heading stranded at the foot of a page with its chart overleaf is the
+   * single most common way a generated document looks generated. Anything too
+   * tall to fit a page on its own is unwrapped before pagination and flows
+   * normally, because the alternative is a block that can never be placed.
+   */
+  | { kind: "keep"; blocks: PdfBlock[] }
   | PdfTable
 
 /**
@@ -57,6 +138,19 @@ export type PdfTable = {
   rows: PdfTableRow[]
   /** Default size for cells that don't name one. */
   size?: number
+  /** The grid, as a hex. Defaults to the payslip's grey. */
+  grid?: string
+  /** What a shaded cell is shaded with. Defaults to the payslip's grey. */
+  shade?: string
+  /** Draw only the horizontal rules — an open table rather than a boxed form. */
+  open?: boolean
+  /**
+   * Repeat the first row at the top of every page the table continues onto.
+   *
+   * A long table's second page is a wall of unlabelled figures without it, and
+   * the reader has to turn back to find out which column is which.
+   */
+  repeatHead?: boolean
 }
 
 export type PdfTableRow = {
@@ -76,6 +170,10 @@ export type PdfCell = {
   size?: number
   /** Shade this cell alone. */
   fill?: boolean
+  /** The ink. Defaults to black. */
+  color?: string
+  /** Shade this cell with a colour of its own. Implies `fill`. */
+  shade?: string
 }
 
 export type PdfAlign = "left" | "center" | "right"
@@ -227,7 +325,7 @@ function line(x1: number, y1: number, x2: number, y2: number) {
  * three lines because they crossed a page boundary is worse than one that
  * continues overleaf.
  */
-function drawTable(table: PdfTable, from: number, top: number) {
+function drawTable(table: PdfTable, from: number, top: number, bottomLimit = BOTTOM) {
   const size = table.size ?? 9
   const weight = table.widths.reduce((sum, value) => sum + value, 0)
 
@@ -243,12 +341,10 @@ function drawTable(table: PdfTable, from: number, top: number) {
   const text: string[] = []
 
   let y = top
-  let index = from
 
-  while (index < table.rows.length) {
-    const row = table.rows[index]
+  const emit = (row: PdfTableRow) => {
     const height = rowHeight(row, size)
-    if (y - height < BOTTOM) break
+    if (y - height < bottomLimit) return false
 
     const bottom = y - height
     // Cap height is about 0.72 em; centring on that rather than on the full
@@ -263,15 +359,17 @@ function drawTable(table: PdfTable, from: number, top: number) {
       const font = cell.font ?? "sans"
       const cellSize = cell.size ?? size
 
-      if (cell.fill ?? row.fill) {
+      const shade = cell.shade ?? (cell.fill ?? row.fill ? table.shade : undefined)
+      if (shade || cell.fill || row.fill) {
         fills.push(
-          `${FILL_GREY} g ${start.toFixed(2)} ${bottom.toFixed(2)} ${(stop - start).toFixed(2)} ${height.toFixed(2)} re f`
+          `${shade ? fill(shade) : `${FILL_GREY} g`} ${start.toFixed(2)} ${bottom.toFixed(2)} ${(stop - start).toFixed(2)} ${height.toFixed(2)} re f`
         )
       }
 
       // Every internal boundary, drawn per row so a spanned cell has no line
-      // running through it.
-      if (column > 0) strokes.push(line(start, bottom, start, y))
+      // running through it. An open table skips them: rows of figures read
+      // better ruled only horizontally, and a boxed grid is a form, not a table.
+      if (column > 0 && !table.open) strokes.push(line(start, bottom, start, y))
 
       if (cell.text) {
         const shown = fitted(
@@ -289,6 +387,7 @@ function drawTable(table: PdfTable, from: number, top: number) {
               : start + CELL_PADDING
 
         text.push(
+          cell.color ? fill(cell.color) : "0 g",
           `BT /${FONT_KEYS[font]} ${cellSize} Tf 1 0 0 1 ${x.toFixed(2)} ${baseline.toFixed(2)} Tm (${literal(shown)}) Tj ET`
         )
       }
@@ -298,6 +397,17 @@ function drawTable(table: PdfTable, from: number, top: number) {
 
     strokes.push(line(MARGIN, bottom, right, bottom))
     y = bottom
+    return true
+  }
+
+  // The head again, where the table is continuing from an earlier page.
+  if (table.repeatHead && from > 0 && !emit(table.rows[0])) {
+    return { parts: [], y: top, next: from }
+  }
+
+  let index = from
+  while (index < table.rows.length) {
+    if (!emit(table.rows[index])) break
     index++
   }
 
@@ -305,18 +415,21 @@ function drawTable(table: PdfTable, from: number, top: number) {
   if (index === from) return { parts: [], y: top, next: from }
 
   strokes.push(line(MARGIN, top, right, top))
-  strokes.push(line(MARGIN, y, MARGIN, top))
-  strokes.push(line(right, y, right, top))
+  if (!table.open) {
+    strokes.push(line(MARGIN, y, MARGIN, top))
+    strokes.push(line(right, y, right, top))
+  }
 
   return {
     // Fills first or they cover the grid; the grid before the text for the
     // same reason.
     parts: [
       ...fills,
-      `${GRID_GREY} G 0.6 w`,
+      `${table.grid ? stroke(table.grid) : `${GRID_GREY} G`} 0.6 w`,
       ...strokes,
-      "0 g",
+      RESET_COLOR,
       ...text,
+      RESET_COLOR,
     ],
     y,
     next: index,
@@ -372,6 +485,44 @@ function literal(text: string) {
 }
 
 /**
+ * One run of text, placed at a point rather than in the flow.
+ *
+ * What a `draw` block composes with. The anchor moves with the alignment — `x`
+ * is the left edge, the centre or the right edge of the run — because that is
+ * how a chart thinks: a value label sits at the end of its bar, an axis label
+ * is centred under its column.
+ */
+export function drawText(
+  text: string,
+  at: {
+    x: number
+    y: number
+    font?: PdfFont
+    size?: number
+    color?: string
+    align?: PdfAlign
+  }
+): string[] {
+  if (!text) return []
+
+  const font = at.font ?? "sans"
+  const size = at.size ?? 8
+  const width = textWidth(text, font, size)
+  const x =
+    at.align === "right"
+      ? at.x - width
+      : at.align === "center"
+        ? at.x - width / 2
+        : at.x
+
+  return [
+    at.color ? fill(at.color) : "0 g",
+    `BT /${FONT_KEYS[font]} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${at.y.toFixed(2)} Tm (${literal(text)}) Tj ET`,
+    "0 g",
+  ]
+}
+
+/**
  * Where the last page stopped: a block, and how far into it.
  *
  * `row` is only ever non-zero for a table that ran off the bottom of a page —
@@ -379,12 +530,84 @@ function literal(text: string) {
  */
 type Cursor = { index: number; row: number }
 
+/** How much of the column a block will eat. Only `keep` needs to ask. */
+function blockHeight(block: PdfBlock): number {
+  switch (block.kind) {
+    case "text":
+      return (block.size ?? 10) * (block.leading ?? 1.45)
+    case "space":
+      return block.height
+    case "rule":
+      return 6
+    case "draw":
+      return block.height
+    case "keep":
+      return block.blocks.reduce((sum, child) => sum + blockHeight(child), 0)
+    case "table": {
+      const size = block.size ?? 9
+      return block.rows.reduce((sum, row) => sum + rowHeight(row, size), 0)
+    }
+  }
+}
+
+/** One block, drawn where it stands. Never paginates — `keep` guarantees room. */
+function drawInline(block: PdfBlock, y: number, parts: string[]): number {
+  switch (block.kind) {
+    case "space":
+      return y - block.height
+    case "rule":
+      parts.push(rule(block, y))
+      return y - 6
+    case "draw":
+      parts.push(...block.render({ x: MARGIN, y, width: CONTENT_WIDTH }))
+      return y - block.height
+    case "table": {
+      const drawn = drawTable(block, 0, y, 0)
+      parts.push(...drawn.parts)
+      return drawn.y
+    }
+    case "keep":
+      return block.blocks.reduce(
+        (cursor, child) => drawInline(child, cursor, parts),
+        y
+      )
+    case "text": {
+      const next = y - (block.size ?? 10) * (block.leading ?? 1.45)
+      parts.push(...runOfText(block, next))
+      return next
+    }
+  }
+}
+
+function rule(block: Extract<PdfBlock, { kind: "rule" }>, y: number) {
+  const ink = block.color
+    ? stroke(block.color)
+    : `${block.light ? "0.85" : "0.6"} G`
+  return `${ink} ${(block.weight ?? 0.5).toFixed(2)} w ${MARGIN} ${y.toFixed(2)} m ${(PAGE_WIDTH - MARGIN).toFixed(2)} ${y.toFixed(2)} l S 0 G`
+}
+
+function runOfText(
+  block: Extract<PdfBlock, { kind: "text" }>,
+  baseline: number
+) {
+  const size = block.size ?? 10
+  const font = block.font ?? "sans"
+  const x = MARGIN + (block.indent ?? 0)
+  return [
+    block.color ? fill(block.color) : "0 g",
+    `BT /${FONT_KEYS[font]} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${baseline.toFixed(2)} Tm (${literal(block.text)}) Tj ET`,
+    "0 g",
+  ]
+}
+
 function contentStream(
   blocks: PdfBlock[],
-  startAt: Cursor
+  startAt: Cursor,
+  top: number,
+  bottomLimit: number
 ): { stream: string; next: Cursor } {
   const parts: string[] = []
-  let y = PAGE_HEIGHT - MARGIN
+  let y = top
   let index = startAt.index
   let row = startAt.row
 
@@ -392,7 +615,7 @@ function contentStream(
     const block = blocks[index]
 
     if (block.kind === "table") {
-      const drawn = drawTable(block, row, y)
+      const drawn = drawTable(block, row, y, bottomLimit)
       parts.push(...drawn.parts)
       y = drawn.y
 
@@ -407,6 +630,17 @@ function contentStream(
       continue
     }
 
+    if (block.kind === "keep" || block.kind === "draw") {
+      const height = blockHeight(block)
+      // It does not fit here, and the page is not empty — so it belongs on the
+      // next one whole. (Anything that cannot fit an empty page was unwrapped
+      // before pagination, so this can never loop.)
+      if (y - height < bottomLimit && y < top) break
+      y = drawInline(block, y, parts)
+      index++
+      continue
+    }
+
     if (block.kind === "space") {
       y -= block.height
       index++
@@ -417,29 +651,22 @@ function contentStream(
       // A rule needs no room of its own — it sits on the gap already left by
       // the space around it — but it must not be the thing that runs off the
       // bottom of a page either.
-      if (y < BOTTOM) break
-      parts.push(
-        `${block.light ? "0.85" : "0.6"} G 0.5 w ${MARGIN} ${y.toFixed(2)} m ${(PAGE_WIDTH - MARGIN).toFixed(2)} ${y.toFixed(2)} l S`
-      )
+      if (y < bottomLimit) break
+      parts.push(rule(block, y))
       y -= 6
       index++
       continue
     }
 
-    const size = block.size ?? 10
-    const font = block.font ?? "sans"
-    const leading = size * 1.45
+    const leading = (block.size ?? 10) * (block.leading ?? 1.45)
 
     y -= leading
-    if (y < BOTTOM) {
+    if (y < bottomLimit) {
       y += leading
       break
     }
 
-    const x = MARGIN + (block.indent ?? 0)
-    parts.push(
-      `BT /${FONT_KEYS[font]} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${literal(block.text)}) Tj ET`
-    )
+    parts.push(...runOfText(block, y))
     index++
   }
 
@@ -454,20 +681,81 @@ function contentStream(
 }
 
 /**
+ * `keep` groups that could never fit a page, opened out into ordinary flow.
+ *
+ * Without this a group taller than the paper is a block that is always deferred
+ * to the next page and never placed. Unwrapping it costs the guarantee it was
+ * asking for, which is the right trade: a chart split across two pages beats a
+ * chart that is silently dropped.
+ */
+function unwrapOversized(blocks: PdfBlock[], room: number): PdfBlock[] {
+  return blocks.flatMap((block) =>
+    block.kind === "keep" && blockHeight(block) > room
+      ? unwrapOversized(block.blocks, room)
+      : [block]
+  )
+}
+
+/**
+ * What a document may reserve outside the flow.
+ *
+ * The insets are how a letterhead and a running footer get their space without
+ * every block having to know they exist; `decorate` is what draws them, called
+ * once per page after pagination, when the total is finally known — a footer
+ * saying "page 3 of 7" cannot be written before the seventh page exists.
+ */
+export type PdfOptions = {
+  /** Reserved at the top of page one, for a letterhead. */
+  firstPageInset?: number
+  /** Reserved at the top of every page after the first, for a running header. */
+  pageInset?: number
+  /** Reserved at the foot of every page, for a footer. */
+  footerInset?: number
+  decorate?: (page: number, total: number) => string[]
+}
+
+/**
  * The blocks as a PDF, paginated top to bottom.
  *
  * Returns bytes rather than writing anywhere — the caller decides whether that
  * becomes a download, an attachment or a file.
  */
-export function renderPdf(blocks: PdfBlock[]): Uint8Array<ArrayBuffer> {
+export function renderPdf(
+  blocks: PdfBlock[],
+  options: PdfOptions = {}
+): Uint8Array<ArrayBuffer> {
+  const firstTop = PAGE_HEIGHT - MARGIN - (options.firstPageInset ?? 0)
+  const laterTop = PAGE_HEIGHT - MARGIN - (options.pageInset ?? 0)
+  const bottomLimit = BOTTOM + (options.footerInset ?? 0)
+
+  const flow = unwrapOversized(blocks, laterTop - bottomLimit)
+
   const streams: string[] = []
   let at: Cursor = { index: 0, row: 0 }
 
   do {
-    const { stream, next } = contentStream(blocks, at)
+    const { stream, next } = contentStream(
+      flow,
+      at,
+      streams.length === 0 ? firstTop : laterTop,
+      bottomLimit
+    )
     streams.push(stream)
     at = next
-  } while (at.index < blocks.length)
+  } while (at.index < flow.length)
+
+  // Furniture under the content, not over it: a footer rule drawn after a table
+  // would cross whatever the table put there.
+  if (options.decorate) {
+    const total = streams.length
+    for (let page = 0; page < total; page++) {
+      streams[page] = [
+        ...options.decorate(page + 1, total),
+        RESET_COLOR,
+        streams[page],
+      ].join("\n")
+    }
+  }
 
   // Object numbering: 1 catalog, 2 pages, then a page and a stream per sheet,
   // then the four fonts. Worked out up front because a cross-reference table is
