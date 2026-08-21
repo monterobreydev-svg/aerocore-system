@@ -10,6 +10,13 @@ import {
   PAYMENT_TERMS_LABELS,
   PROJECT_STATUS_LABELS,
 } from "@/lib/projects"
+import {
+  OPEX_LOOKBACK_DAYS,
+  OPEX_STAFF,
+  opexForMonth,
+  type OpexMonth,
+  type OpexPerson,
+} from "@/lib/opex"
 import { dateKey } from "@/lib/schedule"
 import type { PaymentTerms, ProjectStatus } from "@/app/generated/prisma/client"
 
@@ -562,5 +569,108 @@ export async function listProjectCosts(
     pending: sum(false),
     lines,
     truncated: rows.length === PROJECT_COST_LIMIT,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// What the office cost in one month
+// ---------------------------------------------------------------------------
+
+/**
+ * The admin side's wages for a month, person by person.
+ *
+ * The company sheet shows the total; this is who it was paid to. Read when a
+ * month is opened rather than with the sheet — twelve months of somebody's
+ * attendance is exactly the payload the tracker exists to avoid.
+ *
+ * Read-only, and deliberately so. Every figure here is payroll's, worked out
+ * from punches by payroll's own rules; the place to change any of it is the
+ * attendance record or the payroll page, not a project sheet.
+ */
+export async function listMonthlyOpex(
+  year: number,
+  month: number
+): Promise<OpexMonth> {
+  const empty: OpexMonth = { month, total: 0, people: [] }
+  if (!(await requireProjectAccess())) return empty
+  if (!Number.isInteger(month) || month < 0 || month > 11) return empty
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return empty
+
+  // The month, not the cutoff: overhead is reported by calendar month, and the
+  // two cutoffs inside one both fall in it. The read reaches back a few days
+  // further so a holiday on the 1st knows whether it was qualified.
+  const start = new Date(year, month, 1)
+  const end = new Date(year, month + 1, 0, 23, 59, 59, 999)
+  const from = new Date(start)
+  from.setDate(from.getDate() - OPEX_LOOKBACK_DAYS)
+
+  const staff = await prisma.employee.findMany({
+    where: OPEX_STAFF,
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      position: true,
+      hourlyRate: true,
+      account: { select: { role: true } },
+      attendance: {
+        where: { date: { gte: from, lte: end } },
+        select: {
+          date: true,
+          timeIn: true,
+          timeOut: true,
+          overtime: { select: { hours: true, approvedHours: true, status: true } },
+        },
+      },
+      payrollAdjustments: {
+        where: { cutoffStart: { gte: start, lte: end } },
+        select: { cutoffStart: true, label: true, amount: true },
+      },
+    },
+    orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+  })
+
+  const people: OpexPerson[] = []
+
+  for (const person of staff) {
+    const figures = opexForMonth(
+      year,
+      month,
+      person.attendance.map((punch) => ({
+        date: punch.date,
+        timeIn: punch.timeIn,
+        timeOut: punch.timeOut,
+        approvedOvertimeHours:
+          punch.overtime?.status === "APPROVED"
+            ? Number(punch.overtime.approvedHours ?? punch.overtime.hours)
+            : 0,
+      })),
+      person.payrollAdjustments.map((row) => ({
+        cutoffStart: row.cutoffStart,
+        label: row.label,
+        amount: Number(row.amount),
+      })),
+      Number(person.hourlyRate)
+    )
+
+    // Somebody who cost nothing this month isn't listed — a row of zeroes for
+    // every admin on staff would bury the ones that count.
+    if (figures.pay === 0) continue
+
+    people.push({
+      employeeId: person.id,
+      name: `${person.firstName} ${person.lastName}`,
+      role: person.account?.role ?? "EMPLOYEE",
+      position: person.position,
+      ...figures,
+    })
+  }
+
+  people.sort((a, b) => b.pay - a.pay)
+
+  return {
+    month,
+    total: Math.round(people.reduce((sum, p) => sum + p.pay, 0) * 100) / 100,
+    people,
   }
 }

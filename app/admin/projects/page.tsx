@@ -8,6 +8,7 @@ import {
   type ProjectMonth,
   type ProjectRow,
 } from "@/lib/projects"
+import { OPEX_LOOKBACK_DAYS, OPEX_STAFF, opexForMonth } from "@/lib/opex"
 import { dateKey } from "@/lib/schedule"
 import { ProjectsView } from "@/components/projects/projects-view"
 
@@ -159,6 +160,82 @@ export default async function AdminProjectsPage({
     costs.map((row) => [row.soNumber, Number(row._sum.amount ?? 0)])
   )
 
+  // ---------------------------------------------------------------------
+  // What the office cost
+  //
+  // The admin side's own wages, worked out from their punches by the same
+  // rules payroll uses — see lib/opex. One read of the year for the handful of
+  // people it covers, then totalled per month here so the browser is sent a
+  // figure per month rather than a year of somebody's attendance.
+  //
+  // Not filtered by client or S.O.: overhead belongs to the month, not to a
+  // job. It is the one column on the company sheet the project filters leave
+  // alone, and the sheet says so.
+  // ---------------------------------------------------------------------
+  // Reaches back before the year opens: a holiday on 1 January is qualified by
+  // the last workday of December, and a read starting on the 1st cannot say
+  // whether it pays.
+  const opexFrom = new Date(windowStart)
+  opexFrom.setDate(opexFrom.getDate() - OPEX_LOOKBACK_DAYS)
+
+  const opexStaff = await prisma.employee.findMany({
+    where: OPEX_STAFF,
+    select: {
+      id: true,
+      hourlyRate: true,
+      attendance: {
+        where: { date: { gte: opexFrom, lte: windowEnd } },
+        select: {
+          date: true,
+          timeIn: true,
+          timeOut: true,
+          overtime: { select: { hours: true, approvedHours: true, status: true } },
+        },
+      },
+      // Allowances the office added by hand. Money the company pays, so it is
+      // overhead as much as an hour worked is.
+      payrollAdjustments: {
+        where: { cutoffStart: { gte: windowStart, lte: windowEnd } },
+        select: { cutoffStart: true, label: true, amount: true },
+      },
+    },
+  })
+
+  const opexByMonthTotal = new Map<number, number>()
+  for (const person of opexStaff) {
+    const punches = person.attendance.map((punch) => ({
+      date: punch.date,
+      timeIn: punch.timeIn,
+      timeOut: punch.timeOut,
+      // Only what the office granted — the same rule the payslip applies.
+      approvedOvertimeHours:
+        punch.overtime?.status === "APPROVED"
+          ? Number(punch.overtime.approvedHours ?? punch.overtime.hours)
+          : 0,
+    }))
+    const adjustments = person.payrollAdjustments.map((row) => ({
+      cutoffStart: row.cutoffStart,
+      label: row.label,
+      amount: Number(row.amount),
+    }))
+
+    for (let month = 0; month < 12; month++) {
+      const figures = opexForMonth(
+        year,
+        month,
+        punches,
+        adjustments,
+        Number(person.hourlyRate)
+      )
+      if (figures.pay === 0) continue
+
+      opexByMonthTotal.set(
+        month,
+        Math.round(((opexByMonthTotal.get(month) ?? 0) + figures.pay) * 100) / 100
+      )
+    }
+  }
+
   const projects: ProjectRow[] = records.map((record) => ({
     id: record.id,
     salesOrderNo: record.salesOrderNo,
@@ -219,6 +296,7 @@ export default async function AdminProjectsPage({
         months={months}
         yearTotals={sumFigures(projects)}
         clients={clients}
+        opexByMonth={Object.fromEntries(opexByMonthTotal)}
         nextNumber={nextSalesOrderNo(latest?.salesOrderNo)}
         filters={{ clientId, from: from ?? "", to: to ?? "", query }}
       />

@@ -20,6 +20,9 @@ import {
   percent,
   pesoAmount,
   summariseMonth,
+  sumFigures,
+  type MonthSummary,
+  type OpexByMonth,
   type ProjectMonth,
   type ProjectRow,
   type ProjectTotals,
@@ -39,6 +42,10 @@ const ProjectsLedger = dynamic(() =>
 )
 const ProjectDialog = dynamic(() =>
   import("@/components/projects/project-dialog").then((m) => m.ProjectDialog)
+)
+// Opened from a row of the company sheet, so it arrives on that tap.
+const OpexDialog = dynamic(() =>
+  import("@/components/projects/opex-dialog").then((m) => m.OpexDialog)
 )
 
 export type ClientOption = { id: string; name: string }
@@ -127,20 +134,50 @@ function SummaryCard({
  */
 function CompanySheet({
   months,
+  opexByMonth,
   yearTotals,
   year,
+  onOpenMonth,
 }: {
   months: ProjectMonth[]
+  opexByMonth: OpexByMonth
   yearTotals: ProjectTotals
   year: number
+  onOpenMonth: (summary: MonthSummary) => void
 }) {
   // Derived from totals already on screen rather than fetched again — there is
   // nothing here the ledger's own figures don't already contain.
-  const rows = useMemo(
-    () => months.map((month) => summariseMonth(month.month, month.totals)),
-    [months]
+  // Every month that had either projects or a payroll to meet. A month with
+  // overhead and no jobs is a real month of the business — leaving it out
+  // would hide the cost along with the empty row.
+  const rows = useMemo(() => {
+    const byProjects = new Map(months.map((month) => [month.month, month]))
+    const all = [
+      ...new Set([
+        ...months.map((month) => month.month),
+        ...Object.keys(opexByMonth).map(Number),
+      ]),
+    ].sort((a, b) => a - b)
+
+    return all.map((month) =>
+      summariseMonth(
+        month,
+        byProjects.get(month)?.totals ?? sumFigures([]),
+        opexByMonth[month] ?? 0
+      )
+    )
+  }, [months, opexByMonth])
+
+  // The year's overhead is the sum of the months', not a figure of its own.
+  const total = useMemo(
+    () =>
+      summariseMonth(
+        null,
+        yearTotals,
+        Object.values(opexByMonth).reduce((sum, value) => sum + value, 0)
+      ),
+    [yearTotals, opexByMonth]
   )
-  const total = useMemo(() => summariseMonth(null, yearTotals), [yearTotals])
 
   return (
     <section className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
@@ -150,8 +187,8 @@ function CompanySheet({
             column of dashes: net profit currently equals gross profit because
             there is no OPEX to take off it yet. */}
         <p className="text-xs text-muted-foreground">
-          OPEX isn&apos;t recorded in the system yet — net profit is gross
-          profit until it is.
+          OPEX is the admin side&apos;s pay for the month. Open a row to see
+          whose.
         </p>
       </header>
 
@@ -198,7 +235,15 @@ function CompanySheet({
 
           <tbody>
             {rows.map((row) => (
-              <tr key={row.month} className="border-b last:border-b-0">
+              <tr
+                key={row.month}
+                onClick={() => onOpenMonth(row)}
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") onOpenMonth(row)
+                }}
+                className="cursor-pointer border-b transition-colors last:border-b-0 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+              >
                 <td className="px-3 py-1.5 font-medium">
                   {MONTH_NAMES[row.month!]}
                 </td>
@@ -291,6 +336,7 @@ export function ProjectsView({
   months,
   yearTotals,
   clients,
+  opexByMonth,
   nextNumber,
   filters,
 }: {
@@ -299,6 +345,7 @@ export function ProjectsView({
   months: ProjectMonth[]
   yearTotals: ProjectTotals
   clients: ClientOption[]
+  opexByMonth: OpexByMonth
   nextNumber: string
   filters: Filters
 }) {
@@ -306,6 +353,7 @@ export function ProjectsView({
   const [tab, setTab] = useState<string>("summary")
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<ProjectRow | null>(NO_PROJECT)
+  const [openMonth, setOpenMonth] = useState<MonthSummary | null>(null)
 
   // What's in the search box, which runs ahead of the URL while somebody is
   // still typing. The dates need no such state: they are applied from the
@@ -520,10 +568,16 @@ export function ProjectsView({
         </TabsList>
 
         <TabsContent value="summary" className="pt-4">
-          {months.length === 0 ? (
+          {months.length === 0 && Object.keys(opexByMonth).length === 0 ? (
             empty
           ) : (
-            <CompanySheet months={months} yearTotals={yearTotals} year={year} />
+            <CompanySheet
+              months={months}
+              opexByMonth={opexByMonth}
+              yearTotals={yearTotals}
+              year={year}
+              onOpenMonth={setOpenMonth}
+            />
           )}
         </TabsContent>
 
@@ -542,6 +596,18 @@ export function ProjectsView({
               )}
         </TabsContent>
       </Tabs>
+
+      {openMonth && (
+        <OpexDialog
+          key={openMonth.month}
+          year={year}
+          summary={openMonth}
+          open
+          onOpenChange={(next) => {
+            if (!next) setOpenMonth(null)
+          }}
+        />
+      )}
 
       {/* Mounted only while open, for the same reason. */}
       {(adding || editing) && (

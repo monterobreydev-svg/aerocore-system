@@ -273,6 +273,15 @@ export type ProjectMonth = {
   totals: ProjectTotals
 }
 
+/**
+ * Overhead per month, keyed 0–11.
+ *
+ * Separate from ProjectMonth on purpose: a month can carry office wages
+ * without a single project starting in it, and the company sheet has to show
+ * that month rather than silently drop the cost with it.
+ */
+export type OpexByMonth = Record<number, number>
+
 // ---------------------------------------------------------------------------
 // The company sheet
 // ---------------------------------------------------------------------------
