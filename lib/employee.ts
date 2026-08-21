@@ -87,6 +87,62 @@ export function skillMatchCount(skills: readonly string[], workTypes: WorkType[]
 export const HOURS_PER_DAY = 8
 export const PAID_DAYS_PER_MONTH = 26
 
+// ---------------------------------------------------------------------------
+// Working time
+// ---------------------------------------------------------------------------
+//
+// The rules that turn minutes on the clock into payable hours.
+//
+// They live here rather than in lib/payroll with the money, for the same reason
+// `isRestDay` does: the screens have to agree with the engine, and a screen that
+// imports the payroll engine to read one number pays about 31KB for it. An
+// attendance dialog printing "8.78 h" under the words "For payroll" — when
+// payroll will pay 8 — is exactly the failure this placement prevents.
+//
+// lib/payroll re-exports all of it, so payroll code keeps reading the rules
+// where it expects to find them.
+
+/** Unpaid, and the reason a full day on site is nine hours rather than eight. */
+export const UNPAID_BREAK_HOURS = 1
+
+/**
+ * A day has to run past this before a single overtime hour is earned.
+ *
+ * Eight paid hours plus the unpaid break: nine hours on site is an ordinary
+ * day, not a long one. Someone approved for two hours has to be on the clock
+ * for eleven before both are worked.
+ */
+export const OVERTIME_STARTS_AFTER_HOURS = HOURS_PER_DAY + UNPAID_BREAK_HOURS
+
+/**
+ * Minutes to payable hours: whole hours only, never rounded up.
+ *
+ * The part people get wrong when they read a timesheet: 7h59m is seven hours,
+ * not 7.98. Minutes are what the office reads a shift in; they are not a unit
+ * payroll has.
+ */
+export function wholeHours(minutes: number) {
+  return Math.max(0, Math.floor(minutes / 60))
+}
+
+/** What a day's minutes pay at the plain rate: whole hours, capped at eight. */
+export function paidRegularHours(minutes: number) {
+  return Math.min(wholeHours(minutes), HOURS_PER_DAY)
+}
+
+/**
+ * Overtime actually payable: whichever is smaller, what the office granted or
+ * what the clock shows past the ninth hour.
+ *
+ * An approval is permission to work the hours, not payment for them — two
+ * hours approved on a 10h30m day is one hour of overtime, and whole hours
+ * only, so the thirty minutes are not half of another.
+ */
+export function paidOvertimeHours(minutes: number, approvedHours: number) {
+  const worked = Math.max(0, wholeHours(minutes) - OVERTIME_STARTS_AFTER_HOURS)
+  return Math.min(Math.max(0, approvedHours), worked)
+}
+
 export function monthlyFromHourly(hourlyRate: number) {
   return hourlyRate * HOURS_PER_DAY * PAID_DAYS_PER_MONTH
 }

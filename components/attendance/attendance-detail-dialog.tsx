@@ -24,10 +24,12 @@ import {
   COARSE_FIX_METRES,
   coordinateLabel,
   dayLabel,
-  decimalHours,
   mapsLink,
   minutesLabel,
 } from "@/lib/attendance"
+// The light module, deliberately: these are the payroll rules, but importing
+// them from lib/payroll would pull the whole engine into this lazy chunk.
+import { paidOvertimeHours, paidRegularHours } from "@/lib/employee"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -423,6 +425,14 @@ export function AttendanceDetailDialog({
 
   const overtime = row.overtime
   const working = !row.timeOut
+
+  // What the overtime is actually worth on this punch. An approval is
+  // permission to work the hours, not payment for them — granting two on a
+  // 10h30m day pays one, because only one was worked past the ninth hour.
+  const paidOvertime =
+    overtime?.status === "APPROVED" && row.minutes != null
+      ? paidOvertimeHours(row.minutes, grantedHours(overtime))
+      : 0
   const purged = row.photosPurgedAt != null
 
   return (
@@ -512,17 +522,24 @@ export function AttendanceDetailDialog({
                 label="On the clock"
                 value={row.minutes == null ? "—" : minutesLabel(row.minutes)}
               />
+              {/* Whole hours, capped at eight — what payroll will actually
+                  pay, computed by the rule payroll uses. This used to print
+                  the span as a decimal, which is not a unit payroll has: a
+                  7h59m day showed as "7.98 h" and pays seven, and a 10h30m day
+                  showed as "10.50 h" and pays eight plus whatever overtime was
+                  approved *and* worked. A figure labelled "for payroll" has to
+                  be the figure payroll arrives at. */}
               <Stat
                 label="For payroll"
                 value={
                   row.minutes == null
                     ? "—"
-                    : `${decimalHours(row.minutes).toFixed(2)} h`
+                    : `${paidRegularHours(row.minutes)} h`
                 }
                 hint={
-                  overtime && overtime.status === "APPROVED"
-                    ? `+${grantedHours(overtime)}h overtime`
-                    : undefined
+                  row.minutes == null || paidOvertime === 0
+                    ? undefined
+                    : `+${paidOvertime} h overtime`
                 }
               />
             </div>

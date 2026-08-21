@@ -247,7 +247,14 @@ export function clockTime(iso: string | Date) {
   })
 }
 
-/** "8h 12m". The office reads shifts this way; payroll reads decimalHours. */
+/**
+ * "8h 12m". How the office reads a shift.
+ *
+ * Not how payroll reads it — payroll takes whole hours only and caps the day
+ * at eight, which is `paidRegularHours` in lib/employee. Neither this nor
+ * `decimalHours` below is a payable figure, so neither belongs under a label
+ * that says one is.
+ */
 export function minutesLabel(minutes: number) {
   const whole = Math.max(0, Math.round(minutes))
   const hours = Math.floor(whole / 60)

@@ -2,6 +2,9 @@ import {
   HOURS_PER_DAY,
   REST_DAY_RATE,
   isRestDay,
+  paidOvertimeHours,
+  paidRegularHours,
+  wholeHours,
 } from "@/lib/employee"
 import { holidayOn } from "@/lib/payroll/holidays"
 
@@ -40,19 +43,6 @@ import { holidayOn } from "@/lib/payroll/holidays"
 /** Paid hours in a normal day. The ninth hour on site is the meal break. */
 export const REGULAR_HOURS_PER_DAY = HOURS_PER_DAY
 
-/** Unpaid, and the reason a full day on site is nine hours rather than eight. */
-export const UNPAID_BREAK_HOURS = 1
-
-/**
- * A day has to run past this before a single overtime hour is earned.
- *
- * Eight paid hours plus the unpaid break: nine hours on site is an ordinary
- * day, not a long one. Someone approved for two hours has to be on the clock
- * for eleven before both are worked.
- */
-export const OVERTIME_STARTS_AFTER_HOURS =
-  REGULAR_HOURS_PER_DAY + UNPAID_BREAK_HOURS
-
 /**
  * Approved overtime is paid at the employee's plain hourly rate, by decision.
  * The Labor Code's ordinary-day minimum is 1.25 — change this one number to
@@ -63,10 +53,23 @@ export const OVERTIME_MULTIPLIER = 1
 /** A regular holiday worked pays twice the day's rate. */
 export const HOLIDAY_MULTIPLIER = 2
 
-// Sunday is everyone's rest day. The rate and the weekday live in lib/employee
-// with the other working-time facts, so the scheduling form can read them too.
+// Sunday is everyone's rest day, and minutes become payable hours by one rule
+// only. Both live in lib/employee with the other working-time facts, so the
+// scheduling form and the attendance screens can read them without dragging
+// this module into their bundle — an attendance card that says "for payroll"
+// has to compute it the same way payroll does, or it is just a guess with a
+// confident label on it.
+//
 // Re-exported here because payroll is where callers expect to find pay rules.
-export { REST_DAY_RATE, isRestDay } from "@/lib/employee"
+export {
+  REST_DAY_RATE,
+  isRestDay,
+  UNPAID_BREAK_HOURS,
+  OVERTIME_STARTS_AFTER_HOURS,
+  wholeHours,
+  paidRegularHours,
+  paidOvertimeHours,
+} from "@/lib/employee"
 
 /**
  * How far back to look for the workday before a regular holiday.
@@ -173,11 +176,6 @@ export function sssEmployeeShare(monthlyPay: number): SssShare {
 // ---------------------------------------------------------------------------
 // Hours
 // ---------------------------------------------------------------------------
-
-/** Minutes to paid hours: whole hours only, never rounded up. */
-export function wholeHours(minutes: number) {
-  return Math.max(0, Math.floor(minutes / 60))
-}
 
 function overlapMinutes(
   fromA: Date,
@@ -302,21 +300,14 @@ export function computeDay(
 
   const renderedHours = wholeHours(renderedMinutes)
 
-  // Capped at eight: the ninth hour on site is the unpaid break, and anything
-  // past that is overtime or it is nothing.
-  const regularHours = Math.min(renderedHours, REGULAR_HOURS_PER_DAY)
-
-  // An approval is permission to work the hours, not payment for them. What
-  // gets paid is whichever is smaller: what the office granted, or what the
-  // clock shows past the ninth hour. Two hours approved and a 10h30m day is
-  // one hour of overtime — the second was never worked, and whole hours only,
-  // so the thirty minutes are not half of one.
+  // Both from lib/employee, so the attendance screens showing "for payroll"
+  // are running this arithmetic and not their own approximation of it.
+  const regularHours = paidRegularHours(renderedMinutes)
   const approvedOvertimeHours = Math.max(0, input.approvedOvertimeHours)
-  const overtimeWorked = Math.max(
-    0,
-    renderedHours - OVERTIME_STARTS_AFTER_HOURS
+  const overtimeHours = paidOvertimeHours(
+    renderedMinutes,
+    approvedOvertimeHours
   )
-  const overtimeHours = Math.min(approvedOvertimeHours, overtimeWorked)
   const nightHours = wholeHours(nightMinutes(input.timeIn, input.timeOut))
 
   // Every regular hour at the plain rate, night or not. This is the figure the
