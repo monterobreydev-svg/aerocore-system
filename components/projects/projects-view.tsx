@@ -8,6 +8,7 @@ import {
   LayoutList,
   Loader2,
   Plus,
+  ReceiptText,
   Search,
   Table2,
   TrendingUp,
@@ -46,6 +47,9 @@ const ProjectDialog = dynamic(() =>
 // Opened from a row of the company sheet, so it arrives on that tap.
 const OpexDialog = dynamic(() =>
   import("@/components/projects/opex-dialog").then((m) => m.OpexDialog)
+)
+const ExpensesDialog = dynamic(() =>
+  import("@/components/projects/expenses-dialog").then((m) => m.ExpensesDialog)
 )
 
 export type ClientOption = { id: string; name: string }
@@ -354,6 +358,7 @@ export function ProjectsView({
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<ProjectRow | null>(NO_PROJECT)
   const [openMonth, setOpenMonth] = useState<MonthSummary | null>(null)
+  const [recording, setRecording] = useState(false)
 
   // What's in the search box, which runs ahead of the URL while somebody is
   // still typing. The dates need no such state: they are applied from the
@@ -507,6 +512,19 @@ export function ProjectsView({
               Clear
             </Button>
           )}
+          {/* Red, because it is money going out — the same rose the tables use
+              for a negative figure, not the `destructive` variant, which in
+              this app means "this deletes something". Outlined rather than
+              filled so it stays secondary to Add project: a project is what
+              this page is about, an expense is recorded against one. */}
+          <Button
+            variant="outline"
+            onClick={() => setRecording(true)}
+            className="h-9 border-rose-600/30 text-rose-700 hover:bg-rose-600/10 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-400"
+          >
+            <ReceiptText />
+            Record expenses
+          </Button>
           <Button onClick={() => setAdding(true)} className="h-9">
             <Plus />
             Add project
@@ -596,6 +614,16 @@ export function ProjectsView({
               )}
         </TabsContent>
       </Tabs>
+
+      {recording && (
+        <ExpensesDialog
+          clients={clients}
+          open
+          onOpenChange={(next) => {
+            if (!next) setRecording(false)
+          }}
+        />
+      )}
 
       {openMonth && (
         <OpexDialog

@@ -14,6 +14,7 @@ import {
   OPEX_LOOKBACK_DAYS,
   OPEX_STAFF,
   opexForMonth,
+  type OpexExpense,
   type OpexMonth,
   type OpexPerson,
 } from "@/lib/opex"
@@ -416,7 +417,27 @@ export async function deleteProject(projectId: string) {
     throw new Error("You don't have permission to delete projects.")
   }
 
-  await prisma.project.delete({ where: { id: projectId } })
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { salesOrderNo: true },
+  })
+  if (!project) return
+
+  // Office-recorded costs are charged to a sales order number, not to a row
+  // id, so deleting the project alone would leave them behind — charged to a
+  // job that no longer exists, counted nowhere, and invisible in every
+  // breakdown. They go with it, in the same transaction.
+  //
+  // Employees' liquidation lines are NOT touched: those belong to a claim that
+  // was reviewed and paid. They simply stop counting towards a project, which
+  // is what deleting the project means.
+  await prisma.$transaction([
+    prisma.companyExpense.deleteMany({
+      where: { salesOrderNo: project.salesOrderNo },
+    }),
+    prisma.project.delete({ where: { id: projectId } }),
+  ])
+
   revalidatePath("/admin/projects")
 }
 
@@ -482,12 +503,16 @@ export type ProjectCostLine = {
   /** The day the money was spent, not the day it was filed. */
   spentOn: string
   description: string
+  /** Who spent it, or who recorded it when the office paid directly. */
   employeeName: string
+  /** The liquidation's reference, or "Office" for a row typed in. */
   referenceNo: string
   /** This job's share of the receipt, which is what counts towards COGS. */
   amount: number
   /** False while the claim is still in the review queue. */
   approved: boolean
+  /** Where the line came from, so the panel can say. */
+  source: "liquidation" | "office"
 }
 
 export type ProjectCosts = {
@@ -518,6 +543,21 @@ export async function listProjectCosts(
   const empty: ProjectCosts = { total: 0, pending: 0, lines: [], truncated: false }
   if (!(await requireProjectAccess()) || !salesOrderNo) return empty
 
+  const officeRows = await prisma.companyExpense.findMany({
+    where: { kind: "COGS", salesOrderNo },
+    select: {
+      id: true,
+      spentOn: true,
+      description: true,
+      amount: true,
+      createdBy: {
+        select: { employee: { select: { firstName: true, lastName: true } } },
+      },
+    },
+    orderBy: { spentOn: "desc" },
+    take: PROJECT_COST_LIMIT,
+  })
+
   const rows = await prisma.reimbursementItemClient.findMany({
     where: {
       soNumber: salesOrderNo,
@@ -544,18 +584,33 @@ export async function listProjectCosts(
     take: PROJECT_COST_LIMIT,
   })
 
-  const lines: ProjectCostLine[] = rows.map((row) => {
-    const claim = row.item.reimbursement
-    return {
+  const lines: ProjectCostLine[] = [
+    ...rows.map((row) => {
+      const claim = row.item.reimbursement
+      return {
+        id: row.id,
+        spentOn: dateKey(claim.expenseDate),
+        description: row.item.description,
+        employeeName: `${claim.employee.firstName} ${claim.employee.lastName}`,
+        referenceNo: claim.referenceNo,
+        amount: Number(row.amount),
+        approved: claim.status === "APPROVED",
+        source: "liquidation" as const,
+      }
+    }),
+    // An office row needs no approving — it was recorded by the person who
+    // would have done the approving.
+    ...officeRows.map((row) => ({
       id: row.id,
-      spentOn: dateKey(claim.expenseDate),
-      description: row.item.description,
-      employeeName: `${claim.employee.firstName} ${claim.employee.lastName}`,
-      referenceNo: claim.referenceNo,
+      spentOn: dateKey(row.spentOn),
+      description: row.description,
+      employeeName: `${row.createdBy.employee.firstName} ${row.createdBy.employee.lastName}`,
+      referenceNo: "Office",
       amount: Number(row.amount),
-      approved: claim.status === "APPROVED",
-    }
-  })
+      approved: true,
+      source: "office" as const,
+    })),
+  ].sort((a, b) => b.spentOn.localeCompare(a.spentOn))
 
   const sum = (approved: boolean) =>
     Math.round(
@@ -568,7 +623,9 @@ export async function listProjectCosts(
     total: sum(true),
     pending: sum(false),
     lines,
-    truncated: rows.length === PROJECT_COST_LIMIT,
+    truncated:
+      rows.length === PROJECT_COST_LIMIT ||
+      officeRows.length === PROJECT_COST_LIMIT,
   }
 }
 
@@ -591,7 +648,7 @@ export async function listMonthlyOpex(
   year: number,
   month: number
 ): Promise<OpexMonth> {
-  const empty: OpexMonth = { month, total: 0, people: [] }
+  const empty: OpexMonth = { month, total: 0, wages: 0, people: [], expenses: [] }
   if (!(await requireProjectAccess())) return empty
   if (!Number.isInteger(month) || month < 0 || month > 11) return empty
   if (!Number.isInteger(year) || year < 2000 || year > 2100) return empty
@@ -668,9 +725,189 @@ export async function listMonthlyOpex(
 
   people.sort((a, b) => b.pay - a.pay)
 
+  // Overhead the office typed in for this month — rent, a bill, a permit.
+  const recorded = await prisma.companyExpense.findMany({
+    where: { kind: "OPEX", spentOn: { gte: start, lte: end } },
+    select: {
+      id: true,
+      spentOn: true,
+      description: true,
+      amount: true,
+      createdBy: {
+        select: { employee: { select: { firstName: true, lastName: true } } },
+      },
+    },
+    orderBy: { spentOn: "desc" },
+  })
+
+  const expenses: OpexExpense[] = recorded.map((row) => ({
+    id: row.id,
+    spentOn: dateKey(row.spentOn),
+    description: row.description,
+    amount: Number(row.amount),
+    recordedByName: `${row.createdBy.employee.firstName} ${row.createdBy.employee.lastName}`,
+  }))
+
+  const wages = people.reduce((sum, person) => sum + person.pay, 0)
+  const other = expenses.reduce((sum, row) => sum + row.amount, 0)
+
   return {
     month,
-    total: Math.round(people.reduce((sum, p) => sum + p.pay, 0) * 100) / 100,
+    total: Math.round((wages + other) * 100) / 100,
+    wages: Math.round(wages * 100) / 100,
     people,
+    expenses,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Expenses the office records itself
+// ---------------------------------------------------------------------------
+
+/**
+ * One typed row. `kind` decides which half of the sheet it lands on, and with
+ * it whether a client and a sales order number are required or forbidden.
+ */
+const ExpenseLineSchema = z
+  .object({
+    kind: z.enum(["OPEX", "COGS"]),
+    spentOn: day,
+    description: z
+      .string()
+      .trim()
+      .min(1, "Say what it was for.")
+      .max(200, "That's too long for a description."),
+    amount: money.refine((value) => value > 0, "Enter an amount."),
+    clientId: z.string().trim().optional(),
+    salesOrderNo: z.string().trim().optional(),
+  })
+  .refine(
+    (line) => line.kind === "OPEX" || (line.clientId && line.salesOrderNo),
+    "A job's cost needs a client and a sales order number."
+  )
+
+const ExpenseBatchSchema = z
+  .array(ExpenseLineSchema)
+  .min(1, "Add at least one expense.")
+  // A batch is something somebody typed in one sitting; past this it is a
+  // paste gone wrong, and every row still has to be checked against a project.
+  .max(50, "That's more rows than one batch should carry.")
+
+export type ExpenseBatchState =
+  | { message?: string; rowErrors?: Record<number, string>; success?: never }
+  | { success: true; recorded: number; message?: never; rowErrors?: never }
+  | undefined
+
+/**
+ * Record a batch of office-paid expenses.
+ *
+ * Everything in one transaction: a half-written batch would leave somebody
+ * re-typing the rows that did land, having to work out which those were.
+ *
+ * COGS rows are checked against the project they name — the sales order has to
+ * exist and has to belong to the client chosen beside it. The picker only ever
+ * offers matching pairs, but the picker is not what guards the database.
+ */
+export async function recordCompanyExpenses(
+  _state: ExpenseBatchState,
+  formData: FormData
+): Promise<ExpenseBatchState> {
+  const session = await requireProjectAccess()
+  if (!session) {
+    return { message: "You don't have permission to record expenses." }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(String(formData.get("lines") ?? "[]"))
+  } catch {
+    return { message: "Something went wrong reading the rows." }
+  }
+
+  const validated = ExpenseBatchSchema.safeParse(parsed)
+  if (!validated.success) {
+    const rowErrors: Record<number, string> = {}
+    for (const issue of validated.error.issues) {
+      const row = issue.path[0]
+      if (typeof row === "number") rowErrors[row] = issue.message
+    }
+    return {
+      message:
+        Object.keys(rowErrors).length > 0
+          ? "Some rows need fixing."
+          : (validated.error.issues[0]?.message ?? "Check the rows."),
+      rowErrors,
+    }
+  }
+
+  const lines = validated.data
+
+  // Every sales order named, checked in one read rather than one per row.
+  const wanted = [
+    ...new Set(
+      lines.flatMap((line) => (line.salesOrderNo ? [line.salesOrderNo] : []))
+    ),
+  ]
+  const projects = wanted.length
+    ? await prisma.project.findMany({
+        where: { salesOrderNo: { in: wanted } },
+        select: { salesOrderNo: true, clientId: true },
+      })
+    : []
+  const clientBySalesOrder = new Map(
+    projects.map((project) => [project.salesOrderNo, project.clientId])
+  )
+
+  const rowErrors: Record<number, string> = {}
+  lines.forEach((line, index) => {
+    if (line.kind !== "COGS") return
+    const owner = clientBySalesOrder.get(line.salesOrderNo!)
+    if (!owner) {
+      rowErrors[index] = "That sales order no longer exists."
+    } else if (owner !== line.clientId) {
+      rowErrors[index] = "That sales order belongs to a different client."
+    }
+  })
+  if (Object.keys(rowErrors).length > 0) {
+    return { message: "Some rows need fixing.", rowErrors }
+  }
+
+  await prisma.companyExpense.createMany({
+    data: lines.map((line) => ({
+      kind: line.kind,
+      spentOn: localDay(line.spentOn),
+      description: line.description,
+      amount: line.amount,
+      // Overhead belongs to no job, and saying so explicitly keeps a stray
+      // client id from making one look like a job's cost later.
+      clientId: line.kind === "COGS" ? (line.clientId ?? null) : null,
+      salesOrderNo: line.kind === "COGS" ? (line.salesOrderNo ?? null) : null,
+      createdById: session.accountId,
+    })),
+  })
+
+  revalidatePath("/admin/projects")
+  return { success: true, recorded: lines.length }
+}
+
+/**
+ * Remove one office-recorded expense.
+ *
+ * The way a mistyped row is corrected: take it out and record it again. There
+ * is no edit — these rows are two numbers and a sentence, and re-entering one
+ * is quicker than a form that has to guard which of its fields may move
+ * between an overhead row and a job's cost.
+ *
+ * Only rows the office typed. A liquidation line is an employee's claim, with
+ * a review and a receipt behind it; it is not deletable from a project sheet
+ * and never should be.
+ */
+export async function deleteCompanyExpense(expenseId: string) {
+  const session = await requireProjectAccess()
+  if (!session) {
+    throw new Error("You don't have permission to remove expenses.")
+  }
+
+  await prisma.companyExpense.delete({ where: { id: expenseId } })
+  revalidatePath("/admin/projects")
 }

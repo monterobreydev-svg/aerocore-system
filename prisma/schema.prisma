@@ -101,6 +101,7 @@ model UserAccount {
   pushSubscriptions    PushSubscription[]  @relation("AccountPushSubscriptions")
   createdProjects      Project[]           @relation("ProjectCreatedBy")
   projectEdits         ProjectEditLog[]    @relation("ProjectEditsMade")
+  companyExpenses      CompanyExpense[]    @relation("CompanyExpensesRecorded")
 }
 
 // One browser that has agreed to receive notifications.
@@ -246,6 +247,7 @@ model Client {
   reimbursementItems ReimbursementItemClient[] @relation("ClientReimbursementItems")
   attendanceReports  AttendanceReport[]        @relation("ClientAttendanceReports")
   projects           Project[]                 @relation("ClientProjects")
+  companyExpenses    CompanyExpense[]          @relation("ClientCompanyExpenses")
 }
 
 // A client can have any number of people you'd call — accounts payable,
@@ -858,4 +860,57 @@ model ProjectEditLog {
 
   // Always read as "this project's history, newest first".
   @@index([projectId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Expenses the office records itself
+//
+// The two cost figures on the project tracker are otherwise derived from other
+// people's work: COGS from the expenses employees liquidate against a sales
+// order, OPEX from what payroll would pay the admin side. Neither can hold a
+// supplier invoice the office paid directly, a permit fee, or the electricity
+// bill — money the company plainly spent with no punch and no receipt from a
+// crew behind it.
+//
+// So this is the third source, and the only one anybody types. A row is either
+// overhead or the cost of one job, and which it is decides whether it needs a
+// sales order number: `COGS` rows carry one and land on that project, `OPEX`
+// rows carry none and land on their month.
+// ---------------------------------------------------------------------------
+
+enum CompanyExpenseKind {
+  OPEX
+  COGS
+}
+
+model CompanyExpense {
+  id          String             @id @default(uuid())
+  kind        CompanyExpenseKind
+  /**
+   * Local midnight of the day the money was spent. For an OPEX row this is
+   * what puts it in a month; for a COGS row the project decides the month, and
+   * this is simply when it happened.
+   */
+  spentOn     DateTime
+  description String
+  amount      Decimal
+
+  /**
+   * Both null on an OPEX row, both set on a COGS row.
+   * The sales order number rather than a relation to Project: it is what the
+   * COGS roll-up groups by, the same key the employees' liquidations use, and
+   * it is unique. The client is kept beside it so a row can still say who the
+   * job was for if the project is ever deleted.
+   */
+  clientId     String?
+  client       Client? @relation("ClientCompanyExpenses", fields: [clientId], references: [id])
+  salesOrderNo String?
+
+  createdById String
+  createdBy   UserAccount @relation("CompanyExpensesRecorded", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+
+  // "This month's overhead" and "this job's cost" are the only two questions.
+  @@index([kind, spentOn])
+  @@index([salesOrderNo])
 }

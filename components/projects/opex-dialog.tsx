@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Users } from "lucide-react"
-import { listMonthlyOpex } from "@/app/actions/projects"
+import { Trash2, Users } from "lucide-react"
+import { deleteCompanyExpense, listMonthlyOpex } from "@/app/actions/projects"
 import { MONTH_NAMES } from "@/lib/documents"
 import { amount, pesoAmount, percent, type MonthSummary } from "@/lib/projects"
+import { formatScheduleDate } from "@/lib/schedule"
 import { roleLabel } from "@/lib/auth/roles"
 import type { OpexMonth } from "@/lib/opex"
 import { cn } from "@/lib/utils"
@@ -18,6 +19,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+
+function dayLabel(value: string) {
+  return formatScheduleDate(`${value}T00:00:00`)
+}
 
 function profitTone(value: number) {
   return value < 0
@@ -69,7 +74,29 @@ export function OpexDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const [opex, setOpex] = useState<OpexMonth | null>(null)
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
   const month = summary.month ?? 0
+
+  // Only rows the office typed can go. The wages beside them are payroll's,
+  // and payroll is not edited from here.
+  async function remove(id: string) {
+    setRemoving(id)
+    await deleteCompanyExpense(id)
+    setConfirming(null)
+    setRemoving(null)
+    setOpex(await listMonthlyOpex(year, month))
+  }
+
+  // Once the breakdown has been read — and after anything is removed from it —
+  // the figures come from it rather than from the sheet behind this dialog.
+  // The sheet's copy is a render old the moment a row is deleted, and a total
+  // that disagrees with the list under it is the one thing this panel must
+  // never do.
+  const liveOpex = opex?.total ?? summary.opex
+  const liveNetProfit = Math.round((summary.grossProfit - liveOpex) * 100) / 100
+  const liveNetMargin =
+    summary.accrualRevenue === 0 ? null : liveNetProfit / summary.accrualRevenue
 
   // The holidays that paid, named once for the month: they are the same days
   // for everyone who qualified, so repeating them on each row says nothing.
@@ -123,13 +150,13 @@ export function OpexDialog({
                 value={amount(summary.grossProfit)}
                 tone={profitTone(summary.grossProfit)}
               />
-              <Figure label="OPEX" value={amount(summary.opex)} />
+              <Figure label="OPEX" value={amount(liveOpex)} />
               <Figure
                 label="Net profit"
-                value={amount(summary.netProfit)}
-                tone={profitTone(summary.netProfit)}
+                value={amount(liveNetProfit)}
+                tone={profitTone(liveNetProfit)}
               />
-              <Figure label="Net margin" value={percent(summary.netMargin)} />
+              <Figure label="Net margin" value={percent(liveNetMargin)} />
             </div>
 
             <section className="overflow-hidden rounded-xl border">
@@ -141,13 +168,13 @@ export function OpexDialog({
                       What made up this OPEX
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                      Admin-side pay for the month, from their own time in and
-                      out
+                      Admin-side pay for the month, plus anything the office
+                      recorded against it
                     </p>
                   </div>
                 </div>
                 <p className="text-base font-semibold tabular-nums">
-                  {pesoAmount(summary.opex)}
+                  {pesoAmount(liveOpex)}
                 </p>
               </header>
 
@@ -156,12 +183,13 @@ export function OpexDialog({
                   <Spinner className="size-3.5" />
                   Working it out from the punches…
                 </p>
-              ) : opex.people.length === 0 ? (
+              ) : opex.people.length === 0 && opex.expenses.length === 0 ? (
                 <p className="px-3 py-4 text-xs text-muted-foreground">
-                  Nobody on the admin side clocked a paid day this month, so the
-                  month carries no overhead.
+                  Nobody on the admin side clocked a paid day this month and
+                  nothing was recorded against it, so the month carries no
+                  overhead.
                 </p>
-              ) : (
+              ) : opex.people.length === 0 ? null : (
                 <table className="w-full text-[0.8125rem]">
                   <thead>
                     <tr className="border-b text-[0.625rem] tracking-wide text-muted-foreground uppercase">
@@ -234,6 +262,84 @@ export function OpexDialog({
                     ))}
                   </tbody>
                 </table>
+              )}
+
+              {opex && opex.expenses.length > 0 && (
+                <div className="border-t">
+                  <p className="bg-muted/30 px-3 py-1.5 text-[0.625rem] font-semibold tracking-wide text-muted-foreground uppercase">
+                    Recorded by the office
+                  </p>
+                  <table className="w-full text-[0.8125rem]">
+                    <tbody>
+                      {opex.expenses.map((row) => (
+                        <tr key={row.id} className="border-b last:border-b-0">
+                          <td className="px-3 py-1.5">
+                            <span className="block truncate">
+                              {row.description}
+                            </span>
+                            <span className="block truncate text-[11px] text-muted-foreground">
+                              {dayLabel(row.spentOn)} · {row.recordedByName}
+                            </span>
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-medium tabular-nums">
+                            {amount(row.amount)}
+                          </td>
+                          <td className="w-8 px-2 py-1.5">
+                            <button
+                              type="button"
+                              aria-label={`Remove ${row.description}`}
+                              title="Remove this expense"
+                              onClick={() => setConfirming(row.id)}
+                              disabled={removing != null}
+                              className="rounded p-0.5 text-muted-foreground outline-none hover:bg-muted hover:text-destructive disabled:opacity-40"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {confirming && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-destructive/10 px-3 py-2 text-xs">
+                      <span className="text-destructive">
+                        Remove this expense? It comes straight off this
+                        month&apos;s OPEX.
+                      </span>
+                      <span className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="xs"
+                          onClick={() => remove(confirming)}
+                          disabled={removing != null}
+                        >
+                          {removing ? "Removing…" : "Yes, remove"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() => setConfirming(null)}
+                          disabled={removing != null}
+                        >
+                          Keep
+                        </Button>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {opex && opex.expenses.length > 0 && opex.wages > 0 && (
+                <p className="border-t bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+                  Wages {amount(opex.wages)} + recorded{" "}
+                  {amount(opex.total - opex.wages)} ={" "}
+                  <span className="font-semibold text-foreground">
+                    {amount(opex.total)}
+                  </span>
+                </p>
               )}
 
               {paidHolidays.length > 0 && (

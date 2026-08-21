@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { FileText, History, ReceiptText } from "lucide-react"
+import { FileText, History, ReceiptText, Trash2 } from "lucide-react"
 import {
+  deleteCompanyExpense,
   listProjectCosts,
   listProjectHistory,
   type ProjectCosts,
@@ -21,6 +22,7 @@ import { formatDateTime } from "@/lib/format-date"
 import { formatScheduleDate } from "@/lib/schedule"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
 
@@ -133,11 +135,26 @@ function ProjectCostBreakdown({
   salesOrderNo,
   cogs,
   costs,
+  onRemoved,
 }: {
   salesOrderNo: string
   cogs: number
   costs: ProjectCosts | null
+  onRemoved: () => void
 }) {
+  // Which office row is being taken out. A liquidation line has none of this:
+  // it belongs to an employee's claim, with a review behind it.
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
+
+  async function remove(id: string) {
+    setRemoving(id)
+    await deleteCompanyExpense(id)
+    setConfirming(null)
+    setRemoving(null)
+    onRemoved()
+  }
+
   // Who spent it, in order of how much — the second question after "how much".
   const byPerson = costs
     ? [...costs.lines.filter((line) => line.approved)]
@@ -158,7 +175,7 @@ function ProjectCostBreakdown({
             What made up this COGS
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Approved expenses liquidated against {salesOrderNo}
+            Liquidated by the crew or paid directly, against {salesOrderNo}
           </p>
         </div>
         <p className="text-base font-semibold tabular-nums">
@@ -232,8 +249,15 @@ function ProjectCostBreakdown({
                       <span className="block truncate" title={line.description}>
                         {line.description}
                       </span>
-                      <span className="block truncate font-mono text-[10px] text-muted-foreground">
-                        {line.referenceNo}
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        <span
+                          className={cn(
+                            line.source === "liquidation" && "font-mono"
+                          )}
+                        >
+                          {line.referenceNo}
+                        </span>
+                        {line.source === "office" && " · paid directly"}
                         {!line.approved && " · awaiting review"}
                       </span>
                     </td>
@@ -245,16 +269,60 @@ function ProjectCostBreakdown({
                     <td className="px-3 py-1.5 text-right whitespace-nowrap tabular-nums">
                       {amount(line.amount)}
                     </td>
+                    <td className="px-2 py-1.5">
+                      {line.source === "office" && (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${line.description}`}
+                          title="Remove this expense"
+                          onClick={() => setConfirming(line.id)}
+                          disabled={removing != null}
+                          className="rounded p-0.5 text-muted-foreground outline-none hover:bg-muted hover:text-destructive disabled:opacity-40"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
+          {confirming && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-destructive/10 px-3 py-2 text-xs">
+              <span className="text-destructive">
+                Remove this expense? It comes straight off this job&apos;s COGS.
+                Re-record it if it was only mistyped.
+              </span>
+              <span className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="xs"
+                  onClick={() => remove(confirming)}
+                  disabled={removing != null}
+                >
+                  {removing ? "Removing…" : "Yes, remove"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setConfirming(null)}
+                  disabled={removing != null}
+                >
+                  Keep
+                </Button>
+              </span>
+            </div>
+          )}
+
           {costs.truncated && (
             <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-              Only the most recent {costs.lines.length} are listed. The COGS
-              figure above is the job&apos;s full approved total.
+              Only the most recent {costs.lines.length}{" "}
+              are listed. The COGS figure above is the job&apos;s full approved
+              total.
             </p>
           )}
 
@@ -502,6 +570,10 @@ export function ProjectDetails({ project }: { project: ProjectRow }) {
             salesOrderNo={project.salesOrderNo}
             cogs={project.cogs}
             costs={costs}
+            // Drop the cache and let the effect above fetch it again — the
+            // figure in the ledger behind this dialog is revalidated by the
+            // action itself.
+            onRemoved={() => setCosts(null)}
           />
         </TabsContent>
 

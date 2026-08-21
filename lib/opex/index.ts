@@ -38,9 +38,18 @@ import {
  */
 export const OPEX_ROLES: Role[] = ["DIRECTOR", "ADMINISTRATOR", "ENGINEER"]
 
-/** The same roster in the shape a Prisma `where` wants. */
+/**
+ * The same roster in the shape a Prisma `where` wants.
+ *
+ * Deliberately NOT filtered on `isActive`. Payroll's own roster excludes
+ * deactivated logins because payroll is about who gets paid *now*; this is a
+ * report about what months already cost, and a month that has closed must not
+ * change. Filtering here would erase a departed manager's wages from every
+ * month they worked the day their login was switched off — last year's net
+ * profit would move because of something done this morning.
+ */
 export const OPEX_STAFF: Prisma.EmployeeWhereInput = {
-  account: { is: { isActive: true, role: { in: OPEX_ROLES } } },
+  account: { is: { role: { in: OPEX_ROLES } } },
 }
 
 /** One person's punch, in the shape the payroll rules read. */
@@ -75,11 +84,24 @@ export type OpexPerson = OpexFigures & {
   position: string
 }
 
+/** One line the office typed in: rent, a bill, a permit fee. */
+export type OpexExpense = {
+  id: string
+  spentOn: string
+  description: string
+  amount: number
+  recordedByName: string
+}
+
 export type OpexMonth = {
   /** 0–11. */
   month: number
+  /** Wages plus everything recorded by hand. */
   total: number
+  /** The payroll half on its own, so the two are addable on screen. */
+  wages: number
   people: OpexPerson[]
+  expenses: OpexExpense[]
 }
 
 /**

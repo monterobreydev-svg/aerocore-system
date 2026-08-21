@@ -147,18 +147,42 @@ export default async function AdminProjectsPage({
   // profit that has to survive being shown to the client's accountant. The
   // detail panel breaks the number down and names what is still pending.
   // ---------------------------------------------------------------------
-  const costs = await prisma.reimbursementItemClient.groupBy({
-    by: ["soNumber"],
-    where: {
-      soNumber: { in: records.map((record) => record.salesOrderNo) },
-      item: { reimbursement: { status: "APPROVED" } },
-    },
-    _sum: { amount: true },
-  })
+  const salesOrderNos = records.map((record) => record.salesOrderNo)
 
-  const cogsBySalesOrder = new Map(
-    costs.map((row) => [row.soNumber, Number(row._sum.amount ?? 0)])
-  )
+  const [liquidated, officePaid] = await Promise.all([
+    prisma.reimbursementItemClient.groupBy({
+      by: ["soNumber"],
+      where: {
+        soNumber: { in: salesOrderNos },
+        item: { reimbursement: { status: "APPROVED" } },
+      },
+      _sum: { amount: true },
+    }),
+    // The office's own rows against the same jobs — a supplier invoice paid
+    // directly has no liquidation behind it but is just as much the job's cost.
+    prisma.companyExpense.groupBy({
+      by: ["salesOrderNo"],
+      where: { kind: "COGS", salesOrderNo: { in: salesOrderNos } },
+      _sum: { amount: true },
+    }),
+  ])
+
+  const cogsBySalesOrder = new Map<string, number>()
+  for (const row of liquidated) {
+    if (!row.soNumber) continue
+    cogsBySalesOrder.set(row.soNumber, Number(row._sum.amount ?? 0))
+  }
+  for (const row of officePaid) {
+    if (!row.salesOrderNo) continue
+    cogsBySalesOrder.set(
+      row.salesOrderNo,
+      Math.round(
+        ((cogsBySalesOrder.get(row.salesOrderNo) ?? 0) +
+          Number(row._sum.amount ?? 0)) *
+          100
+      ) / 100
+    )
+  }
 
   // ---------------------------------------------------------------------
   // What the office cost
@@ -201,7 +225,20 @@ export default async function AdminProjectsPage({
     },
   })
 
+  // Overhead the office typed in, on top of what payroll costs.
+  const officeOverhead = await prisma.companyExpense.findMany({
+    where: { kind: "OPEX", spentOn: { gte: windowStart, lte: windowEnd } },
+    select: { spentOn: true, amount: true },
+  })
+
   const opexByMonthTotal = new Map<number, number>()
+  for (const row of officeOverhead) {
+    const month = row.spentOn.getMonth()
+    opexByMonthTotal.set(
+      month,
+      Math.round(((opexByMonthTotal.get(month) ?? 0) + Number(row.amount)) * 100) / 100
+    )
+  }
   for (const person of opexStaff) {
     const punches = person.attendance.map((punch) => ({
       date: punch.date,
