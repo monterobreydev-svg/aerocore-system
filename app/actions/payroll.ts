@@ -20,7 +20,6 @@ export type AdjustmentRow = {
   label: string
   /** Signed: positive pays more, negative pays less. */
   amount: number
-  note: string | null
   createdAt: string
   createdByName: string
 }
@@ -64,7 +63,6 @@ export async function getPayslip(
         id: true,
         label: true,
         amount: true,
-        note: true,
         createdAt: true,
         createdBy: {
           select: { employee: { select: { firstName: true, lastName: true } } },
@@ -86,7 +84,6 @@ export async function getPayslip(
       id: row.id,
       label: row.label,
       amount: Number(row.amount),
-      note: row.note,
       createdAt: row.createdAt.toISOString(),
       createdByName: `${row.createdBy.employee.firstName} ${row.createdBy.employee.lastName}`,
     })),
@@ -196,7 +193,6 @@ const AdjustmentSchema = z.object({
     .number({ error: "Enter an amount." })
     .positive("The amount has to be more than zero.")
     .max(MAX_ADJUSTMENT, "That looks too large — check the figure."),
-  note: z.string().trim().max(200).optional(),
 })
 
 export type AdjustmentState =
@@ -216,7 +212,6 @@ export async function addPayrollAdjustment(
     label: formData.get("label"),
     direction: formData.get("direction"),
     amount: typeof raw === "string" && raw.trim() !== "" ? Number(raw) : undefined,
-    note: (formData.get("note") as string)?.trim() || undefined,
   })
 
   if (!validated.success) {
@@ -228,8 +223,7 @@ export async function addPayrollAdjustment(
     }
   }
 
-  const { employeeId, cutoffDay, label, direction, amount, note } =
-    validated.data
+  const { employeeId, cutoffDay, label, direction, amount } = validated.data
   const start = cutoffStart(parseDayParam(cutoffDay, new Date()))
 
   await prisma.payrollAdjustment.create({
@@ -240,7 +234,6 @@ export async function addPayrollAdjustment(
       // The sign carries the meaning; the form asks for a plain positive
       // figure so nobody has to think about minus signs at half four.
       amount: direction === "deduct" ? -amount : amount,
-      note: note ?? null,
       createdById: session.accountId,
     },
   })

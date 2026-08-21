@@ -596,6 +596,13 @@ model PayrollAdjustment {
    * Positive pays more, negative pays less. Never zero.
    */
   amount      Decimal
+  /**
+   * Retired. The form asked for a label ("What is it for?") and then a note,
+   * which was the same question twice — so the note was removed from the UI
+   * and from the action that writes it. Nothing reads or writes this column
+   * any more; it is kept only so the text already typed into it isn't thrown
+   * away. Drop it in a migration once that text has been looked at.
+   */
   note        String?
   createdById String
   createdBy   UserAccount @relation("PayrollAdjustmentsMade", fields: [createdById], references: [id])

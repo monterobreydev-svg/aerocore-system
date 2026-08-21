@@ -216,7 +216,6 @@ function Adjustments({
               <span className="text-sm">{row.label}</span>
               <span className="block truncate text-[11px] text-muted-foreground">
                 {row.createdByName}
-                {row.note && ` · ${row.note}`}
               </span>
             </span>
             <span className="flex shrink-0 items-center gap-1">
@@ -299,13 +298,6 @@ function Adjustments({
                 className="h-8 min-w-0 flex-1 text-sm"
               />
             </div>
-
-            <Input
-              name="note"
-              placeholder="Note (optional)"
-              maxLength={200}
-              className="h-8 text-sm"
-            />
 
             {error && <p className="text-xs text-destructive">{error}</p>}
 
