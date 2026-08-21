@@ -1,67 +1,124 @@
 import { Skeleton } from "@/components/ui/skeleton"
 
-// Shaped like the overview: the date, the run of figures under it, then the
-// two columns — the floor's strip on the left, the margin on the right. It
-// matches the real page's proportions so the switch is a fill, not a jolt.
+// Shaped like the overview: the dark banner, then the two columns of panels.
+// It matches the real page's proportions — same corner radius, same gaps, same
+// column widths — so the switch is a fill rather than a jolt.
+
+/** A panel-shaped placeholder: the title bar, then whatever fills it. */
+function PanelSkeleton({
+  children,
+  className,
+}: {
+  children?: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex items-center gap-3 border-b px-4 py-3 sm:px-5">
+        <Skeleton className="size-8 shrink-0 rounded-[0.625rem]" />
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-3.5 w-28" />
+          <Skeleton className="mt-1.5 h-3 w-40 max-w-full" />
+        </div>
+      </div>
+      <div className={className ?? "px-4 py-4 sm:px-5"}>{children}</div>
+    </div>
+  )
+}
+
 export default function Loading() {
   return (
-    <div className="flex flex-col gap-7 lg:gap-9">
-      <header>
-        <Skeleton className="h-6 w-56" />
-        <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-5 border-t pt-5 sm:flex sm:flex-wrap">
+    <div className="flex flex-col gap-4 sm:gap-5">
+      {/* The banner. Its own surface rather than a skeleton, because the colour
+          is the thing that lands first and it is known before the data is. */}
+      <div className="rounded-2xl bg-sidebar px-4 py-5 sm:px-6 sm:py-6">
+        <Skeleton className="h-3 w-14 bg-white/10" />
+        <Skeleton className="mt-2.5 h-6 w-56 max-w-full bg-white/15" />
+        <Skeleton className="mt-2 h-3 w-40 max-w-full bg-white/10" />
+        <Skeleton className="mt-6 h-2 w-full bg-white/10" />
+        <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-5 sm:gap-x-6">
           {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="sm:pr-6">
-              <Skeleton className="h-7 w-10" />
-              <Skeleton className="mt-2 h-3 w-20" />
+            <div key={index}>
+              <Skeleton className="h-6 w-10 bg-white/15" />
+              <Skeleton className="mt-2.5 h-3 w-16 bg-white/10" />
             </div>
           ))}
         </div>
-      </header>
+      </div>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-0 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="flex min-w-0 flex-col gap-8 lg:pr-9">
-          <section>
-            <Skeleton className="h-3 w-24" />
-            <div className="mt-4 flex flex-col gap-3">
-              {Array.from({ length: 6 }).map((_, index) => (
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
+          <PanelSkeleton>
+            <div className="flex flex-col gap-2.5">
+              {Array.from({ length: 7 }).map((_, index) => (
                 <div key={index} className="flex items-center gap-3">
-                  <Skeleton className="h-3 w-[5.5rem] shrink-0 sm:w-32" />
+                  <Skeleton className="h-3 w-[5.5rem] shrink-0 sm:w-[8.5rem]" />
                   {/* Staggered, so the placeholder reads as a day filling up
-                      rather than as six identical bars. */}
+                      and emptying out rather than as seven identical bars. */}
                   <Skeleton
-                    className="h-2 min-w-0 flex-1"
-                    style={{ maxWidth: `${95 - index * 9}%` }}
+                    className="h-2 min-w-0 flex-1 rounded-full"
+                    style={{ maxWidth: `${94 - index * 8}%` }}
                   />
                 </div>
               ))}
             </div>
-          </section>
+          </PanelSkeleton>
 
-          <section>
-            <Skeleton className="h-3 w-24" />
-            <div className="mt-4 flex flex-col gap-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="flex gap-4">
-                  <Skeleton className="h-4 w-12 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <Skeleton className="h-3.5 w-40 max-w-full" />
-                    <Skeleton className="mt-2 h-3 w-56 max-w-full" />
-                  </div>
+          <PanelSkeleton className="divide-y">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="flex gap-4 px-4 py-3 sm:px-5">
+                <Skeleton className="h-8 w-12 shrink-0 sm:w-14" />
+                <div className="min-w-0 flex-1">
+                  <Skeleton className="h-3.5 w-40 max-w-full" />
+                  <Skeleton className="mt-2 h-3 w-56 max-w-full" />
                 </div>
+              </div>
+            ))}
+          </PanelSkeleton>
+
+          <PanelSkeleton>
+            <div className="flex items-end gap-2">
+              {[64, 40, 76, 52, 88, 32, 60].map((height, index) => (
+                <Skeleton
+                  key={index}
+                  className="min-w-0 flex-1 rounded-[3px]"
+                  style={{ height }}
+                />
               ))}
             </div>
-          </section>
+          </PanelSkeleton>
         </div>
 
-        <aside className="min-w-0 border-t pt-7 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-9">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="border-b py-5 first:pt-0">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="mt-3 h-6 w-28" />
-              <Skeleton className="mt-2 h-3 w-36 max-w-full" />
+        <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
+          <PanelSkeleton className="divide-y">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                <Skeleton className="size-8 shrink-0 rounded-[0.625rem]" />
+                <div className="min-w-0 flex-1">
+                  <Skeleton className="h-3.5 w-32 max-w-full" />
+                  <Skeleton className="mt-2 h-3 w-44 max-w-full" />
+                </div>
+              </div>
+            ))}
+          </PanelSkeleton>
+
+          <PanelSkeleton>
+            <div className="flex items-center gap-4">
+              <Skeleton className="size-[68px] shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-4 w-16 rounded-full" />
+                <Skeleton className="mt-2.5 h-6 w-28 max-w-full" />
+                <Skeleton className="mt-2 h-3 w-32 max-w-full" />
+              </div>
             </div>
-          ))}
-        </aside>
+            <Skeleton className="mt-6 h-2 w-full rounded-full" />
+          </PanelSkeleton>
+
+          <PanelSkeleton>
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="mt-3 h-3 w-40 max-w-full" />
+          </PanelSkeleton>
+        </div>
       </div>
     </div>
   )

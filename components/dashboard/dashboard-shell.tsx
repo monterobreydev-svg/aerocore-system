@@ -20,9 +20,12 @@ export async function DashboardShell({
     <SidebarProvider>
       <TooltipProvider delay={300}>
         <AppSidebar role={role} />
-        {/* The content area stays plain white — the blue lives in the bars
-            around it, not under the cards. */}
-        <SidebarInset>
+        {/* The content area is a desk, not a page: a barely-there cool tint so
+            the panels laid on it read as sheets with an edge, rather than as
+            outlines drawn on white. The tint is a token (`--canvas`) and it
+            inverts in dark mode, where depth has to come from lifting a surface
+            instead of shadowing one. */}
+        <SidebarInset className="bg-canvas">
           <DashboardHeader
             employeeName={employeeName}
             role={role}

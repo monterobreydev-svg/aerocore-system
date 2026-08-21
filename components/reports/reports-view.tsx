@@ -33,63 +33,9 @@ import {
   peso,
 } from "@/components/reports/charts"
 
-// ---------------------------------------------------------------------------
-// The palette
-// ---------------------------------------------------------------------------
-//
-// Four categorical slots in fixed order, assigned by entity and never by rank,
-// plus a five-step ordinal ramp for job status — which is a lifecycle, so it
-// gets one hue in graded steps rather than five unrelated colours.
-//
-// Slot 1 is the app's own --brand token to the digit, and the other three are
-// stepped to sit beside it: a warm orange, a violet and a green. Every value
-// here was computed and then checked with the validator rather than picked by
-// eye — worst adjacent CVD ΔE 19.4 against a target of 8, every slot inside the
-// lightness band, every slot over 3:1 on its surface, in both modes. The ramp
-// passes monotonicity, step-gap and light-end contrast in both modes too.
-//
-// Dark is keyed off `.dark`, which is how this codebase switches themes (see
-// the @custom-variant in globals.css) — not a media query, and not a data
-// attribute. It is selected, not flipped: its own steps, validated against the
-// dark card surface.
-const PALETTE = `
-.viz {
-  --viz-1: #0092b7;
-  --viz-2: #dc631e;
-  --viz-3: #7935c6;
-  --viz-4: #0e9254;
-  --viz-o1: #6213ab;
-  --viz-o2: #7a3dc5;
-  --viz-o3: #9260da;
-  --viz-o4: #aa83ea;
-  --viz-o5: #bfa4f0;
-  --viz-h1: #6cc2da;
-  --viz-h2: #19adcc;
-  --viz-h3: #0092b7;
-  --viz-h4: #00769b;
-  --viz-h5: #005b7b;
-  --viz-grid: color-mix(in oklab, currentColor 12%, transparent);
-  --viz-track: color-mix(in oklab, currentColor 8%, transparent);
-  --viz-muted: color-mix(in oklab, currentColor 55%, transparent);
-  --viz-surface: var(--card);
-}
-.dark .viz {
-  --viz-1: #00a4c7;
-  --viz-2: #db703b;
-  --viz-3: #9867e1;
-  --viz-4: #38a065;
-  --viz-o1: #763ebd;
-  --viz-o2: #8c5ad3;
-  --viz-o3: #a17adf;
-  --viz-o4: #b59be6;
-  --viz-o5: #cbbaeb;
-  --viz-h1: #90d0e2;
-  --viz-h2: #48bbd9;
-  --viz-h3: #00a4c7;
-  --viz-h4: #008cb1;
-  --viz-h5: #007394;
-}
-`
+// The chart palette — the four categorical slots and the two ordinal ramps —
+// lives in globals.css under `.viz`, which is why the wrapper below wears that
+// class. It is shared with the admin overview; see the note there.
 
 /** Each section owns a hue, and its figure up in the masthead wears the same. */
 const ACCENT = {
@@ -375,8 +321,6 @@ export function ReportsView({
 
   return (
     <div className="viz flex flex-col gap-4">
-      <style>{PALETTE}</style>
-
       {/* One row, above everything it scopes. Full-bleed and sticky under the
           app header, so the period stays visible while you read down. */}
       <div
