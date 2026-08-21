@@ -161,6 +161,20 @@ function Adjustments({
   const [direction, setDirection] = useState<"add" | "deduct">("add")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Which line is asking to be removed, and which one is on its way out. A
+  // deletion here moves somebody's take-home pay and leaves nothing behind to
+  // undo it from — the row is gone and so is the note of who added it — so it
+  // asks first, like deleting a job or a client contact does.
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [removingId, setRemovingId] = useState<string | null>(null)
+
+  async function remove(id: string) {
+    setRemovingId(id)
+    await removePayrollAdjustment(id)
+    setConfirmId(null)
+    setRemovingId(null)
+    onChanged()
+  }
 
   // The action is awaited here rather than driven through useActionState and
   // an effect: everything that follows a save — close the form, re-read the
@@ -209,41 +223,71 @@ function Adjustments({
         )}
 
         {rows.map((row) => (
-          <div
-            key={row.id}
-            className="flex items-baseline justify-between gap-2 py-1.5"
-          >
-            <span className="min-w-0">
-              <span className="text-sm">{row.label}</span>
-              <span className="block truncate text-[11px] text-muted-foreground">
-                {row.createdByName}
+          <div key={row.id} className="py-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="min-w-0">
+                <span className="text-sm">{row.label}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {row.createdByName}
+                </span>
               </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-1">
-              <span
-                className={cn(
-                  "text-sm font-medium tabular-nums",
-                  row.amount < 0
-                    ? "text-amber-700 dark:text-amber-400"
-                    : "text-emerald-700 dark:text-emerald-400"
-                )}
-              >
-                {row.amount < 0 ? "−" : "+"}
-                {peso(Math.abs(row.amount))}
+              <span className="flex shrink-0 items-center gap-1">
+                <span
+                  className={cn(
+                    "text-sm font-medium tabular-nums",
+                    row.amount < 0
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "text-emerald-700 dark:text-emerald-400"
+                  )}
+                >
+                  {row.amount < 0 ? "−" : "+"}
+                  {peso(Math.abs(row.amount))}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Remove ${row.label}`}
+                  onClick={() => setConfirmId(row.id)}
+                  disabled={confirmId === row.id || removingId != null}
+                >
+                  <Trash2 />
+                </Button>
               </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Remove ${row.label}`}
-                onClick={async () => {
-                  await removePayrollAdjustment(row.id)
-                  onChanged()
-                }}
-              >
-                <Trash2 />
-              </Button>
-            </span>
+            </div>
+
+            {/* Asked on the line itself rather than in a dialog over the
+                payslip: what is being removed, and what it is worth, are the
+                two things the answer depends on, and both are right here. */}
+            {confirmId === row.id && (
+              <div className="mt-1.5 flex flex-col gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs">
+                <p className="text-destructive">
+                  Remove {row.label} ({row.amount < 0 ? "−" : "+"}
+                  {peso(Math.abs(row.amount))})? This cutoff&apos;s net pay
+                  changes straight away and the line can&apos;t be brought back.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="xs"
+                    onClick={() => remove(row.id)}
+                    disabled={removingId != null}
+                  >
+                    {removingId === row.id ? "Removing…" : "Yes, remove"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setConfirmId(null)}
+                    disabled={removingId != null}
+                  >
+                    Keep
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
 
