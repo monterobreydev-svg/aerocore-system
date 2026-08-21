@@ -815,10 +815,14 @@ model Project {
   client   Client       @relation("ClientProjects", fields: [clientId], references: [id])
   terms    PaymentTerms
 
-  // The four figures anybody types. Decimal, not Float: these are pesos, and
+  // The three figures anybody types. Decimal, not Float: these are pesos, and
   // binary floating point cannot hold 0.1 exactly — a column of them drifts.
+  //
+  // COGS is deliberately NOT among them. What a job cost is the sum of the
+  // expenses liquidated against its sales order number — see lib/projects and
+  // the roll-up in the tracker page. Storing it too would leave a second
+  // answer that disagrees with the receipts the moment a claim is approved.
   projectAmount  Decimal
-  cogs           Decimal
   cashCollection Decimal
   accrualRevenue Decimal
 

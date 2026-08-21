@@ -112,7 +112,6 @@ export default async function AdminProjectsPage({
         name: true,
         terms: true,
         projectAmount: true,
-        cogs: true,
         cashCollection: true,
         accrualRevenue: true,
         clientId: true,
@@ -134,6 +133,32 @@ export default async function AdminProjectsPage({
     }),
   ])
 
+  // ---------------------------------------------------------------------
+  // What each job cost
+  //
+  // Not a column on the project — the sum of the expense shares employees
+  // liquidated against its sales order number. One grouped read for every job
+  // on screen rather than a query per project, and scoped to the numbers in
+  // view so it stays the size of the page.
+  //
+  // APPROVED only. A claim still in the queue is a request, not a cost, and a
+  // rejected one never was; letting either into the figure would move a gross
+  // profit that has to survive being shown to the client's accountant. The
+  // detail panel breaks the number down and names what is still pending.
+  // ---------------------------------------------------------------------
+  const costs = await prisma.reimbursementItemClient.groupBy({
+    by: ["soNumber"],
+    where: {
+      soNumber: { in: records.map((record) => record.salesOrderNo) },
+      item: { reimbursement: { status: "APPROVED" } },
+    },
+    _sum: { amount: true },
+  })
+
+  const cogsBySalesOrder = new Map(
+    costs.map((row) => [row.soNumber, Number(row._sum.amount ?? 0)])
+  )
+
   const projects: ProjectRow[] = records.map((record) => ({
     id: record.id,
     salesOrderNo: record.salesOrderNo,
@@ -147,12 +172,14 @@ export default async function AdminProjectsPage({
     terms: record.terms,
     // Decimal doesn't survive the trip to a client component, and the derived
     // figures are computed from the same numbers the browser will display.
-    ...deriveProjectFigures({
-      projectAmount: Number(record.projectAmount),
-      cogs: Number(record.cogs),
-      cashCollection: Number(record.cashCollection),
-      accrualRevenue: Number(record.accrualRevenue),
-    }),
+    ...deriveProjectFigures(
+      {
+        projectAmount: Number(record.projectAmount),
+        cashCollection: Number(record.cashCollection),
+        accrualRevenue: Number(record.accrualRevenue),
+      },
+      cogsBySalesOrder.get(record.salesOrderNo) ?? 0
+    ),
   }))
 
   // Grouped by the month the project *starts* in, so moving a start date from

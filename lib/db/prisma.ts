@@ -29,8 +29,16 @@ function resolveClient() {
   if (!cached) return createClient()
   if (globalForPrisma.prismaClass === PrismaClient) return cached
 
-  // Regenerated underneath us: let the old pool go before replacing it.
-  void cached.$disconnect().catch(() => {})
+  // Regenerated underneath us: let the old pool go before replacing it — but
+  // not this instant. `$disconnect()` closes the sockets under whatever is
+  // still using them, and a page that was mid-query when somebody ran
+  // `prisma generate` fails with "Connection terminated unexpectedly" while
+  // pointing at a Promise.all that has nothing wrong with it.
+  //
+  // A grace period is enough: requests are short, the two pools overlap for
+  // seconds rather than for the life of the server, and the leak this guard
+  // exists to prevent — a pool per hot reload — is still prevented.
+  setTimeout(() => void cached.$disconnect().catch(() => {}), 15_000)
   return createClient()
 }
 

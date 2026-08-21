@@ -73,7 +73,6 @@ const ProjectSchema = z
       "DP50_COMPLETION50",
     ]),
     projectAmount: money,
-    cogs: money,
     cashCollection: money,
     accrualRevenue: money,
   })
@@ -103,7 +102,6 @@ function parse(formData: FormData) {
     clientId: formData.get("clientId"),
     terms: formData.get("terms"),
     projectAmount: formData.get("projectAmount") ?? "",
-    cogs: formData.get("cogs") ?? "",
     cashCollection: formData.get("cashCollection") ?? "",
     accrualRevenue: formData.get("accrualRevenue") ?? "",
   })
@@ -163,7 +161,6 @@ export async function createProject(
           clientId: data.clientId,
           terms: data.terms,
           projectAmount: data.projectAmount,
-          cogs: data.cogs,
           cashCollection: data.cashCollection,
           accrualRevenue: data.accrualRevenue,
           createdById: session.accountId,
@@ -213,7 +210,6 @@ export async function updateProject(
       name: true,
       terms: true,
       projectAmount: true,
-      cogs: true,
       cashCollection: true,
       accrualRevenue: true,
       client: { select: { name: true } },
@@ -239,7 +235,6 @@ export async function updateProject(
       endDate: before.endDate ? dateKey(before.endDate) : "",
       siNo: before.siNo ?? "",
       projectAmount: Number(before.projectAmount),
-      cogs: Number(before.cogs),
       cashCollection: Number(before.cashCollection),
       accrualRevenue: Number(before.accrualRevenue),
     },
@@ -252,7 +247,6 @@ export async function updateProject(
       endDate: data.endDate ?? "",
       siNo: data.siNo ?? "",
       projectAmount: data.projectAmount,
-      cogs: data.cogs,
       cashCollection: data.cashCollection,
       accrualRevenue: data.accrualRevenue,
     }
@@ -274,7 +268,6 @@ export async function updateProject(
         clientId: data.clientId,
         terms: data.terms,
         projectAmount: data.projectAmount,
-        cogs: data.cogs,
         cashCollection: data.cashCollection,
         accrualRevenue: data.accrualRevenue,
       },
@@ -311,7 +304,6 @@ type ProjectSnapshot = {
   endDate: string
   siNo: string
   projectAmount: number
-  cogs: number
   cashCollection: number
   accrualRevenue: number
 }
@@ -342,7 +334,6 @@ function diffProject(before: ProjectSnapshot, after: ProjectSnapshot) {
     PAYMENT_TERMS_LABELS[after.terms]
   )
   put("projectAmount", amount(before.projectAmount), amount(after.projectAmount))
-  put("cogs", amount(before.cogs), amount(after.cogs))
   put(
     "cashCollection",
     amount(before.cashCollection),
@@ -420,4 +411,145 @@ export async function deleteProject(projectId: string) {
 
   await prisma.project.delete({ where: { id: projectId } })
   revalidatePath("/admin/projects")
+}
+
+// ---------------------------------------------------------------------------
+// The S.O. picker on the employee's liquidation form
+// ---------------------------------------------------------------------------
+
+// A client's jobs, for the dropdown. Capped: the picker is a short list to
+// choose from, not a browsable history, and a client with years of work behind
+// them shouldn't push a phone's payload up to fill a select nobody scrolls.
+//
+// Not exported: a "use server" module may only export async functions, and a
+// stray `export const` here takes down every route that imports the file.
+const CLIENT_PROJECT_LIMIT = 60
+
+export type ClientProjectOption = {
+  salesOrderNo: string
+  name: string
+}
+
+/**
+ * The sales order numbers an employee may charge an expense to.
+ *
+ * Deliberately readable by anyone signed in, unlike the rest of this file.
+ * Filing a liquidation means naming the job it was for, and the field this
+ * feeds already accepted whatever the employee typed — a list of the client's
+ * real numbers is strictly less licence than a free-text box, not more.
+ *
+ * Two columns only. The number identifies the job and the name lets somebody
+ * recognise it; none of the money on a project has any business on a phone
+ * whose owner is claiming forty pesos of fare against it.
+ */
+export async function listClientProjects(
+  clientId: string
+): Promise<ClientProjectOption[]> {
+  await verifySession()
+  if (!clientId) return []
+
+  return prisma.project.findMany({
+    where: { clientId },
+    select: { salesOrderNo: true, name: true },
+    // Newest first: an expense being filed today is nearly always against the
+    // job booked most recently, so the useful options are at the top.
+    orderBy: { salesOrderNo: "desc" },
+    take: CLIENT_PROJECT_LIMIT,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// What a project cost, line by line
+// ---------------------------------------------------------------------------
+
+// The number on the ledger is a total; this is what it is made of. Capped for
+// the same reason every other per-record read here is — a long job's expenses
+// grow without limit and the panel is read, not audited line by line.
+//
+// Not exported: a "use server" module may only export async functions, and a
+// stray `export const` here takes down every route that imports the file.
+const PROJECT_COST_LIMIT = 100
+
+export type ProjectCostLine = {
+  id: string
+  /** The day the money was spent, not the day it was filed. */
+  spentOn: string
+  description: string
+  employeeName: string
+  referenceNo: string
+  /** This job's share of the receipt, which is what counts towards COGS. */
+  amount: number
+  /** False while the claim is still in the review queue. */
+  approved: boolean
+}
+
+export type ProjectCosts = {
+  /** Approved shares — the figure the ledger's COGS column shows. */
+  total: number
+  /** Filed but not yet decided. Not in COGS, and worth knowing about. */
+  pending: number
+  lines: ProjectCostLine[]
+}
+
+/**
+ * The expenses charged to one sales order number.
+ *
+ * Read when the detail panel is opened rather than with the ledger: this is
+ * per-project and grows forever, which is the payload the tracker is built to
+ * avoid. Rejected claims are left out entirely — they are not a cost and never
+ * were.
+ */
+export async function listProjectCosts(
+  salesOrderNo: string
+): Promise<ProjectCosts> {
+  const empty: ProjectCosts = { total: 0, pending: 0, lines: [] }
+  if (!(await requireProjectAccess()) || !salesOrderNo) return empty
+
+  const rows = await prisma.reimbursementItemClient.findMany({
+    where: {
+      soNumber: salesOrderNo,
+      item: { reimbursement: { status: { in: ["APPROVED", "PENDING_REVIEW"] } } },
+    },
+    select: {
+      id: true,
+      amount: true,
+      item: {
+        select: {
+          description: true,
+          reimbursement: {
+            select: {
+              referenceNo: true,
+              expenseDate: true,
+              status: true,
+              employee: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { item: { reimbursement: { expenseDate: "desc" } } },
+    take: PROJECT_COST_LIMIT,
+  })
+
+  const lines: ProjectCostLine[] = rows.map((row) => {
+    const claim = row.item.reimbursement
+    return {
+      id: row.id,
+      spentOn: dateKey(claim.expenseDate),
+      description: row.item.description,
+      employeeName: `${claim.employee.firstName} ${claim.employee.lastName}`,
+      referenceNo: claim.referenceNo,
+      amount: Number(row.amount),
+      approved: claim.status === "APPROVED",
+    }
+  })
+
+  const sum = (approved: boolean) =>
+    Math.round(
+      lines
+        .filter((line) => line.approved === approved)
+        .reduce((total, line) => total + line.amount, 0) * 100
+    ) / 100
+
+  return { total: sum(true), pending: sum(false), lines }
 }

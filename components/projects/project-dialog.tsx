@@ -215,7 +215,6 @@ export function ProjectDialog({
   const [projectAmount, setProjectAmount] = useState(
     project ? String(project.projectAmount) : ""
   )
-  const [cogs, setCogs] = useState(project ? String(project.cogs) : "")
   const [cashCollection, setCashCollection] = useState(
     project ? String(project.cashCollection) : ""
   )
@@ -237,12 +236,19 @@ export function ProjectDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state])
 
-  const figures = deriveProjectFigures({
-    projectAmount: toNumber(projectAmount),
-    cogs: toNumber(cogs),
-    cashCollection: toNumber(cashCollection),
-    accrualRevenue: toNumber(accrualRevenue),
-  })
+  // The cost comes from the receipts, not from this form — an existing
+  // project brings its rolled-up COGS with it, and a project being created has
+  // nothing charged to it yet because its S.O. number does not exist yet.
+  const cogs = project?.cogs ?? 0
+
+  const figures = deriveProjectFigures(
+    {
+      projectAmount: toNumber(projectAmount),
+      cashCollection: toNumber(cashCollection),
+      accrualRevenue: toNumber(accrualRevenue),
+    },
+    cogs
+  )
 
   const clientOptions = clients.map((client) => ({
     value: client.id,
@@ -545,14 +551,6 @@ export function ProjectDialog({
                     hint="VAT inclusive, as quoted."
                   />
                   <MoneyField
-                    name="cogs"
-                    label="COGS"
-                    value={cogs}
-                    onChange={setCogs}
-                    disabled={busy}
-                    errors={state?.errors?.cogs}
-                  />
-                  <MoneyField
                     name="cashCollection"
                     label="Cash collection"
                     value={cashCollection}
@@ -576,6 +574,18 @@ export function ProjectDialog({
                     Worked out for you
                   </p>
                   <div className="mt-1 flex flex-col divide-y">
+                    {/* First, because it is the one that surprises people:
+                        COGS used to be a box on this form and is now the sum
+                        of what the crew liquidated against this job. */}
+                    <DerivedRow
+                      label="COGS"
+                      value={figures.cogs}
+                      formula={
+                        editing
+                          ? "Approved liquidations against this S.O."
+                          : "Fills in as expenses are filed against this S.O."
+                      }
+                    />
                     <DerivedRow
                       label="Net of VAT"
                       value={figures.netOfVat}

@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Building2,
   FileText,
+  Loader2,
   Pencil,
   Plus,
   Trash2,
@@ -39,6 +40,10 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { SearchSelect } from "@/components/ui/search-select"
 import { FileUpload, type UploadedFile } from "@/components/reimbursement/file-upload"
 import type { ClientChoice } from "@/components/reimbursement/client-choice"
+import {
+  listClientProjects,
+  type ClientProjectOption,
+} from "@/app/actions/projects"
 
 // A job this expense was for. Several are allowed: one tank of fuel can cover
 // two client sites, and each site has its own S.O. number.
@@ -56,6 +61,73 @@ type Expense = {
 }
 
 const NO_JOBS: ExpenseJob[] = []
+
+/** A client with nothing booked keeps a stable empty list between renders. */
+const NO_PROJECTS: ClientProjectOption[] = []
+
+/**
+ * Which of the client's jobs this expense was for.
+ *
+ * Was a free-text box, which meant an S.O. number was whatever somebody
+ * remembered on a phone at the end of a long day — a digit out, or a job that
+ * doesn't exist, and the office is reconciling it by hand. The numbers are in
+ * the system now, so the field offers them instead.
+ *
+ * Fetched per client, on demand, and cached by the parent: sending every
+ * client's projects with the page is the payload that grows with two things at
+ * once, and the form only ever shows one client's at a time.
+ */
+function ProjectPicker({
+  job,
+  projects,
+  loading,
+  onChange,
+}: {
+  job: ExpenseJob
+  projects: ClientProjectOption[]
+  loading: boolean
+  onChange: (soNumber: string) => void
+}) {
+  if (loading) {
+    return (
+      <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        Loading jobs…
+      </p>
+    )
+  }
+
+  if (projects.length === 0) {
+    return (
+      <p className="mt-1 text-xs text-muted-foreground">
+        No projects recorded for this client yet — leave the S.O. blank and the
+        office will match it up.
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-1.5">
+      <SearchSelect
+        options={[
+          // Blank is a real choice: plenty of expenses are for a client
+          // without being against one numbered job.
+          { value: "", label: "No S.O. number" },
+          ...projects.map((project) => ({
+            value: project.salesOrderNo,
+            label: project.salesOrderNo,
+            hint: project.name,
+          })),
+        ]}
+        value={job.soNumber}
+        onValueChange={onChange}
+        placeholder="Pick the S.O. number"
+        searchPlaceholder="Search S.O. or project…"
+        emptyMessage="No job matches that."
+      />
+    </div>
+  )
+}
 
 // The list row under an expense: which jobs it was charged to, and — when it
 // covered more than one — what each job took.
@@ -108,6 +180,35 @@ function ExpenseSheet({
   // several expenses against one client, and picking it again each time was the
   // slowest part of filing.
   const [jobs, setJobs] = useState<ExpenseJob[]>(initial?.jobs ?? defaultJobs)
+
+  // Each picked client's jobs, keyed by client so going back to one already
+  // looked at costs nothing. Both the list and its loading flag are *derived*
+  // from this cache rather than stored beside it, so the effect below only
+  // ever fetches — there is no second piece of state to keep in step.
+  const [projectCache, setProjectCache] = useState<
+    Record<string, ClientProjectOption[]>
+  >({})
+
+  useEffect(() => {
+    const missing = jobs
+      .map((job) => job.clientId)
+      .filter((clientId) => !projectCache[clientId])
+    if (missing.length === 0) return
+
+    let cancelled = false
+    // One request per client rather than one per render: a second client added
+    // to the same expense fetches only its own jobs.
+    for (const clientId of missing) {
+      listClientProjects(clientId).then((rows) => {
+        if (!cancelled) {
+          setProjectCache((current) => ({ ...current, [clientId]: rows }))
+        }
+      })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [jobs, projectCache])
 
   const parsed = Number(amount)
   const valid =
@@ -270,20 +371,19 @@ function ExpenseSheet({
                         <X className="size-3.5" />
                       </button>
                     </div>
-                    <Input
-                      value={job.soNumber}
-                      onChange={(e) =>
+                    <ProjectPicker
+                      job={job}
+                      projects={projectCache[job.clientId] ?? NO_PROJECTS}
+                      loading={!projectCache[job.clientId]}
+                      onChange={(soNumber) =>
                         setJobs((current) =>
                           current.map((j) =>
                             j.clientId === job.clientId
-                              ? { ...j, soNumber: e.target.value }
+                              ? { ...j, soNumber }
                               : j
                           )
                         )
                       }
-                      placeholder="S.O. number (optional)"
-                      aria-label={`S.O. number for ${job.clientName}`}
-                      className="mt-1 h-7 border-0 bg-transparent px-0 font-mono text-xs shadow-none focus-visible:ring-0 dark:bg-transparent"
                     />
                   </div>
                 ))}

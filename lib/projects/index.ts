@@ -110,13 +110,13 @@ export function nextSalesOrderNo(
 /** The numbers somebody enters on the form. */
 export type ProjectInputs = {
   projectAmount: number
-  cogs: number
   cashCollection: number
   accrualRevenue: number
 }
 
-/** Those numbers plus everything the system works out from them. */
+/** Those numbers, the cost, and everything worked out from the three. */
 export type ProjectFigures = ProjectInputs & {
+  cogs: number
   netOfVat: number
   inputVat: number
   cogsVat: number
@@ -124,9 +124,17 @@ export type ProjectFigures = ProjectInputs & {
   grossProfit: number
 }
 
-export function deriveProjectFigures(inputs: ProjectInputs): ProjectFigures {
+/**
+ * @param cogs What the job actually cost — the total of the expenses employees
+ * liquidated against its sales order number. A separate argument rather than
+ * one of `inputs` because nobody types it: it comes from the receipts, and the
+ * only place it is worked out is the roll-up on the tracker page.
+ */
+export function deriveProjectFigures(
+  inputs: ProjectInputs,
+  cogs: number
+): ProjectFigures {
   const projectAmount = centavos(inputs.projectAmount)
-  const cogs = centavos(inputs.cogs)
   const cashCollection = centavos(inputs.cashCollection)
   const accrualRevenue = centavos(inputs.accrualRevenue)
 
@@ -135,11 +143,12 @@ export function deriveProjectFigures(inputs: ProjectInputs): ProjectFigures {
   // multiplication, which is what keeps net + VAT equal to the amount exactly.
   const netOfVat = centavos(projectAmount / VAT_MULTIPLIER)
   const inputVat = centavos(projectAmount - netOfVat)
-  const cogsVat = centavos(cogs * VAT_RATE)
+  const cost = centavos(cogs)
+  const cogsVat = centavos(cost * VAT_RATE)
 
   return {
     projectAmount,
-    cogs,
+    cogs: cost,
     cashCollection,
     accrualRevenue,
     netOfVat,
@@ -150,7 +159,7 @@ export function deriveProjectFigures(inputs: ProjectInputs): ProjectFigures {
     outputVat: centavos(inputVat - cogsVat),
     // Against accrual revenue rather than cash collected: profit is earned
     // when the work is done, not when the client gets round to paying.
-    grossProfit: centavos(accrualRevenue - cogs),
+    grossProfit: centavos(accrualRevenue - cost),
   }
 }
 
@@ -220,7 +229,7 @@ export const MONEY_COLUMNS = [
   { key: "projectAmount", label: "Project amount", short: "Amount", derived: false },
   { key: "netOfVat", label: "Net of VAT", short: "Net of VAT", derived: true },
   { key: "inputVat", label: "Input VAT", short: "Input VAT", derived: true },
-  { key: "cogs", label: "COGS", short: "COGS", derived: false },
+  { key: "cogs", label: "COGS", short: "COGS", derived: true },
   { key: "cogsVat", label: "COGS VAT", short: "COGS VAT", derived: true },
   { key: "outputVat", label: "Output VAT", short: "Output VAT", derived: true },
   { key: "cashCollection", label: "Cash collection", short: "Cash coll.", derived: false },
