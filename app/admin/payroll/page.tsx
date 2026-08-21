@@ -154,6 +154,7 @@ export default async function PayrollPage({
       nightPay: payslip.nightPay,
       holidayPay: payslip.holidayPay,
       restDayPay: payslip.restDayPay,
+      specialHolidayPay: payslip.specialHolidayPay,
       gross: payslip.gross,
       deductions: payslip.deductions.total,
       net: payslip.net,
@@ -184,9 +185,10 @@ export default async function PayrollPage({
           previous: dayParam(cutoffStart(new Date(+start - 86_400_000))),
           next: dayParam(nextDay(end)),
         }}
-        holidays={holidays.map((holiday) => ({
-          date: holiday.date.toISOString(),
-          name: holiday.name,
+        holidays={holidays.map((entry) => ({
+          date: entry.date.toISOString(),
+          name: entry.holiday.name,
+          kind: entry.holiday.kind,
         }))}
         released={
           release

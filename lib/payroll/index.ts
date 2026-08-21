@@ -6,7 +6,7 @@ import {
   paidRegularHours,
   wholeHours,
 } from "@/lib/employee"
-import { holidayOn } from "@/lib/payroll/holidays"
+import { holidayOn, type Holiday } from "@/lib/payroll/holidays"
 
 // ---------------------------------------------------------------------------
 // Payroll
@@ -27,9 +27,13 @@ import { holidayOn } from "@/lib/payroll/holidays"
 //               it is what earns it. Not worked, it pays a normal day — but
 //               only to someone who was present on the workday before it.
 //               Absent before it and absent on it, the day pays nothing.
+//   Special     a special non-working day carries the same 30% a rest day
+//               does — not double. Not worked, it pays nothing at all: "no
+//               work, no pay", so it never reaches a payslip.
 //   Rest day    Sunday is everyone's rest day. Worked, every hour the day
 //               pays — regular hours and approved overtime alike — carries
-//               an extra 30%.
+//               an extra 30%. A special day falling on a Sunday earns that
+//               30% once, not twice.
 //   Deductions  SSS on gross pay, read off the bracket table in SSS Circular
 //               2024-006; PhilHealth 2.5% of basic salary; Pag-IBIG a flat 200.
 //               All three are monthly schedules and payroll runs twice a
@@ -248,7 +252,8 @@ export type PayrollDay = {
   nightHours: number
   /** Night hours that fall inside paid time, and so are paid at rate + 10%. */
   nightPaidHours: number
-  holiday: string | null
+  /** The holiday on this day and which kind it is, or null. */
+  holiday: Holiday | null
   /** Sunday. Worth the hourly rate plus 30% on every hour the day pays. */
   restDay: boolean
   worked: boolean
@@ -260,6 +265,8 @@ export type PayrollDay = {
   holidayPremium: number
   /** The extra 30% for working a rest day, over regular and overtime hours. */
   restDayPremium: number
+  /** The same 30% for working a special non-working day. Never both. */
+  specialHolidayPremium: number
   total: number
 }
 
@@ -289,6 +296,7 @@ export function computeDay(
       nightPay: 0,
       holidayPremium: 0,
       restDayPremium: 0,
+      specialHolidayPremium: 0,
       total: 0,
     }
   }
@@ -297,8 +305,6 @@ export function computeDay(
     0,
     (+input.timeOut - +input.timeIn) / 60_000
   )
-
-  const renderedHours = wholeHours(renderedMinutes)
 
   // Both from lib/employee, so the attendance screens showing "for payroll"
   // are running this arithmetic and not their own approximation of it.
@@ -338,7 +344,11 @@ export function computeDay(
   // Doubled against the whole day's regular pay, not against what is left on
   // the basic line — a night shift on a holiday must not lose the holiday on
   // the hours that moved across.
-  const holidayPremium = holiday ? regularPay * (HOLIDAY_MULTIPLIER - 1) : 0
+  //
+  // Only a *regular* holiday doubles. A special non-working day is worth the
+  // rate plus thirty per cent, which is the premium below.
+  const holidayPremium =
+    holiday?.kind === "REGULAR" ? regularPay * (HOLIDAY_MULTIPLIER - 1) : 0
   const overtimePay = overtimeHours * hourlyRate * OVERTIME_MULTIPLIER
 
   // Thirty per cent over every hour the day pays at the hourly rate — the
@@ -350,6 +360,19 @@ export function computeDay(
   const restDayPremium = restDay
     ? (regularPay + overtimePay) * REST_DAY_RATE
     : 0
+
+  // A special non-working day worked carries the same thirty per cent, on the
+  // same base — the rate the office states it as is "rest day pay".
+  //
+  // Never on top of the rest day's own premium, though. A special day falling
+  // on a Sunday is one premium, not two: the day is worth 130%, and paying
+  // 160% for it would be inventing a rate that exists nowhere. Kept on its own
+  // line rather than folded into `restDayPremium` because the two are
+  // different entries in a payroll register even when they are worth the same.
+  const specialHolidayPremium =
+    holiday?.kind === "SPECIAL" && !restDay
+      ? (regularPay + overtimePay) * REST_DAY_RATE
+      : 0
 
   return {
     date,
@@ -367,8 +390,14 @@ export function computeDay(
     nightPay: money(nightPay),
     holidayPremium: money(holidayPremium),
     restDayPremium: money(restDayPremium),
+    specialHolidayPremium: money(specialHolidayPremium),
     total: money(
-      basic + holidayPremium + restDayPremium + overtimePay + nightPay
+      basic +
+        holidayPremium +
+        restDayPremium +
+        specialHolidayPremium +
+        overtimePay +
+        nightPay
     ),
   }
 }
@@ -385,12 +414,12 @@ export function computeDay(
  * only export async functions, and because the page needs it too.
  */
 export function holidaysBetween(start: Date, end: Date) {
-  const found: { date: Date; name: string }[] = []
+  const found: { date: Date; holiday: Holiday }[] = []
   const cursor = new Date(start)
 
   while (cursor <= end) {
-    const name = holidayOn(cursor)
-    if (name) found.push({ date: new Date(cursor), name })
+    const holiday = holidayOn(cursor)
+    if (holiday) found.push({ date: new Date(cursor), holiday })
     cursor.setDate(cursor.getDate() + 1)
   }
 
@@ -504,6 +533,8 @@ export type Payslip = {
   nightPay: number
   /** The 30% earned across every rest day worked in the cutoff. */
   restDayPay: number
+  /** The 30% earned on every special non-working day worked in the cutoff. */
+  specialHolidayPay: number
   /** Adjustments that pay more, already inside `gross`. */
   adjustmentAdditions: number
   gross: number
@@ -580,8 +611,8 @@ export function computePayslip({
    * period, whose qualifying day belongs to the cutoff before this one.
    */
   daysBeforeCutoff?: PayrollDayInput[]
-  /** Every regular holiday falling inside the cutoff. */
-  holidaysInCutoff: { date: Date; name: string }[]
+  /** Every holiday falling inside the cutoff, of either kind. */
+  holidaysInCutoff: { date: Date; holiday: Holiday }[]
   /** What the office added or took off by hand this cutoff. */
   adjustments?: AdjustmentInput[]
 }): Payslip {
@@ -606,22 +637,28 @@ export function computePayslip({
   const paidHolidayKeys = new Set<string>()
   const unworkedHolidays: UnworkedHoliday[] = []
 
-  for (const holiday of [...holidaysInCutoff].sort((a, b) => +a.date - +b.date)) {
-    const key = localDayKey(holiday.date)
+  for (const entry of [...holidaysInCutoff].sort((a, b) => +a.date - +b.date)) {
+    const key = localDayKey(entry.date)
 
-    // Worked holidays are already paid — at double — by `computeDay`, and
-    // working the day is itself what earns it, whatever came before.
+    // Worked holidays are already paid by `computeDay` — at double for a
+    // regular one, at +30% for a special one — and working the day is itself
+    // what earns it, whatever came before.
     if (workedKeys.has(key)) {
       paidHolidayKeys.add(key)
       continue
     }
 
-    const qualified = qualifiesOn(holiday.date, presentKeys, paidHolidayKeys)
+    // A special non-working day not worked is "no work, no pay". It earns
+    // nothing and qualifies nothing, so it never reaches a payslip — a line
+    // reading ₱0.00 against a day off is noise, not an explanation.
+    if (entry.holiday.kind === "SPECIAL") continue
+
+    const qualified = qualifiesOn(entry.date, presentKeys, paidHolidayKeys)
     if (qualified) paidHolidayKeys.add(key)
 
     unworkedHolidays.push({
-      date: holiday.date.toISOString(),
-      name: holiday.name,
+      date: entry.date.toISOString(),
+      name: entry.holiday.name,
       pay: qualified ? money(REGULAR_HOURS_PER_DAY * hourlyRate) : 0,
       qualified,
     })
@@ -640,6 +677,7 @@ export function computePayslip({
   const overtimePay = money(sum((day) => day.overtimePay))
   const nightPay = money(sum((day) => day.nightPay))
   const restDayPay = money(sum((day) => day.restDayPremium))
+  const specialHolidayPay = money(sum((day) => day.specialHolidayPremium))
   // The sign is the whole meaning: what pays more joins the earnings, what
   // pays less joins the deductions. Split here so the payslip can show each in
   // the half it belongs to rather than as one net number nobody can check.
@@ -660,6 +698,7 @@ export function computePayslip({
       overtimePay +
       nightPay +
       restDayPay +
+      specialHolidayPay +
       adjustmentAdditions
   )
 
@@ -726,6 +765,7 @@ export function computePayslip({
     overtimePay,
     nightPay,
     restDayPay,
+    specialHolidayPay,
     adjustmentAdditions,
     gross,
     sss,

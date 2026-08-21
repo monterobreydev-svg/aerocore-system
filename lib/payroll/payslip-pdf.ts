@@ -326,6 +326,16 @@ export function payslipBlocks(doc: PayslipDocument): PdfBlock[] {
       value: slip.restDayPay,
     },
     {
+      // Its own line, not folded into the rest day above: the two are worth
+      // the same and are different entries on a payroll register.
+      label: "Special holiday premium",
+      basis:
+        slip.specialHolidayPay > 0
+          ? `special non-working days worked @ +${REST_DAY_RATE * 100}%`
+          : "none worked this period",
+      value: slip.specialHolidayPay,
+    },
+    {
       label: "Holiday pay",
       basis:
         slip.holidayPay > 0

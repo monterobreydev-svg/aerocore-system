@@ -407,6 +407,7 @@ export async function getOverview(role: Role): Promise<Overview> {
       overtime: 0,
       night: 0,
       restDay: 0,
+      specialHoliday: 0,
       holiday: 0,
       openDays: 0,
       paid: 0,
@@ -438,6 +439,7 @@ export async function getOverview(role: Role): Promise<Overview> {
       total.overtime += slip.overtimePay
       total.night += slip.nightPay
       total.restDay += slip.restDayPay
+      total.specialHoliday += slip.specialHolidayPay
       total.holiday += slip.holidayPay
       total.openDays += slip.days.filter(
         (day) => day.renderedMinutes === 0
@@ -466,6 +468,10 @@ export async function getOverview(role: Role): Promise<Overview> {
         { label: "Overtime", amount: Math.round(total.overtime) },
         { label: "Night", amount: Math.round(total.night) },
         { label: "Rest day", amount: Math.round(total.restDay) },
+        {
+          label: "Special holiday",
+          amount: Math.round(total.specialHoliday),
+        },
         { label: "Holiday", amount: Math.round(total.holiday) },
       ].filter((part) => part.amount > 0),
       openDays: total.openDays,

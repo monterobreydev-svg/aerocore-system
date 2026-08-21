@@ -32,6 +32,8 @@ export type PayrollSheetRow = {
   nightHours: number
   nightPay: number
   restDayPay: number
+  /** The same 30%, earned on a special non-working day rather than a Sunday. */
+  specialHolidayPay: number
   holidayPay: number
   /**
    * Signed: positive added to the pay, negative taken off it. One column
@@ -73,6 +75,9 @@ const COLUMNS: { label: string; width: number; kind: "text" | "hours" | "money" 
     { label: "Night Hours", width: 11, kind: "hours" },
     { label: "Night Pay", width: 13, kind: "money" },
     { label: "Rest Day Pay", width: 13, kind: "money" },
+    // Its own column beside the rest day rather than added into it: both are
+    // the same 30%, and they are different entries on a register.
+    { label: "Special Holiday Pay", width: 15, kind: "money" },
     { label: "Holiday Pay", width: 13, kind: "money" },
     { label: "Adjustment", width: 13, kind: "money" },
     { label: "Gross Pay", width: 14, kind: "money" },
@@ -199,6 +204,7 @@ export function payrollSheet({
         count(row.nightHours),
         money(row.nightPay),
         money(row.restDayPay),
+        money(row.specialHolidayPay),
         money(row.holidayPay),
         money(row.adjustment),
         money(row.gross),
@@ -234,6 +240,7 @@ export function payrollSheet({
       count(total((r) => r.nightHours), STYLE.totalNumber),
       money(total((r) => r.nightPay), STYLE.totalMoney),
       money(total((r) => r.restDayPay), STYLE.totalMoney),
+      money(total((r) => r.specialHolidayPay), STYLE.totalMoney),
       money(total((r) => r.holidayPay), STYLE.totalMoney),
       money(total((r) => r.adjustment), STYLE.totalMoney),
       money(total((r) => r.gross), STYLE.totalMoney),

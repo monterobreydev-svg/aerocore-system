@@ -159,6 +159,7 @@ export async function GET(request: NextRequest) {
       nightHours: slip.nightHours,
       nightPay: slip.nightPay,
       restDayPay: slip.restDayPay,
+      specialHolidayPay: slip.specialHolidayPay,
       holidayPay: slip.holidayPay,
       adjustment,
       // The payslip's gross already carries any addition; taking the withheld

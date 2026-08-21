@@ -20,6 +20,7 @@ import {
   PHILHEALTH_EMPLOYEE_RATE,
   REGULAR_HOURS_PER_DAY,
 } from "@/lib/payroll"
+import { HOLIDAY_STYLE } from "@/lib/payroll/holidays"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -506,6 +507,15 @@ export function PayslipDialog({
                       amount={slip.restDayPay}
                     />
                     <Line
+                      label="Special holiday"
+                      basis={
+                        slip.specialHolidayPay === 0
+                          ? "no special non-working day worked"
+                          : "special days worked — rate +30%"
+                      }
+                      amount={slip.specialHolidayPay}
+                    />
+                    <Line
                       label="Holiday pay"
                       basis={
                         slip.holidayPay === 0
@@ -610,8 +620,13 @@ export function PayslipDialog({
                           <span className="min-w-0">
                             <span className="text-sm">{dayLabel(day.date)}</span>
                             {day.holiday && (
-                              <span className="ml-1.5 text-xs text-red-600 dark:text-red-400">
-                                {day.holiday}
+                              <span
+                                className={cn(
+                                  "ml-1.5 text-xs",
+                                  HOLIDAY_STYLE[day.holiday.kind].text
+                                )}
+                              >
+                                {day.holiday.name}
                               </span>
                             )}
                             <span className="block text-xs text-muted-foreground tabular-nums">

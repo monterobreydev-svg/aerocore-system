@@ -18,6 +18,7 @@ import {
 import type { ReleaseMode } from "@/components/payroll/release-payroll-dialog"
 import { peso } from "@/lib/reimbursement"
 import { dayLabel } from "@/lib/attendance"
+import { HOLIDAY_STYLE, type HolidayKind } from "@/lib/payroll/holidays"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -59,6 +60,7 @@ export type PayrollRow = {
   nightPay: number
   holidayPay: number
   restDayPay: number
+  specialHolidayPay: number
   gross: number
   deductions: number
   net: number
@@ -153,7 +155,7 @@ export function PayrollView({
 }: {
   rows: PayrollRow[]
   cutoff: PayrollCutoff
-  holidays: { date: string; name: string }[]
+  holidays: { date: string; name: string; kind: HolidayKind }[]
   /** Null while the run is still the office's own working copy. */
   released: { at: string; byName: string } | null
 }) {
@@ -229,16 +231,30 @@ export function PayrollView({
           />
         </div>
 
-        {holidays.length > 0 && (
-          <span className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400">
+        {/* One chip per kind, because they are shaded differently on the
+            calendar and paid differently here — a single red strip listing a
+            special non-working day among the regular ones would say this
+            cutoff has more double-pay days in it than it does. */}
+        {((["REGULAR", "SPECIAL"] as const)
+          .map((kind) => ({ kind, days: holidays.filter((h) => h.kind === kind) }))
+          .filter((group) => group.days.length > 0)
+        ).map((group) => (
+          <span
+            key={group.kind}
+            title={HOLIDAY_STYLE[group.kind].payNote}
+            className={cn(
+              "inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium",
+              HOLIDAY_STYLE[group.kind].note
+            )}
+          >
             <CalendarDays className="size-3.5 shrink-0" />
             <span className="truncate">
-              {holidays
+              {group.days
                 .map((holiday) => `${dayLabel(holiday.date)} ${holiday.name}`)
                 .join(" · ")}
             </span>
           </span>
-        )}
+        ))}
 
         <div className="ml-auto flex items-center gap-2">
           {/* A plain anchor, so the browser owns the download and files it in

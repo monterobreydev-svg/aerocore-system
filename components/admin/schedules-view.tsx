@@ -16,7 +16,7 @@ import {
   todayKey,
   type EmployeeBusyBlock,
 } from "@/lib/schedule"
-import { HOLIDAY_PAY_NOTE } from "@/lib/payroll/holidays"
+import { HOLIDAY_STYLE } from "@/lib/payroll/holidays"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import dynamic from "next/dynamic"
@@ -267,13 +267,26 @@ export function SchedulesView({
             </span>
           ))}
 
-          {/* What the amber days mean. Said once here so the cells only have to
-              carry the holiday's name, and said at all because the rate is the
-              reason anyone cares which days those are. */}
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400">
-            <span className="size-2 rounded-full bg-red-500" />
-            Regular holiday — {HOLIDAY_PAY_NOTE.toLowerCase()}
-          </span>
+          {/* Which colour is which. Names only — the legend sits in a row with
+              the work types and has to read at the same weight as they do, and
+              a rate spelled out here would make these two chips twice the
+              length of everything beside them. What the day pays is on the
+              cell's own tooltip, where it is asked for rather than carried. */}
+          {(["REGULAR", "SPECIAL"] as const).map((kind) => {
+            const style = HOLIDAY_STYLE[kind]
+            return (
+              <span
+                key={kind}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                  style.note
+                )}
+              >
+                <span className={cn("size-2 rounded-full", style.dot)} />
+                {style.label}
+              </span>
+            )
+          })}
         </div>
       )}
 

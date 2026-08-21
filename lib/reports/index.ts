@@ -377,7 +377,7 @@ export async function buildReport(input: ReportRange): Promise<ReportData> {
         totals.overtime += slip.overtimePay
         totals.night += slip.nightPay
         totals.holiday += slip.holidayPay
-        totals.restDay += slip.restDayPay
+        totals.restDay += slip.restDayPay + slip.specialHolidayPay
         grossPay += slip.gross
         netPay += slip.net
       }

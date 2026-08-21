@@ -13,9 +13,9 @@ import {
 } from "lucide-react"
 import { listPublicMonth } from "@/app/actions/public-schedule"
 import {
-  HOLIDAY_CELL,
-  HOLIDAY_TEXT,
+  HOLIDAY_STYLE,
   holidayOn,
+  holidayStyle,
 } from "@/lib/payroll/holidays"
 import {
   addDays,
@@ -323,13 +323,14 @@ export function KioskSchedule({ days }: { days: KioskDay[] }) {
                 const isSelected = isSameDay(day, selected)
                 const isToday = isSameDay(day, today)
                 const holiday = holidayOn(day)
+                const style = holidayStyle(holiday)
 
                 return (
                   <button
                     key={day.toISOString()}
                     type="button"
                     onClick={() => setSelected(day)}
-                    title={holiday ?? undefined}
+                    title={holiday?.name}
                     className={cn(
                       "flex aspect-square flex-col items-center justify-center gap-1 rounded-lg text-sm transition-colors outline-none",
                       !inMonth && "text-muted-foreground/40",
@@ -338,7 +339,7 @@ export function KioskSchedule({ days }: { days: KioskDay[] }) {
                         : isToday
                           ? "bg-brand/10 font-semibold text-brand"
                           : holiday
-                            ? cn(HOLIDAY_CELL, HOLIDAY_TEXT, "font-semibold")
+                            ? cn(style?.cell, style?.text, "font-semibold")
                             : "hover:bg-muted",
                       holiday && "ring-1 ring-red-500/40 ring-inset"
                     )}
@@ -375,8 +376,17 @@ export function KioskSchedule({ days }: { days: KioskDay[] }) {
                 })}
               </h3>
               {selectedHoliday && (
-                <span className="text-xs font-medium text-red-600 dark:text-red-400">
-                  {selectedHoliday}
+                <span
+                  className={cn(
+                    "text-xs font-medium",
+                    HOLIDAY_STYLE[selectedHoliday.kind].text
+                  )}
+                >
+                  {selectedHoliday.name}
+                  <span className="opacity-70">
+                    {" · "}
+                    {HOLIDAY_STYLE[selectedHoliday.kind].payNote}
+                  </span>
                 </span>
               )}
             </div>

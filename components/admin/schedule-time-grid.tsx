@@ -13,10 +13,8 @@ import {
   startOfDay,
 } from "@/lib/schedule"
 import {
-  HOLIDAY_CELL,
-  HOLIDAY_PAY_NOTE,
-  HOLIDAY_TEXT,
   holidayOn,
+  holidayStyle,
 } from "@/lib/payroll/holidays"
 import { cn } from "@/lib/utils"
 import type { ScheduleRecord } from "@/components/admin/schedule-types"
@@ -317,6 +315,7 @@ export function ScheduleTimeGrid({
             {days.map((day) => {
               const isToday = isSameDay(day, today)
               const holiday = holidayOn(day)
+              const style = holidayStyle(holiday)
               const count = visible.filter((schedule) =>
                 isSameDay(new Date(schedule.date), day)
               ).length
@@ -325,7 +324,7 @@ export function ScheduleTimeGrid({
                   key={day.toISOString()}
                   className={cn(
                     "min-w-0 flex-1 border-l px-1 py-1.5 text-center",
-                    holiday && HOLIDAY_CELL
+                    style && style.cell
                   )}
                 >
                   <p className="truncate text-[11px] text-muted-foreground sm:text-xs">
@@ -334,7 +333,7 @@ export function ScheduleTimeGrid({
                   <p
                     className={cn(
                       "mx-auto mt-0.5 flex size-6 items-center justify-center rounded-full text-sm font-medium",
-                      holiday && !isToday && HOLIDAY_TEXT,
+                      style && !isToday && style.text,
                       isToday && "bg-sky-600 text-white"
                     )}
                   >
@@ -343,15 +342,15 @@ export function ScheduleTimeGrid({
                   {/* Under the number rather than beside it here — a column
                       head is already a stack, and the name has the full width
                       of the column to itself. */}
-                  {holiday && (
+                  {holiday && style && (
                     <p
-                      title={`${holiday} — regular holiday. ${HOLIDAY_PAY_NOTE}.`}
+                      title={`${holiday.name} — ${style.label.toLowerCase()}. ${style.payNote}.`}
                       className={cn(
                         "truncate text-[10px] leading-tight font-medium sm:text-[11px]",
-                        HOLIDAY_TEXT
+                        style.text
                       )}
                     >
-                      {holiday}
+                      {holiday.name}
                     </p>
                   )}
                   {count > 0 && (

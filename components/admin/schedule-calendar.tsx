@@ -13,11 +13,8 @@ import {
   startOfWeek,
 } from "@/lib/schedule"
 import {
-  HOLIDAY_CELL,
-  HOLIDAY_CELL_MUTED,
-  HOLIDAY_PAY_NOTE,
-  HOLIDAY_TEXT,
   holidayOn,
+  holidayStyle,
 } from "@/lib/payroll/holidays"
 import { cn } from "@/lib/utils"
 import type { ScheduleRecord } from "@/components/admin/schedule-types"
@@ -67,6 +64,10 @@ export function ScheduleMonthView({
           const dayIsToday = isSameDay(day, today)
           const isPast = +startOfDay(day) < startOfToday
           const holiday = holidayOn(day)
+          // Red for a regular holiday, amber for a special non-working day —
+          // the wash, the text colour and the wording all come from the one
+          // place, so the four calendars in this app cannot disagree.
+          const style = holidayStyle(holiday)
           const daySchedules = schedules
             .filter((schedule) => isSameDay(new Date(schedule.date), day))
             .sort((a, b) => a.startTime.localeCompare(b.startTime))
@@ -83,10 +84,10 @@ export function ScheduleMonthView({
                 // One background per cell, chosen rather than layered: two
                 // competing `bg-` utilities resolve by stylesheet order, which
                 // is not something to leave to chance.
-                holiday
+                style
                   ? inMonth
-                    ? HOLIDAY_CELL
-                    : HOLIDAY_CELL_MUTED
+                    ? style.cell
+                    : style.cellMuted
                   : !inMonth && "bg-muted/20"
               )}
             >
@@ -101,25 +102,25 @@ export function ScheduleMonthView({
                   type="button"
                   onClick={() => onOpenDay(day)}
                   className={cn(
-                    "flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-medium outline-none hover:bg-muted",
+                    "flex size-5 shrink-0 items-center just y-center rounded-full text-xs font-medium outline-none hover:bg-muted",
                     !inMonth && "text-muted-foreground/50",
-                    holiday && inMonth && !dayIsToday && HOLIDAY_TEXT,
+                    style && inMonth && !dayIsToday && style.text,
                     dayIsToday && "bg-sky-600 text-white hover:bg-sky-600"
                   )}
                 >
                   {day.getDate()}
                 </button>
 
-                {holiday && (
+                {holiday && style && (
                   <p
-                    title={`${holiday} — regular holiday. ${HOLIDAY_PAY_NOTE}.`}
+                    title={`${holiday.name} — ${style.label.toLowerCase()}. ${style.payNote}.`}
                     className={cn(
                       "min-w-0 truncate text-[10px] leading-tight font-medium sm:text-[11px]",
-                      HOLIDAY_TEXT,
+                      style.text,
                       !inMonth && "opacity-60"
                     )}
                   >
-                    {holiday}
+                    {holiday.name}
                   </p>
                 )}
               </div>
