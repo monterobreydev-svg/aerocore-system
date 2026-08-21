@@ -20,6 +20,7 @@ import {
   civilStatusLabel,
   employmentTypeLabel,
   monthlyFromHourly,
+  pesoRate,
   sanitizeGovId,
 } from "@/lib/employee"
 import { cn } from "@/lib/utils"
@@ -138,9 +139,9 @@ function formatReviewValue(field: string, value: string) {
   if (field === "password") return "•".repeat(Math.min(value.length, 10))
   if (field === "hourlyRate") {
     const amount = Number(value)
-    return Number.isNaN(amount)
-      ? "—"
-      : amount.toLocaleString("en-US", { style: "currency", currency: "PHP" })
+    // At the rate's own precision. This is the confirm-before-create step, so
+    // rounding here would show a figure that isn't the one about to be saved.
+    return Number.isNaN(amount) ? "—" : pesoRate(amount)
   }
   if (field === "birthDate" || field === "dateHired") {
     return formatDate(value)
@@ -707,7 +708,13 @@ export function CreateStaffDialog({
                       name="hourlyRate"
                       type="number"
                       min="0"
-                      step="0.01"
+                      // `any`, not 0.01: a rate is usually arrived at by
+                      // dividing an agreed monthly salary back down, and that
+                      // rarely lands on a centavo. A step of 0.01 makes the
+                      // browser reject ₱96.153846 outright. Kept to
+                      // RATE_DECIMALS places on save.
+                      step="any"
+                      inputMode="decimal"
                       placeholder="150.00"
                       value={hourlyRate}
                       onChange={(event) => setHourlyRate(event.target.value)}

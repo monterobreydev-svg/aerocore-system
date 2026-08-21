@@ -92,6 +92,45 @@ export function monthlyFromHourly(hourlyRate: number) {
 }
 
 /**
+ * Decimal places an hourly rate may carry.
+ *
+ * Money is two, but an hourly rate is not money — it is the figure money is
+ * derived from, and the office negotiates in the other direction: they agree a
+ * monthly salary and divide back. ₱20,000 a month over
+ * `HOURS_PER_DAY × PAID_DAYS_PER_MONTH` hours is ₱96.153846…, and rounding that
+ * to ₱96.15 pays ₱19,999.20 — eight pesos a month short of what was agreed, on
+ * every payslip, forever.
+ *
+ * Six places is where that stops mattering: ₱96.153846 × 208 is ₱19,999.999968,
+ * which is ₱20,000.00 to the centavo. It is also the cap the display honours,
+ * so what is stored, what is shown and what payroll multiplies are the same
+ * number.
+ */
+export const RATE_DECIMALS = 6
+
+/** Rounds an entered rate to what this system will actually keep. */
+export function roundRate(value: number) {
+  const factor = 10 ** RATE_DECIMALS
+  return Math.round(value * factor) / factor
+}
+
+/**
+ * An hourly rate, shown to whatever precision it was set at.
+ *
+ * `peso()` is for money and stops at two places, which is right for a payslip
+ * total and wrong here — it would print ₱96.15 for a rate of ₱96.153846 and
+ * quietly contradict the field the rate was typed into.
+ */
+export function pesoRate(hourlyRate: number) {
+  return hourlyRate.toLocaleString("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: RATE_DECIMALS,
+  })
+}
+
+/**
  * Sunday is everyone's rest day — employees and admin staff alike.
  *
  * Kept here rather than in lib/payroll with the other pay rules, because both

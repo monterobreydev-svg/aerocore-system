@@ -18,7 +18,7 @@ import type {
   Role,
 } from "@/app/generated/prisma/client"
 import { roleLabel, visibleRolesFor } from "@/lib/auth/roles"
-import { employmentTypeLabel } from "@/lib/employee"
+import { employmentTypeLabel, pesoRate } from "@/lib/employee"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -85,13 +85,6 @@ export type StaffMember = {
 
 function initials(firstName: string, lastName: string) {
   return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase()
-}
-
-function peso(amount: number) {
-  return amount.toLocaleString("en-US", {
-    style: "currency",
-    currency: "PHP",
-  })
 }
 
 // Derived from the same rule the query uses, so an Administrator is never
@@ -502,7 +495,7 @@ export function StaffCards({
                 </span>
 
                 <span className="hidden text-right text-sm font-medium tabular-nums md:block">
-                  {peso(member.employee.hourlyRate)}
+                  {pesoRate(member.employee.hourlyRate)}
                 </span>
 
                 <span className="flex shrink-0 items-center justify-end gap-2 md:w-24">

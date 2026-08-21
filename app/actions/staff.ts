@@ -7,7 +7,12 @@ import { hashPassword } from "@/lib/auth/password"
 import { canReachEmployee, verifySession } from "@/lib/auth"
 import type { Role } from "@/app/generated/prisma/client"
 import { assignableRoles, roleLabel } from "@/lib/auth/roles"
-import { SKILL_OPTIONS, isValidGovId, isValidPhone } from "@/lib/employee"
+import {
+  SKILL_OPTIONS,
+  isValidGovId,
+  isValidPhone,
+  roundRate,
+} from "@/lib/employee"
 
 // Checkboxes arrive as repeated `skills` entries; nothing outside the fixed
 // list is accepted, so a hand-rolled POST can't seed free-text values that
@@ -78,7 +83,12 @@ const StaffSchema = z.object({
   position: z.string().trim().min(1, "Position is required."),
   employmentType: optionalEmploymentType,
   dateHired: z.string().trim().optional(),
-  hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
+  // Kept to RATE_DECIMALS places rather than to the centavo: the rate is
+  // what pay is derived from, not pay itself. See lib/employee.
+  hourlyRate: z.coerce
+    .number()
+    .min(0, "Enter a valid hourly rate.")
+    .transform(roundRate),
   skills: skillSet,
   emergencyContactPerson: z.string().trim().optional(),
   emergencyContactNo: optionalPhone,
@@ -285,7 +295,12 @@ const UpdateStaffSchema = z.object({
   position: z.string().trim().min(1, "Position is required."),
   employmentType: optionalEmploymentType,
   dateHired: z.string().trim().optional(),
-  hourlyRate: z.coerce.number().min(0, "Enter a valid hourly rate."),
+  // Kept to RATE_DECIMALS places rather than to the centavo: the rate is
+  // what pay is derived from, not pay itself. See lib/employee.
+  hourlyRate: z.coerce
+    .number()
+    .min(0, "Enter a valid hourly rate.")
+    .transform(roundRate),
   skills: skillSet,
   emergencyContactPerson: z.string().trim().optional(),
   emergencyContactNo: optionalPhone,

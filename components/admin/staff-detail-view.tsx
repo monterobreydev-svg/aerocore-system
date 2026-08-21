@@ -3,9 +3,11 @@
 import { useActionState, useEffect, useState } from "react"
 import dynamic from "next/dynamic"
 import {
+  Briefcase,
   ChevronDown,
   ChevronLeft,
   Clock,
+  FileText,
   History,
   Pencil,
   Receipt,
@@ -24,6 +26,7 @@ import {
   civilStatusLabel,
   employmentTypeLabel,
   monthlyFromHourly,
+  pesoRate,
   sanitizeGovId,
   MONTHLY_RATE_BASIS,
 } from "@/lib/employee"
@@ -42,7 +45,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import {
   Field,
   FieldDescription,
@@ -134,8 +136,9 @@ const FIELD_LABELS: Record<string, string> = {
 
 function formatFieldValue(field: string, value: string | null) {
   if (!value) return "—"
-  if (field === "hourlyRate")
-    return peso(Number(value))
+  // The rate at its own precision, not money's two places — an edit log that
+  // renders "₱96.15 → ₱96.15" for a real change is worse than no log.
+  if (field === "hourlyRate") return pesoRate(Number(value))
   if (field === "birthDate" || field === "dateHired") {
     return formatDate(value)
   }
@@ -211,6 +214,130 @@ function InfoCard({
         <dl className="flex flex-col">{children}</dl>
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * One group of fields in the edit form, with a heading that actually separates
+ * it from the next.
+ *
+ * The form used to mark its groups with a line of plain text set at `text-sm
+ * font-medium` — the same size and weight as every field label around it —
+ * divided by a rule that sat between two sections and so belonged to neither.
+ * At a glance that reads as one undifferentiated column of inputs, which is
+ * exactly how it felt to use.
+ *
+ * Three changes fix it: the label is small-caps and tracked, so it cannot be
+ * mistaken for a field; an icon anchors it in the margin; and the rule sits
+ * *under the heading* rather than between groups, giving each section a visible
+ * top edge that belongs to it.
+ */
+function EditSection({
+  icon: Icon,
+  title,
+  hint,
+  children,
+}: {
+  icon: React.ElementType
+  title: string
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b pb-2">
+        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <h3 className="text-[0.6875rem] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+          {title}
+        </h3>
+        {hint && (
+          <span className="text-xs text-muted-foreground">{hint}</span>
+        )}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/**
+ * The hourly rate, and what it comes to in a month.
+ *
+ * Its own component so the projection can update as you type without making the
+ * whole edit form controlled. It mounts and unmounts with the form, so
+ * "reset the field when the edit is cancelled" is not a case anyone has to
+ * handle — the state goes with the component.
+ *
+ * The monthly figure carries no `name` and is never submitted. It is a
+ * projection, and payroll stays the one place a monthly figure is decided —
+ * the same rule the create dialog states.
+ */
+function RateFields({
+  idPrefix,
+  defaultRate,
+  disabled,
+  errors,
+}: {
+  idPrefix: string
+  defaultRate: number
+  disabled?: boolean
+  errors?: string[]
+}) {
+  const [rate, setRate] = useState(String(defaultRate))
+
+  // Derived, not stored: a second piece of state holding a number you can
+  // compute from the first is a number that can disagree with it.
+  const parsed = Number(rate)
+  const monthly =
+    rate.trim() !== "" && Number.isFinite(parsed) && parsed >= 0
+      ? monthlyFromHourly(parsed)
+      : null
+
+  return (
+    <>
+      <Field data-invalid={!!errors?.length}>
+        <FieldLabel htmlFor={`hourlyRate-${idPrefix}`}>Hourly rate</FieldLabel>
+        <div className="relative">
+          <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-muted-foreground">
+            ₱
+          </span>
+          <Input
+            id={`hourlyRate-${idPrefix}`}
+            name="hourlyRate"
+            type="number"
+            min="0"
+            // `any`, not 0.01: a rate is usually arrived at by dividing an
+            // agreed monthly salary back down, and that rarely lands on a
+            // centavo. Kept to RATE_DECIMALS places on save.
+            step="any"
+            inputMode="decimal"
+            value={rate}
+            onChange={(event) => setRate(event.target.value)}
+            disabled={disabled}
+            required
+            className="pl-6"
+          />
+        </div>
+        <FieldError errors={errors?.map((message) => ({ message }))} />
+      </Field>
+
+      <Field>
+        <FieldLabel htmlFor={`monthlyRate-${idPrefix}`}>
+          Projected monthly
+        </FieldLabel>
+        <Input
+          id={`monthlyRate-${idPrefix}`}
+          value={monthly === null ? "" : peso(monthly)}
+          placeholder="—"
+          readOnly
+          tabIndex={-1}
+          aria-readonly
+          className="bg-muted/50 text-muted-foreground"
+        />
+        <FieldDescription>
+          Estimate at {MONTHLY_RATE_BASIS}. Not saved.
+        </FieldDescription>
+      </Field>
+    </>
   )
 }
 
@@ -397,9 +524,13 @@ export function StaffDetailView({
               <input type="hidden" name="employeeId" value={e.id} />
 
               <Card className="shadow-sm">
-                <CardContent className="flex flex-col gap-6">
-                  <div className="flex flex-col gap-3">
-                    <p className="text-sm font-medium">Personal</p>
+                {/* Wider than the old gap-6, now that the rule between two
+                    groups is gone: with each section carrying its own heading
+                    and top edge, the space between them is what says where one
+                    ends — so it has to be bigger than the space between two
+                    rows of fields inside one. */}
+                <CardContent className="flex flex-col gap-8">
+                  <EditSection icon={UserRound} title="Personal">
                     <FieldGroup>
                       <div className="grid gap-4 sm:grid-cols-3">
                         <Field data-invalid={!!state?.errors?.firstName}>
@@ -539,12 +670,9 @@ export function StaffDetailView({
                         </Field>
                       </div>
                     </FieldGroup>
-                  </div>
+                  </EditSection>
 
-                  <Separator />
-
-                  <div className="flex flex-col gap-3">
-                    <p className="text-sm font-medium">Employment</p>
+                  <EditSection icon={Briefcase} title="Employment">
                     <FieldGroup>
                       <div className="grid gap-4 sm:grid-cols-3">
                         <Field data-invalid={!!state?.errors?.employeeNo}>
@@ -626,27 +754,31 @@ export function StaffDetailView({
                         </Field>
                       </div>
 
+                      <Field data-invalid={!!state?.errors?.skills}>
+                        <FieldLabel>Skills</FieldLabel>
+                        <SkillsPicker
+                          idPrefix={`skill-${staff.id}`}
+                          selected={initial.employee.skills}
+                          disabled={pending}
+                        />
+                        <FieldError
+                          errors={state?.errors?.skills?.map((m) => ({
+                            message: m,
+                          }))}
+                        />
+                      </Field>
+                    </FieldGroup>
+                  </EditSection>
+
+                  <EditSection icon={Wallet} title="Compensation & access">
+                    <FieldGroup>
                       <div className="grid gap-4 sm:grid-cols-3">
-                        <Field data-invalid={!!state?.errors?.hourlyRate}>
-                          <FieldLabel htmlFor={`hourlyRate-${staff.id}`}>
-                            Hourly rate
-                          </FieldLabel>
-                          <Input
-                            id={`hourlyRate-${staff.id}`}
-                            name="hourlyRate"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            defaultValue={initial.employee.hourlyRate}
-                            disabled={pending}
-                            required
-                          />
-                          <FieldError
-                            errors={state?.errors?.hourlyRate?.map((m) => ({
-                              message: m,
-                            }))}
-                          />
-                        </Field>
+                        <RateFields
+                          idPrefix={staff.id}
+                          defaultRate={initial.employee.hourlyRate}
+                          disabled={pending}
+                          errors={state?.errors?.hourlyRate}
+                        />
                         {/* Only a Director sees this, and never on their own
                             record — the server refuses both regardless, since
                             hiding a field is not a permission. */}
@@ -719,27 +851,13 @@ export function StaffDetailView({
                           </Select>
                         </Field>
                       </div>
-
-                      <Field data-invalid={!!state?.errors?.skills}>
-                        <FieldLabel>Skills</FieldLabel>
-                        <SkillsPicker
-                          idPrefix={`skill-${staff.id}`}
-                          selected={initial.employee.skills}
-                          disabled={pending}
-                        />
-                        <FieldError
-                          errors={state?.errors?.skills?.map((m) => ({
-                            message: m,
-                          }))}
-                        />
-                      </Field>
                     </FieldGroup>
-                  </div>
+                  </EditSection>
 
-                  <Separator />
-
-                  <div className="flex flex-col gap-3">
-                    <p className="text-sm font-medium">Emergency contact</p>
+                  <EditSection
+                    icon={ShieldAlert}
+                    title="Emergency contact"
+                  >
                     <FieldGroup>
                       <div className="grid gap-4 sm:grid-cols-3">
                         <Field>
@@ -790,17 +908,13 @@ export function StaffDetailView({
                         </Field>
                       </div>
                     </FieldGroup>
-                  </div>
+                  </EditSection>
 
-                  <Separator />
-
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <p className="text-sm font-medium">Government numbers</p>
-                      <span className="text-xs text-muted-foreground">
-                        — can be filled in later, before the first payroll run
-                      </span>
-                    </div>
+                  <EditSection
+                    icon={FileText}
+                    title="Government numbers"
+                    hint="— can be filled in later, before the first payroll run"
+                  >
                     <div className="rounded-xl border bg-muted/30 p-4">
                       <FieldGroup>
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -867,7 +981,7 @@ export function StaffDetailView({
                         </div>
                       </FieldGroup>
                     </div>
-                  </div>
+                  </EditSection>
 
                   {state?.message && (
                     <p className="text-sm text-destructive">{state.message}</p>
@@ -948,7 +1062,7 @@ export function StaffDetailView({
                 title="Compensation"
                 description={`Monthly is an estimate at ${MONTHLY_RATE_BASIS} — it isn't stored`}
               >
-                <Row label="Hourly rate" value={peso(e.hourlyRate)} />
+                <Row label="Hourly rate" value={pesoRate(e.hourlyRate)} />
                 <Row
                   label="Projected monthly"
                   value={peso(monthlyFromHourly(e.hourlyRate))}

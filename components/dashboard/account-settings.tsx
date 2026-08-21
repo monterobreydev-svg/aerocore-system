@@ -28,6 +28,7 @@ import {
   civilStatusLabel,
   employmentTypeLabel,
   monthlyFromHourly,
+  pesoRate,
   MONTHLY_RATE_BASIS,
 } from "@/lib/employee"
 import { cn } from "@/lib/utils"
@@ -516,7 +517,7 @@ function EmploymentTab({ account }: { account: AccountSettingsData }) {
           icon={BadgeCheck}
         >
           <dl className="flex flex-col">
-            <Row label="Hourly rate" value={peso(e.hourlyRate)} />
+            <Row label="Hourly rate" value={pesoRate(e.hourlyRate)} />
             <Row
               label="Projected monthly"
               value={peso(monthlyFromHourly(e.hourlyRate))}
