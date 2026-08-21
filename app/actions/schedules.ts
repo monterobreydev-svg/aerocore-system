@@ -3,9 +3,10 @@
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db/prisma"
-import { verifySession } from "@/lib/auth"
+import { canReachEmployee, verifySession } from "@/lib/auth"
 import {
   dateKey,
+  parseDateKey,
   SCHEDULE_STATUS_LABELS,
   scheduleEndsAt,
   shiftMinutes,
@@ -778,4 +779,164 @@ export async function deleteSchedule(scheduleId: string) {
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
+}
+
+// ---------------------------------------------------------------------------
+// One person's day, for their staff record
+// ---------------------------------------------------------------------------
+//
+// The schedules page answers "who is out today"; this answers "where is this
+// one person on this one day", which is what gets asked with the record already
+// open — a client rings about a visit, or somebody's leave has to be covered.
+//
+// Deliberately a day at a time. Their whole assignment history is the unbounded
+// relation AGENTS.md rules out, and the office asks this question about a date,
+// not about a year. What crosses the wire is a handful of jobs with their names
+// already resolved, never a schedule row.
+
+export type StaffScheduleJob = {
+  id: string
+  startTime: string
+  endTime: string
+  minutes: number
+  workTypes: WorkType[]
+  status: ScheduleStatus
+  clientName: string
+  branchName: string | null
+  address: string
+  contactPerson: string | null
+  contactNumber: string | null
+  remarks: string | null
+  /** Who else is on the job, by name — everyone but the person being viewed. */
+  crew: string[]
+}
+
+export type StaffScheduleDay = {
+  date: string
+  jobs: StaffScheduleJob[]
+  /** Scheduled minutes for the day, cancellations excluded. */
+  minutes: number
+  /**
+   * The nearest days on either side that this person is actually on. Without
+   * them, stepping is blind: an empty Tuesday says nothing about whether the
+   * next job is on Wednesday or in three weeks, and the only way to find out
+   * is to keep tapping.
+   */
+  prevDate: string | null
+  nextDate: string | null
+}
+
+/**
+ * May the signed-in user look at this person's staff record?
+ *
+ * Director and Administrator only — an Engineer can create schedules but has no
+ * business on somebody's record. `canReachEmployee` then keeps an Administrator
+ * out of a Director's, the same rule the staff list is filtered by.
+ */
+async function requireStaffRecordAccess(employeeId: string) {
+  const session = await verifySession()
+  if (session.role !== "DIRECTOR" && session.role !== "ADMINISTRATOR") {
+    return null
+  }
+  if (!(await canReachEmployee(session.role, employeeId))) return null
+  return session
+}
+
+export async function listEmployeeDaySchedule(
+  employeeId: string,
+  date: string
+): Promise<StaffScheduleDay> {
+  const empty: StaffScheduleDay = {
+    date,
+    jobs: [],
+    minutes: 0,
+    prevDate: null,
+    nextDate: null,
+  }
+
+  if (!employeeId || !parseDateKey(date)) return empty
+  if (!(await requireStaffRecordAccess(employeeId))) return empty
+
+  // Local midnight, written exactly as createSchedule writes it — comparing an
+  // ISO/UTC day here would land a day out for everyone east of UTC, Manila
+  // included.
+  const day = new Date(`${date}T00:00:00`)
+  const assignedToThem = { assignments: { some: { employeeId } } }
+
+  const [rows, previous, next] = await Promise.all([
+    prisma.schedule.findMany({
+      where: { ...assignedToThem, date: day },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        workTypes: true,
+        status: true,
+        contactPerson: true,
+        contactNumber: true,
+        remarks: true,
+        client: { select: { name: true, address: true } },
+        branch: { select: { name: true, address: true } },
+        assignments: {
+          select: {
+            employeeId: true,
+            employee: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+      orderBy: { startTime: "asc" },
+    }),
+    // Dates only — two single-column reads to label the steppers.
+    prisma.schedule.findFirst({
+      where: {
+        ...assignedToThem,
+        status: { not: "CANCELLED" },
+        date: { lt: day },
+      },
+      select: { date: true },
+      orderBy: { date: "desc" },
+    }),
+    prisma.schedule.findFirst({
+      where: {
+        ...assignedToThem,
+        status: { not: "CANCELLED" },
+        date: { gt: day },
+      },
+      select: { date: true },
+      orderBy: { date: "asc" },
+    }),
+  ])
+
+  const jobs: StaffScheduleJob[] = rows.map((row) => ({
+    id: row.id,
+    startTime: row.startTime.toISOString(),
+    endTime: row.endTime.toISOString(),
+    minutes: Math.round((+row.endTime - +row.startTime) / 60000),
+    workTypes: row.workTypes,
+    status: row.status,
+    clientName: row.client.name,
+    branchName: row.branch?.name ?? null,
+    address: row.branch?.address ?? row.client.address,
+    contactPerson: row.contactPerson,
+    contactNumber: row.contactNumber,
+    remarks: row.remarks,
+    crew: row.assignments
+      .filter((assignment) => assignment.employeeId !== employeeId)
+      .map(
+        (assignment) =>
+          `${assignment.employee.firstName} ${assignment.employee.lastName}`
+      ),
+  }))
+
+  return {
+    date,
+    jobs,
+    // A cancelled job holds nobody's time, so it is listed but not counted —
+    // the same rule the assignment conflict check uses.
+    minutes: jobs
+      .filter((job) => job.status !== "CANCELLED")
+      .reduce((total, job) => total + job.minutes, 0),
+    prevDate: previous ? dateKey(previous.date) : null,
+    nextDate: next ? dateKey(next.date) : null,
+  }
 }

@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react"
 import dynamic from "next/dynamic"
 import {
   Briefcase,
+  CalendarDays,
   ChevronDown,
   ChevronLeft,
   Clock,
@@ -87,6 +88,9 @@ const StaffReimbursements = dynamic(() =>
 const StaffAttendance = dynamic(() =>
   import("@/components/admin/staff-attendance").then((m) => m.StaffAttendance)
 )
+const StaffSchedule = dynamic(() =>
+  import("@/components/admin/staff-schedule").then((m) => m.StaffSchedule)
+)
 
 function initials(firstName: string, lastName: string) {
   return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase()
@@ -157,6 +161,7 @@ function formatFieldValue(field: string, value: string | null) {
 const TABS = [
   { value: "details", label: "Details", icon: UserRound },
   { value: "attendance", label: "Attendance", icon: Clock },
+  { value: "schedule", label: "Schedule", icon: CalendarDays },
   { value: "payroll", label: "Payroll", icon: Wallet },
   { value: "reimbursements", label: "Reimbursements", icon: Receipt },
 ] as const
@@ -1209,6 +1214,13 @@ export function StaffDetailView({
           {/* Only fetched — and only downloaded — once someone opens the tab. */}
           {activeTab === "attendance" && (
             <StaffAttendance employeeId={e.id} firstName={e.firstName} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="schedule" className="pt-4">
+          {/* Only fetched — and only downloaded — once someone opens the tab. */}
+          {activeTab === "schedule" && (
+            <StaffSchedule employeeId={e.id} firstName={e.firstName} />
           )}
         </TabsContent>
 
