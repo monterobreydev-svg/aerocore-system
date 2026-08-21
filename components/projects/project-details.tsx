@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { ChevronDown, History, ReceiptText } from "lucide-react"
+import { useEffect, useState } from "react"
+import { FileText, History, ReceiptText } from "lucide-react"
 import {
   listProjectCosts,
   listProjectHistory,
@@ -21,11 +21,7 @@ import { formatDateTime } from "@/lib/format-date"
 import { formatScheduleDate } from "@/lib/schedule"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
 
 // The words for each logged field. The log stores the key, so the wording can
@@ -64,50 +60,27 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 /**
- * Who changed what, since the project was booked.
+ * The history tab: who changed what, since the project was booked.
  *
- * Fetched when the panel is opened rather than with the ledger, and re-read on
- * each open rather than cached — an edit made two taps ago should be in it.
+ * Fetched the first time the tab is opened and kept for as long as the record
+ * is — switching back and forth costs nothing, and an edit closes the dialog
+ * anyway, so there is no staler view to worry about.
  */
-function ProjectHistory({ projectId }: { projectId: string }) {
-  const [open, setOpen] = useState(false)
-  const [entries, setEntries] = useState<ProjectHistoryEntry[] | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  async function handleOpenChange(next: boolean) {
-    setOpen(next)
-    if (!next) return
-
-    setLoading(true)
-    try {
-      setEntries(await listProjectHistory(projectId))
-    } finally {
-      setLoading(false)
-    }
-  }
-
+function ProjectHistory({
+  entries,
+}: {
+  entries: ProjectHistoryEntry[] | null
+}) {
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={handleOpenChange}
-      className="group/history rounded-xl border p-3"
-    >
-      <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium outline-none">
-        <span className="flex items-center gap-2.5">
-          <History className="size-4 text-muted-foreground" />
-          Edit history
-        </span>
-        <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[panel-open]/history:rotate-180" />
-      </CollapsibleTrigger>
-
-      <CollapsibleContent className="mt-3">
-        {loading && entries === null ? (
+    <div className="rounded-xl border p-3">
+      <div>
+        {entries === null ? (
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <Spinner className="size-3.5" />
             Loading…
           </span>
-        ) : entries && entries.length > 0 ? (
-          <div className="flex max-h-64 flex-col gap-3 overflow-y-auto pr-1">
+        ) : entries.length > 0 ? (
+          <div className="flex flex-col gap-3">
             {entries.map((entry) => (
               <div key={entry.id} className="flex gap-2.5 text-sm">
                 <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-sky-500" />
@@ -139,8 +112,8 @@ function ProjectHistory({ projectId }: { projectId: string }) {
             Nothing has been changed since this project was added.
           </p>
         )}
-      </CollapsibleContent>
-    </Collapsible>
+      </div>
+    </div>
   )
 }
 
@@ -159,103 +132,156 @@ function ProjectHistory({ projectId }: { projectId: string }) {
 function ProjectCostBreakdown({
   salesOrderNo,
   cogs,
+  costs,
 }: {
   salesOrderNo: string
   cogs: number
+  costs: ProjectCosts | null
 }) {
-  const [open, setOpen] = useState(false)
-  const [costs, setCosts] = useState<ProjectCosts | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  async function handleOpenChange(next: boolean) {
-    setOpen(next)
-    if (!next) return
-
-    setLoading(true)
-    try {
-      setCosts(await listProjectCosts(salesOrderNo))
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Who spent it, in order of how much — the second question after "how much".
+  const byPerson = costs
+    ? [...costs.lines.filter((line) => line.approved)]
+        .reduce<{ name: string; amount: number }[]>((people, line) => {
+          const found = people.find((person) => person.name === line.employeeName)
+          if (found) found.amount += line.amount
+          else people.push({ name: line.employeeName, amount: line.amount })
+          return people
+        }, [])
+        .sort((a, b) => b.amount - a.amount)
+    : []
 
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={handleOpenChange}
-      className="group/costs rounded-xl border p-3"
-    >
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 text-sm font-medium outline-none">
-        <span className="flex items-center gap-2.5">
-          <ReceiptText className="size-4 text-muted-foreground" />
-          What it cost
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="text-sm font-semibold tabular-nums">
-            {pesoAmount(cogs)}
-          </span>
-          <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[panel-open]/costs:rotate-180" />
-        </span>
-      </CollapsibleTrigger>
+    <section className="overflow-hidden rounded-xl border">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b bg-muted/40 px-3 py-2.5">
+        <div>
+          <p className="text-sm leading-tight font-medium">
+            What made up this COGS
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            Approved expenses liquidated against {salesOrderNo}
+          </p>
+        </div>
+        <p className="text-base font-semibold tabular-nums">
+          {pesoAmount(cogs)}
+        </p>
+      </header>
 
-      <CollapsibleContent className="mt-3">
-        {loading && costs === null ? (
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Spinner className="size-3.5" />
-            Loading…
-          </span>
-        ) : costs && costs.lines.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex max-h-56 flex-col divide-y overflow-y-auto pr-1">
-              {costs.lines.map((line) => (
-                <div
-                  key={line.id}
-                  className={cn(
-                    "flex items-baseline justify-between gap-3 py-1.5",
-                    !line.approved && "opacity-60"
-                  )}
+      {costs === null ? (
+        <p className="flex items-center gap-2 px-3 py-4 text-xs text-muted-foreground">
+          <Spinner className="size-3.5" />
+          Loading the expenses…
+        </p>
+      ) : costs.lines.length === 0 ? (
+        <p className="px-3 py-4 text-xs text-muted-foreground">
+          Nothing has been liquidated against this job yet. COGS fills in as the
+          crew files expenses against this S.O. number.
+        </p>
+      ) : (
+        <>
+          {/* Who it came from, before the line-by-line — on a job with twenty
+              receipts this is the summary somebody actually wants. */}
+          {byPerson.length > 0 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-b px-3 py-2">
+              {byPerson.map((person) => (
+                <span
+                  key={person.name}
+                  className="text-xs text-muted-foreground"
                 >
-                  <span className="min-w-0">
-                    <span className="text-sm">{line.description}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {dayLabel(line.spentOn)} · {line.employeeName} ·{" "}
-                      {line.referenceNo}
-                      {!line.approved && " · awaiting review"}
-                    </span>
+                  {person.name}{" "}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {amount(person.amount)}
                   </span>
-                  <span className="shrink-0 text-sm tabular-nums">
-                    {amount(line.amount)}
-                  </span>
-                </div>
+                </span>
               ))}
             </div>
+          )}
 
-            {costs.pending > 0 && (
-              <p className="rounded-lg bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
-                {pesoAmount(costs.pending)} more is filed against this job but
-                not yet approved, so it isn&apos;t in the COGS above.
-              </p>
-            )}
+          <div>
+            <table className="w-full text-[0.8125rem]">
+              <thead className="sticky top-0 bg-card">
+                <tr className="border-b text-[0.625rem] tracking-wide text-muted-foreground uppercase">
+                  <th scope="col" className="px-3 py-1.5 text-left font-semibold">
+                    Date
+                  </th>
+                  <th scope="col" className="px-3 py-1.5 text-left font-semibold">
+                    Expense
+                  </th>
+                  <th scope="col" className="px-3 py-1.5 text-left font-semibold">
+                    From
+                  </th>
+                  <th scope="col" className="px-3 py-1.5 text-right font-semibold">
+                    Amount
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {costs.lines.map((line) => (
+                  <tr
+                    key={line.id}
+                    className={cn(
+                      "border-b last:border-b-0",
+                      // Still in the queue: shown, because it is coming, but
+                      // dimmed because it is not in the figure above.
+                      !line.approved && "text-muted-foreground"
+                    )}
+                  >
+                    <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">
+                      {dayLabel(line.spentOn)}
+                    </td>
+                    <td className="max-w-52 px-3 py-1.5">
+                      <span className="block truncate" title={line.description}>
+                        {line.description}
+                      </span>
+                      <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                        {line.referenceNo}
+                        {!line.approved && " · awaiting review"}
+                      </span>
+                    </td>
+                    <td className="max-w-36 px-3 py-1.5">
+                      <span className="block truncate" title={line.employeeName}>
+                        {line.employeeName}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5 text-right whitespace-nowrap tabular-nums">
+                      {amount(line.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Nothing has been liquidated against {salesOrderNo} yet. COGS fills
-            in as the crew files expenses against this S.O. number.
-          </p>
-        )}
-      </CollapsibleContent>
-    </Collapsible>
+
+          {costs.truncated && (
+            <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+              Only the most recent {costs.lines.length} are listed. The COGS
+              figure above is the job&apos;s full approved total.
+            </p>
+          )}
+
+          {costs.pending > 0 && (
+            <p className="border-t bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              {/* {" "} rather than a plain space: JSX trims each line of a
+                  text node, so the space between an expression and the words
+                  that follow it on a wrapped line is eaten — "₱640.00more". */}
+              {pesoAmount(costs.pending)}{" "}
+              more is filed against this job but not yet approved, so it
+              isn&apos;t in the figure above.
+            </p>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 
 /**
- * A project, read-only.
+ * The overview tab.
  *
- * Opening a row should answer "what is this" before offering to change it —
- * the same way a schedule opens. It also makes Edit and Delete deliberate
- * actions rather than something you fall into by tapping the wrong row.
+* The record at a glance: what the job is, what was entered, what follows from
+ * it. The two long lists — the expenses behind the COGS and the edit history —
+ * live in their own tabs.
  */
-export function ProjectDetails({ project }: { project: ProjectRow }) {
+function ProjectOverview({ project }: { project: ProjectRow }) {
   const typed = MONEY_COLUMNS.filter((column) => !column.derived)
   // COGS is derived too, but it has a panel of its own further down that shows
   // the receipts behind it — printing the same figure twice on one screen only
@@ -362,12 +388,127 @@ export function ProjectDetails({ project }: { project: ProjectRow }) {
         </div>
       </section>
 
-      <ProjectCostBreakdown
-        salesOrderNo={project.salesOrderNo}
-        cogs={project.cogs}
-      />
+    </div>
+  )
+}
 
-      <ProjectHistory projectId={project.id} />
+/**
+ * A project, read-only.
+ *
+ * Three tabs rather than one long scroll. The record itself is a screenful;
+ * the expenses behind the COGS and the edit history are both lists that grow
+ * without limit, and a job with sixty receipts on it would otherwise bury the
+ * terms and the dates nobody scrolled past them to find.
+ *
+ * Tabs are cheaper, not dearer: each list is fetched the first time its tab is
+ * opened and not before, so reading a record costs one request instead of
+ * three — and reading only the overview costs none at all.
+ */
+export function ProjectDetails({ project }: { project: ProjectRow }) {
+  const [tab, setTab] = useState<string>("overview")
+
+  // Both lists are held HERE rather than inside the tab that renders them.
+  // Base UI unmounts a hidden panel, so state kept in one dies the moment you
+  // look at another — and the tab would re-fetch every time you came back to
+  // it. The parent survives, so each list is fetched once per record opened.
+  const [costs, setCosts] = useState<ProjectCosts | null>(null)
+  const [entries, setEntries] = useState<ProjectHistoryEntry[] | null>(null)
+
+  const { salesOrderNo, id } = project
+
+  useEffect(() => {
+    if (tab !== "expenses" || costs) return
+
+    let cancelled = false
+    listProjectCosts(salesOrderNo).then((result) => {
+      if (!cancelled) setCosts(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [tab, costs, salesOrderNo])
+
+  useEffect(() => {
+    if (tab !== "history" || entries) return
+
+    let cancelled = false
+    listProjectHistory(id).then((rows) => {
+      if (!cancelled) setEntries(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [tab, entries, id])
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* The identity stays above the tabs: which project you are looking at
+          is not one view among three. */}
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-base leading-tight font-semibold">
+            {project.name}
+          </h3>
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+              PROJECT_STATUS_CHIP[project.status]
+            )}
+          >
+            {PROJECT_STATUS_LABELS[project.status]}
+          </span>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {project.clientName}
+        </p>
+      </div>
+
+      <Tabs value={tab} onValueChange={(value) => setTab(value as string)}>
+        <TabsList
+          variant="line"
+          className="w-full min-w-0 justify-start overflow-x-auto border-b"
+        >
+          <TabsTrigger value="overview" className="flex-none gap-1.5 px-3">
+            <FileText className="size-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="expenses" className="flex-none gap-1.5 px-3">
+            <ReceiptText className="size-4" />
+            Expenses
+            {/* The amount, not a count: it is already known from the ledger
+                row, so the tab can say what is behind it without fetching
+                anything to find out. */}
+            {project.cogs > 0 && (
+              <span className="ml-1 rounded-full bg-muted px-1.5 text-xs tabular-nums">
+                {amount(project.cogs)}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex-none gap-1.5 px-3">
+            <History className="size-4" />
+            History
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="pt-4">
+          <ProjectOverview project={project} />
+        </TabsContent>
+
+        <TabsContent value="expenses" className="pt-4">
+          {/* The panel renders empty until its data arrives; the effect
+              above is what makes the fetch happen on first open and not
+              before. */}
+          <ProjectCostBreakdown
+            salesOrderNo={project.salesOrderNo}
+            cogs={project.cogs}
+            costs={costs}
+          />
+        </TabsContent>
+
+        <TabsContent value="history" className="pt-4">
+          <ProjectHistory entries={entries} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -489,6 +489,12 @@ export type ProjectCosts = {
   /** Filed but not yet decided. Not in COGS, and worth knowing about. */
   pending: number
   lines: ProjectCostLine[]
+  /**
+   * True when the job has more expenses than this read returns. The totals
+   * above are then the totals of what is listed, not of the job — so the panel
+   * says as much rather than quietly showing a short answer.
+   */
+  truncated: boolean
 }
 
 /**
@@ -502,7 +508,7 @@ export type ProjectCosts = {
 export async function listProjectCosts(
   salesOrderNo: string
 ): Promise<ProjectCosts> {
-  const empty: ProjectCosts = { total: 0, pending: 0, lines: [] }
+  const empty: ProjectCosts = { total: 0, pending: 0, lines: [], truncated: false }
   if (!(await requireProjectAccess()) || !salesOrderNo) return empty
 
   const rows = await prisma.reimbursementItemClient.findMany({
@@ -551,5 +557,10 @@ export async function listProjectCosts(
         .reduce((total, line) => total + line.amount, 0) * 100
     ) / 100
 
-  return { total: sum(true), pending: sum(false), lines }
+  return {
+    total: sum(true),
+    pending: sum(false),
+    lines,
+    truncated: rows.length === PROJECT_COST_LIMIT,
+  }
 }
