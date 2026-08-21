@@ -89,6 +89,17 @@ export async function requireManager() {
   return session
 }
 
+// Director only. For pages an Administrator is deliberately kept out of —
+// see DIRECTOR_ONLY_ADMIN_PATHS in lib/auth/roles.ts, which is what hides them
+// from the sidebar and redirects at the proxy. Keep the two in step.
+export async function requireDirector() {
+  const session = await verifySession()
+  if (session.role !== "DIRECTOR") {
+    redirect("/admin")
+  }
+  return session
+}
+
 /**
  * Is this employee one the signed-in user is allowed to reach?
  *

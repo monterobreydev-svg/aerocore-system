@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Clock,
   FileText,
+  FolderKanban,
   Home,
   LayoutDashboard,
   Receipt,
@@ -47,6 +48,7 @@ export const ADMIN_NAV: NavGroup[] = [
     items: [
       { title: "Attendance", url: "/admin/attendance", icon: CalendarCheck },
       { title: "Schedules", url: "/admin/schedules", icon: CalendarDays },
+      { title: "Projects", url: "/admin/projects", icon: FolderKanban },
       {
         title: "Accounts",
         icon: Users,
