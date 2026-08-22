@@ -208,6 +208,24 @@ export function todayKey() {
   return dateKey(new Date())
 }
 
+/**
+ * The time now, in the same form an `<input type="time">` speaks.
+ *
+ * The other half of the floor on a new schedule. `todayKey` stops a job being
+ * booked for a day that has been and gone; this stops one being booked for an
+ * hour of *today* that has. At one in the afternoon, an eight o'clock start is
+ * as much in the past as yesterday was, and the reason is the same — work here
+ * is assigned, not recorded.
+ *
+ * Two `HH:MM` strings compare correctly with `<` and `>` as plain text, exactly
+ * like the dates do, so this needs no Date maths on either side of the wire.
+ * Only meaningful against a schedule dated today: a later day's eight o'clock
+ * is still ahead.
+ */
+export function nowTimeKey() {
+  return toTimeInputValue(new Date().toISOString())
+}
+
 // The reverse of dateKey, for a ?date= in the URL. Local midnight again, so a
 // linked day lines up with the calendar rather than landing a day off. Anything
 // that isn't a plain date returns null — a hand-edited URL should fall back to

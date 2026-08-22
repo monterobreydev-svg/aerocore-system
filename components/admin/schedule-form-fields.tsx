@@ -1,9 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CalendarClock, MoonStar } from "lucide-react"
+import { MoonStar } from "lucide-react"
 import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
-import { REST_DAY_RATE, isRestDay } from "@/lib/employee"
 import {
   SCHEDULE_STATUSES,
   SCHEDULE_STATUS_LABELS,
@@ -160,12 +159,6 @@ export function ScheduleFormFields({
     [clients]
   )
 
-  // Parsed the same way dateKey writes it, so the browser and the server agree
-  // on which day a Sunday is.
-  const restDay = /^d{4}-d{2}-d{2}$/.test(context.date)
-    ? isRestDay(new Date(`${context.date}T00:00:00`))
-    : false
-
   // Editing is one job, so one range. Memoised on the three inputs that
   // actually decide it: the picker takes this array as a dependency, and a
   // fresh array every render would rebuild every clash lookup on every
@@ -288,23 +281,9 @@ export function ScheduleFormFields({
                   rejected submit — the picker greys the days out but gives no
                   reason, and a greyed-out calendar with no explanation reads as
                   something broken. */}
-              {minDate && !errors?.date && !restDay && (
+              {minDate && !errors?.date && (
                 <p className="text-xs text-muted-foreground">
                   Today onwards.
-                </p>
-              )}
-              {/* Said before the job is booked, not discovered on the payslip
-                  two weeks later: a Sunday is everyone's rest day, and every
-                  hour worked on one costs the hourly rate plus 30%. Not a
-                  warning and not a block — scheduling Sunday work is a normal
-                  thing to do, it just costs more. */}
-              {restDay && !errors?.date && (
-                <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-                  <CalendarClock className="mt-px size-3.5 shrink-0" />
-                  <span>
-                    That&rsquo;s a Sunday — a rest day. Hours worked pay at the
-                    hourly rate +{REST_DAY_RATE * 100}%.
-                  </span>
                 </p>
               )}
               <FieldError

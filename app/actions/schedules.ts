@@ -381,6 +381,17 @@ function rowProblems(row: ScheduleRow, today: string): string[] {
     problems.push("That day has already passed. Schedule work for today or later.")
   }
 
+  // A start time earlier *today* is deliberately NOT rejected, though the form
+  // says so plainly before you commit.
+  //
+  // A schedule is no longer only an instruction to turn up; it is also what
+  // splits a day's wage across the jobs it was spent on (lib/labour-cost).
+  // Crews get phoned and sent at eight and the office records it at ten, and
+  // refusing that leaves two hours attributed to nobody — the job's cost lands
+  // in overhead instead, which is a worse answer than a slightly late entry.
+  // Editing has never had a floor either, so a block here was only ever a
+  // detour through the edit form.
+
   if (row.startTime === row.endTime) {
     problems.push("The start and end can't be the same time.")
   } else if (shiftMinutes(row.startTime, row.endTime) > MAX_SHIFT_HOURS * 60) {

@@ -10,7 +10,6 @@ import {
 } from "react"
 import {
   AlertTriangle,
-  CalendarClock,
   CalendarPlus,
   Check,
   ChevronDown,
@@ -23,12 +22,12 @@ import {
 } from "lucide-react"
 import type { WorkType } from "@/app/generated/prisma/client"
 import { createSchedules, type ScheduleBatchState } from "@/app/actions/schedules"
-import { REST_DAY_RATE, isRestDay } from "@/lib/employee"
 import {
   addDays,
   combineDateTime,
   crossesMidnight,
   dateKey,
+  nowTimeKey,
   parseDateKey,
   scheduleEndsAt,
   shiftMinutes,
@@ -173,7 +172,7 @@ const DURATION_PRESETS = [
  *
  * Its own component so typing in one row doesn't re-render the other nineteen,
  * and so the row can own the presentation that only makes sense beside its own
- * fields — the rest-day cost, the overnight note, its own errors.
+ * fields — the overnight note, the late start, its own errors.
  */
 function ScheduleRowCard({
   row,
@@ -182,6 +181,7 @@ function ScheduleRowCard({
   clients,
   siteData,
   minDate,
+  minTime,
   problems,
   open,
   disabled,
@@ -196,6 +196,8 @@ function ScheduleRowCard({
   clients: ClientOption[]
   siteData: ReturnType<typeof useClientSiteData>
   minDate: string
+  /** The time now, when this row is dated today. Empty on any other day. */
+  minTime: string
   problems: string[]
   open: boolean
   disabled: boolean
@@ -216,9 +218,10 @@ function ScheduleRowCard({
     [clients]
   )
 
-  const restDay = /^\d{4}-\d{2}-\d{2}$/.test(row.date)
-    ? isRestDay(new Date(`${row.date}T00:00:00`))
-    : false
+  // Only today can be too late: a later day's early start is still ahead.
+  const startedAlready = Boolean(
+    minTime && row.date === minDate && row.startTime && row.startTime < minTime
+  )
   const overnight =
     Boolean(row.startTime && row.endTime) &&
     crossesMidnight(row.startTime, row.endTime)
@@ -417,16 +420,17 @@ function ScheduleRowCard({
             )}
           </div>
 
-          {/* Said before the job is booked, not discovered on the payslip two
-              weeks later: a Sunday is everyone's rest day, and every hour worked
-              on one costs the hourly rate plus 30%. Not a warning and not a
-              block — Sunday work is normal, it just costs more. */}
-          {restDay && (
+          {/* Caution, not a block. Recording work that already started is a
+              real thing to do — a crew phoned out at eight and entered at ten —
+              and refusing it would leave those hours charged to no job at all.
+              What this catches is the typo: 08:00 when 20:00 was meant. */}
+          {startedAlready && (
             <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-              <CalendarClock className="mt-px size-3.5 shrink-0" />
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
               <span>
-                Sunday — a rest day. Hours pay at the hourly rate +
-                {REST_DAY_RATE * 100}%.
+                It&rsquo;s already {minTime}, so this starts in the past. Fine if
+                you&rsquo;re recording work already under way — check the time if
+                you aren&rsquo;t.
               </span>
             </p>
           )}
@@ -598,6 +602,10 @@ export function CreateScheduleDialog({
   // on a phone overnight, and the floor has to be the day it is submitted on,
   // not the day it was opened on.
   const minDate = todayKey()
+  // Read on every render rather than ticked: the fields re-render as they are
+  // typed in, which is exactly when this matters, and the server holds the
+  // real floor at submit either way.
+  const minTime = nowTimeKey()
 
   // One fetch per distinct client across the whole batch, not one per row.
   const clientIds = useMemo(() => rows.map((row) => row.clientId), [rows])
@@ -791,6 +799,7 @@ export function CreateScheduleDialog({
                   clients={clients}
                   siteData={siteData}
                   minDate={minDate}
+                  minTime={minTime}
                   problems={rowErrors[index] ?? []}
                   open={openRow === row.key}
                   disabled={pending}
