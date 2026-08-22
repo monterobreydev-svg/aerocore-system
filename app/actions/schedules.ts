@@ -16,6 +16,7 @@ import {
 } from "@/lib/schedule"
 import { MAX_SHIFT_HOURS } from "@/lib/attendance"
 import { notifyEmployees } from "@/lib/notifications/notify"
+import { revalidateLabourCost } from "@/lib/labour-cost/query"
 import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
 
 async function requireScheduleAccess() {
@@ -360,6 +361,10 @@ function rowProblems(row: ScheduleRow, today: string): string[] {
   const problems: string[] = []
 
   if (!row.clientId) problems.push("Select a client.")
+  // Required, because payroll is allocated by it: an employee's day is split
+  // across the jobs they were scheduled on, and a visit naming no job has
+  // nothing to charge its share of the wage to. See lib/labour-cost.
+  if (!row.salesOrderNo) problems.push("Select the SO number this work is for.")
   if (!row.date) problems.push("Select a date.")
   if (!row.startTime) problems.push("Set a start time.")
   if (!row.endTime) problems.push("Set an end time.")
@@ -464,8 +469,6 @@ export type ScheduleBatchState =
       success?: boolean
       /** Echoed back so the dialog can report what it just booked. */
       createdCount?: number
-      /** Rows left uncreated for carrying no sales order number. */
-      skippedCount?: number
     }
   | undefined
 
@@ -538,30 +541,8 @@ export async function createSchedules(
     ...new Set(formData.getAll("employeeIds").map(String).filter(Boolean)),
   ]
 
-  // A row with no sales order names no project, so there is nothing for its
-  // labour to be costed against — it is dropped rather than written, and the
-  // review step says which ones before you commit. Everything below works on
-  // the kept rows only, but reports against each row's position in the *form*:
-  // an error labelled by its position here would point at the wrong card.
-  const kept: { row: ScheduleRow; index: number }[] = []
-  let skippedCount = 0
-  rows.forEach((row, index) => {
-    if (row.salesOrderNo.trim()) kept.push({ row, index })
-    else skippedCount += 1
-  })
-
-  if (kept.length === 0) {
-    return {
-      errors: {
-        rows: [
-          "None of these carry an SO number, so there was nothing to create.",
-        ],
-      },
-    }
-  }
-
   // 1-based, as the form numbers its cards.
-  const labels = kept.map((entry) => entry.index + 1)
+  const labels = rows.map((_row, index) => index + 1)
 
   // Read once: a batch submitted across midnight would otherwise judge its own
   // rows against two different "today"s.
@@ -573,7 +554,7 @@ export async function createSchedules(
     }
   }
 
-  kept.forEach(({ row, index }) => addProblems(index, rowProblems(row, today)))
+  rows.forEach((row, index) => addProblems(index, rowProblems(row, today)))
 
   // Bad rows have no usable bounds, so the clash checks below can't run over
   // them. Say what's wrong with the shape first and let it be fixed.
@@ -584,9 +565,9 @@ export async function createSchedules(
     }
   }
 
-  const misfiled = await findMisfiledRows(kept.map((entry) => entry.row))
-  for (const [position, messages] of Object.entries(misfiled)) {
-    addProblems(kept[Number(position)].index, messages)
+  const misfiled = await findMisfiledRows(rows)
+  for (const [index, messages] of Object.entries(misfiled)) {
+    addProblems(Number(index), messages)
   }
   if (Object.keys(problems).length > 0) {
     return {
@@ -595,7 +576,7 @@ export async function createSchedules(
     }
   }
 
-  const ranges = kept.map(({ row }) =>
+  const ranges = rows.map((row) =>
     shiftBounds(row.date, row.startTime, row.endTime)
   )
 
@@ -607,8 +588,8 @@ export async function createSchedules(
   const existing = await findAssignmentConflicts({ employeeIds, ranges })
   const withinBatch = findBatchOverlaps(ranges, labels)
 
-  kept.forEach(({ index }, position) =>
-    addProblems(index, [...withinBatch[position], ...existing[position]])
+  rows.forEach((_row, index) =>
+    addProblems(index, [...withinBatch[index], ...existing[index]])
   )
 
   // All or nothing. A partial write is the worst outcome here: the dialog
@@ -623,15 +604,15 @@ export async function createSchedules(
   }
 
   const created = await prisma.$transaction(
-    kept.map(({ row }, position) =>
+    rows.map((row, index) =>
       prisma.schedule.create({
         data: {
           clientId: row.clientId,
           branchId: row.branchId || null,
           salesOrderNo: row.salesOrderNo,
           date: new Date(`${row.date}T00:00:00`),
-          startTime: ranges[position].start,
-          endTime: ranges[position].end,
+          startTime: ranges[index].start,
+          endTime: ranges[index].end,
           contactPerson: row.contactPerson.trim() || null,
           contactNumber: row.contactNumber.trim() || null,
           remarks: row.remarks.trim() || null,
@@ -667,8 +648,9 @@ export async function createSchedules(
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
+  revalidateLabourCost()
 
-  return { success: true, createdCount: created.length, skippedCount }
+  return { success: true, createdCount: created.length }
 }
 
 const UpdateScheduleSchema = z
@@ -961,6 +943,7 @@ export async function updateSchedule(
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
+  revalidateLabourCost()
 
   return { success: true }
 }
@@ -1012,6 +995,7 @@ export async function updateScheduleStatus(
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
+  revalidateLabourCost()
 }
 
 // The history for one job, fetched when its detail sheet opens rather than
@@ -1098,6 +1082,7 @@ export async function deleteSchedule(scheduleId: string) {
 
   revalidatePath("/admin/schedules")
   revalidatePath("/employee/schedule")
+  revalidateLabourCost()
 }
 
 // ---------------------------------------------------------------------------

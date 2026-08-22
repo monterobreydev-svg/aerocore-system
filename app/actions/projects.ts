@@ -19,6 +19,7 @@ import {
   type OpexPerson,
 } from "@/lib/opex"
 import { dateKey } from "@/lib/schedule"
+import { labourCostBetween } from "@/lib/labour-cost/query"
 import type { PaymentTerms, ProjectStatus } from "@/app/generated/prisma/client"
 
 /**
@@ -512,7 +513,7 @@ export type ProjectCostLine = {
   /** False while the claim is still in the review queue. */
   approved: boolean
   /** Where the line came from, so the panel can say. */
-  source: "liquidation" | "office"
+  source: "liquidation" | "office" | "labour"
 }
 
 export type ProjectCosts = {
@@ -542,6 +543,15 @@ export async function listProjectCosts(
 ): Promise<ProjectCosts> {
   const empty: ProjectCosts = { total: 0, pending: 0, lines: [], truncated: false }
   if (!(await requireProjectAccess()) || !salesOrderNo) return empty
+
+  // The span this job was actually worked, so the wage read is the size of the
+  // project rather than the size of the company's history. A job nobody was
+  // ever scheduled on has no wages to find.
+  const worked = await prisma.schedule.aggregate({
+    where: { salesOrderNo, status: { not: "CANCELLED" } },
+    _min: { date: true },
+    _max: { date: true },
+  })
 
   const officeRows = await prisma.companyExpense.findMany({
     where: { kind: "COGS", salesOrderNo },
@@ -584,7 +594,36 @@ export async function listProjectCosts(
     take: PROJECT_COST_LIMIT,
   })
 
+  // One line per person: the wage of theirs that this job carried, summed
+  // across every day they were scheduled on it. Not a line per day — a crew of
+  // four on a three-week job would bury the receipts under eighty rows saying
+  // almost nothing.
+  const labour =
+    worked._min.date && worked._max.date
+      ? await labourCostBetween({
+          from: worked._min.date,
+          to: worked._max.date,
+          salesOrderNos: [salesOrderNo],
+        })
+      : null
+
+  const labourLines: ProjectCostLine[] = (labour?.people ?? [])
+    .map((person) => ({
+      id: `labour-${person.employeeId}`,
+      spentOn: dateKey(worked._max.date!),
+      description: "Wages for scheduled hours on this job",
+      employeeName: person.name,
+      referenceNo: "Payroll",
+      amount: person.cost.bySalesOrder[salesOrderNo] ?? 0,
+      // Payroll's own figure, worked out from punches that already happened.
+      // There is no queue for it to be sitting in.
+      approved: true,
+      source: "labour" as const,
+    }))
+    .filter((line) => line.amount > 0)
+
   const lines: ProjectCostLine[] = [
+    ...labourLines,
     ...rows.map((row) => {
       const claim = row.item.reimbursement
       return {
@@ -648,7 +687,14 @@ export async function listMonthlyOpex(
   year: number,
   month: number
 ): Promise<OpexMonth> {
-  const empty: OpexMonth = { month, total: 0, wages: 0, people: [], expenses: [] }
+  const empty: OpexMonth = {
+    month,
+    total: 0,
+    wages: 0,
+    unallocatedFieldWages: 0,
+    people: [],
+    expenses: [],
+  }
   if (!(await requireProjectAccess())) return empty
   if (!Number.isInteger(month) || month < 0 || month > 11) return empty
   if (!Number.isInteger(year) || year < 2000 || year > 2100) return empty
@@ -748,13 +794,26 @@ export async function listMonthlyOpex(
     recordedByName: `${row.createdBy.employee.firstName} ${row.createdBy.employee.lastName}`,
   }))
 
+  // The crews' hours are a job's cost, not the office's — but whatever payroll
+  // paid them that no job can be charged for still has to land somewhere, and
+  // overhead is the only honest place left. `includeUnscheduled` is what stops
+  // somebody who was never scheduled at all from falling out of both halves of
+  // the accounts.
+  const field = await labourCostBetween({
+    from: start,
+    to: end,
+    includeUnscheduled: true,
+  })
+
   const wages = people.reduce((sum, person) => sum + person.pay, 0)
   const other = expenses.reduce((sum, row) => sum + row.amount, 0)
+  const unallocatedFieldWages = Math.round(field.unallocated * 100) / 100
 
   return {
     month,
-    total: Math.round((wages + other) * 100) / 100,
+    total: Math.round((wages + other + unallocatedFieldWages) * 100) / 100,
     wages: Math.round(wages * 100) / 100,
+    unallocatedFieldWages,
     people,
     expenses,
   }

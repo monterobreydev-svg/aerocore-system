@@ -260,13 +260,7 @@ function ScheduleRowCard({
             <span className="block truncate text-xs text-muted-foreground">
               {dayLabel(row.date)}
               {length > 0 && ` · ${row.startTime}–${row.endTime}`}
-              {row.salesOrderNo ? (
-                ` · SO ${row.salesOrderNo}`
-              ) : (
-                <span className="text-amber-700 dark:text-amber-400">
-                  {" "}· no SO — won&rsquo;t be created
-                </span>
-              )}
+              {row.salesOrderNo && ` · SO ${row.salesOrderNo}`}
             </span>
           </span>
           {/* A shut row with something wrong must say so — otherwise the batch
@@ -359,15 +353,12 @@ function ScheduleRowCard({
                 onValueChange={(value) => onChange({ salesOrderNo: value })}
                 disabled={disabled}
               />
-              {/* Not an error — the row is allowed to sit here without one. It
-                  just won't be written, and that has to be said where the empty
-                  field is, not only two steps later. */}
+              {/* Said where the empty field is, not only when Continue won't
+                  move: the reason it's mandatory isn't obvious from the form. */}
               {row.clientId && !row.salesOrderNo && (
-                <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="mt-px size-3.5 shrink-0" />
-                  <span>
-                    Without an SO number this schedule won&rsquo;t be created.
-                  </span>
+                <p className="text-xs text-muted-foreground">
+                  Required — this crew&rsquo;s wages for the day are split
+                  across the jobs they were on, and this is the job.
                 </p>
               )}
             </Field>
@@ -661,23 +652,16 @@ export function CreateScheduleDialog({
   // the real rules (past dates, shift length, clashes, whose branch that is)
   // belong to the server, the only place that can check them against what else
   // is booked.
-  // The SO is deliberately *not* in here: a row without one is allowed through
-  // and simply isn't created, which is what the warnings below are for. Every
-  // other field has to be there, so a missing SO is the only reason a row can
-  // vanish — an otherwise-blank card silently disappearing would be a trap.
   const rowsReady = rows.every(
     (row) =>
       row.clientId &&
+      row.salesOrderNo &&
       row.date &&
       row.startTime &&
       row.endTime &&
       row.workTypes.length > 0
   )
   const canContinue = step === 2 ? rowsReady : true
-
-  // What the button is actually about to write.
-  const willCreate = rows.filter((row) => row.salesOrderNo).length
-  const willSkip = rows.length - willCreate
 
   const clientName = (id: string) =>
     clients.find((client) => client.id === id)?.name ?? "No client"
@@ -877,43 +861,13 @@ export function CreateScheduleDialog({
                 )}
               </div>
 
-              {/* The last place this can be caught. Said as a count and then
-                  again on each offending line, because "1 of 3 won't be
-                  created" is only actionable if you can see which one. */}
-              {willSkip > 0 && (
-                <div className="flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <span className="min-w-0">
-                    <strong className="font-medium">
-                      {willSkip} of {rows.length} won&rsquo;t be created.
-                    </strong>{" "}
-                    A schedule with no SO number has no project to bill its
-                    labour to, so it isn&rsquo;t saved. Go back and pick one, or
-                    create {willCreate === 0 ? "nothing" : `the other ${willCreate}`}{" "}
-                    without {willSkip === 1 ? "it" : "them"}.
-                  </span>
-                </div>
-              )}
-
               <div className="rounded-xl border bg-card p-4">
                 <p className="text-sm font-medium">
-                  {willCreate} schedule{willCreate === 1 ? "" : "s"} to create
-                  {willSkip > 0 && (
-                    <span className="font-normal text-muted-foreground">
-                      {" "}
-                      · {willSkip} skipped
-                    </span>
-                  )}
+                  {rows.length} schedule{rows.length === 1 ? "" : "s"}
                 </p>
                 <ul className="mt-3 flex flex-col divide-y">
                   {rows.map((row, index) => (
-                    <li
-                      key={row.key}
-                      className={cn(
-                        "flex flex-col gap-0.5 py-2",
-                        !row.salesOrderNo && "opacity-60"
-                      )}
-                    >
+                    <li key={row.key} className="flex flex-col gap-0.5 py-2">
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="min-w-0 truncate text-sm font-medium">
                           {index + 1}. {clientName(row.clientId)}
@@ -922,12 +876,6 @@ export function CreateScheduleDialog({
                           {dayLabel(row.date)} · {row.startTime}–{row.endTime}
                         </span>
                       </div>
-                      {!row.salesOrderNo && (
-                        <span className="flex items-start gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-                          <AlertTriangle className="mt-px size-3.5 shrink-0" />
-                          No SO number — this one won&rsquo;t be created
-                        </span>
-                      )}
                       <span className="truncate text-xs text-muted-foreground">
                         {row.branchLabel}
                         {row.salesOrderNo && ` · SO ${row.salesOrderNo}`}
@@ -1001,14 +949,12 @@ export function CreateScheduleDialog({
                 key="submit"
                 type="submit"
                 form="create-schedules-form"
-                disabled={pending || willCreate === 0}
+                disabled={pending}
               >
                 <Check />
                 {pending
                   ? "Creating…"
-                  : willCreate === 0
-                    ? "Nothing to create"
-                    : `Create ${willCreate} schedule${willCreate === 1 ? "" : "s"}`}
+                  : `Create ${rows.length} schedule${rows.length === 1 ? "" : "s"}`}
               </Button>
             )}
           </div>

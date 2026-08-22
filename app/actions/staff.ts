@@ -2,6 +2,7 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
+import { revalidateLabourCost } from "@/lib/labour-cost/query"
 import { prisma } from "@/lib/db/prisma"
 import { hashPassword } from "@/lib/auth/password"
 import { canReachEmployee, verifySession } from "@/lib/auth"
@@ -277,6 +278,8 @@ export async function createStaffAccount(
   })
 
   revalidatePath("/admin/accounts/staff")
+  // The hourly rate is the multiplier under every wage figure on a project.
+  revalidateLabourCost()
 
   return { success: true }
 }
@@ -631,6 +634,8 @@ export async function updateStaffAccount(
   }
 
   revalidatePath("/admin/accounts/staff")
+  // The hourly rate is the multiplier under every wage figure on a project.
+  revalidateLabourCost()
 
   return { success: true }
 }

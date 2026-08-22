@@ -51,11 +51,15 @@ import {
 } from "@/components/attendance/admin-attendance"
 import { notifyEmployee, notifyReviewers } from "@/lib/notifications/notify"
 import { closeAbandonedPunches } from "@/lib/attendance/auto-timeout"
+import { revalidateLabourCost } from "@/lib/labour-cost/query"
 
 function revalidateAll() {
   revalidatePath("/employee/attendance")
   revalidatePath("/employee")
   revalidatePath("/admin/attendance")
+  // A punch is what payroll is worked out from, and payroll is what a job is
+  // charged. Correcting a time has to reach the project sheets too.
+  revalidateLabourCost()
 }
 
 async function requireAdmin() {

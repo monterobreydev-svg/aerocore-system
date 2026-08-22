@@ -290,6 +290,8 @@ function ProjectCostBreakdown({
                           {line.referenceNo}
                         </span>
                         {line.source === "office" && " · paid directly"}
+                        {line.source === "labour" &&
+                          " · scheduled hours on this job"}
                         {!line.approved && " · awaiting review"}
                       </span>
                     </td>

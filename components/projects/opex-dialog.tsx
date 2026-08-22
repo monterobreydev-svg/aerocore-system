@@ -335,10 +335,30 @@ export function OpexDialog({
               {opex && opex.expenses.length > 0 && opex.wages > 0 && (
                 <p className="border-t bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
                   Wages {amount(opex.wages)} + recorded{" "}
-                  {amount(opex.total - opex.wages)} ={" "}
+                  {amount(
+                    opex.total - opex.wages - opex.unallocatedFieldWages
+                  )}
+                  {opex.unallocatedFieldWages > 0 &&
+                    ` + unscheduled crew ${amount(opex.unallocatedFieldWages)}`}{" "}
+                  ={" "}
                   <span className="font-semibold text-foreground">
                     {amount(opex.total)}
                   </span>
+                </p>
+              )}
+
+              {/* Crews' hours belong to a job. Anything payroll paid them that
+                  no job could carry lands here — and a figure that grows means
+                  work is happening without a schedule behind it, which is COGS
+                  going missing rather than overhead genuinely rising. */}
+              {opex && opex.unallocatedFieldWages > 0 && (
+                <p className="border-t px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <span className="font-medium">
+                    {amount(opex.unallocatedFieldWages)}
+                  </span>{" "}
+                  of field crew wages had no schedule to charge them to, so they
+                  count as overhead. Schedule that work against a sales order and
+                  it moves to that job&rsquo;s COGS instead.
                 </p>
               )}
 

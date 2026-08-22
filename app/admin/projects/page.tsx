@@ -9,6 +9,7 @@ import {
   type ProjectRow,
 } from "@/lib/projects"
 import { OPEX_LOOKBACK_DAYS, OPEX_STAFF, opexForMonth } from "@/lib/opex"
+import { labourCostBetween } from "@/lib/labour-cost/query"
 import { dateKey } from "@/lib/schedule"
 import { ProjectsView } from "@/components/projects/projects-view"
 
@@ -149,7 +150,7 @@ export default async function AdminProjectsPage({
   // ---------------------------------------------------------------------
   const salesOrderNos = records.map((record) => record.salesOrderNo)
 
-  const [liquidated, officePaid] = await Promise.all([
+  const [liquidated, officePaid, labour] = await Promise.all([
     prisma.reimbursementItemClient.groupBy({
       by: ["soNumber"],
       where: {
@@ -164,6 +165,15 @@ export default async function AdminProjectsPage({
       by: ["salesOrderNo"],
       where: { kind: "COGS", salesOrderNo: { in: salesOrderNos } },
       _sum: { amount: true },
+    }),
+    // The crews' own wages, split across the jobs they were scheduled on. Not a
+    // grouped read like the two above — it can't be, because no row anywhere
+    // holds the answer: payroll is worked out from punches, and only the
+    // schedule knows which job those hours were for. See lib/labour-cost.
+    labourCostBetween({
+      from: windowStart,
+      to: windowEnd,
+      salesOrderNos,
     }),
   ])
 
@@ -181,6 +191,12 @@ export default async function AdminProjectsPage({
           Number(row._sum.amount ?? 0)) *
           100
       ) / 100
+    )
+  }
+  for (const [salesOrderNo, wages] of Object.entries(labour.bySalesOrder)) {
+    cogsBySalesOrder.set(
+      salesOrderNo,
+      Math.round(((cogsBySalesOrder.get(salesOrderNo) ?? 0) + wages) * 100) / 100
     )
   }
 

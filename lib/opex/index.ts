@@ -100,6 +100,17 @@ export type OpexMonth = {
   total: number
   /** The payroll half on its own, so the two are addable on screen. */
   wages: number
+  /**
+   * Field crews' wages that no job could be charged for — a day worked with
+   * nothing scheduled on it, or a regular holiday nobody worked.
+   *
+   * Their scheduled hours are a project's cost (see lib/labour-cost); this is
+   * the remainder, which belongs to nobody's job and so is the company's own.
+   * Kept as its own figure rather than folded into `wages`: a number that
+   * climbs month on month means crews are working unscheduled, and every peso
+   * of it is missing from some project's COGS.
+   */
+  unallocatedFieldWages: number
   people: OpexPerson[]
   expenses: OpexExpense[]
 }

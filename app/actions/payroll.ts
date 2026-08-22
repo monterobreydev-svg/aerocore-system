@@ -2,6 +2,7 @@
 
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
+import { revalidateLabourCost } from "@/lib/labour-cost/query"
 import { prisma } from "@/lib/db/prisma"
 import { requireManager } from "@/lib/auth"
 import {
@@ -239,6 +240,9 @@ export async function addPayrollAdjustment(
   })
 
   revalidatePath("/admin/payroll")
+  // An addition is spread across the jobs of its cutoff, so a project sheet
+  // changes with it.
+  revalidateLabourCost()
   return { success: true }
 }
 
@@ -248,4 +252,5 @@ export async function removePayrollAdjustment(id: string) {
 
   await prisma.payrollAdjustment.delete({ where: { id } }).catch(() => undefined)
   revalidatePath("/admin/payroll")
+  revalidateLabourCost()
 }
