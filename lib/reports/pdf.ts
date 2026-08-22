@@ -121,14 +121,22 @@ const RUNNING_HEAD = 34
 const FOOTER = 32
 
 /**
- * Prose is set narrower than the page.
+ * Prose runs the full column, like everything else on the page.
  *
- * A line of 8.5pt type across the full 499pt column is well over ninety
- * characters, and the eye loses the start of the next line on the way back.
- * Everything measured — charts, tables, the letterhead — still uses the full
- * width; only the reading does not.
+ * It used to stop at 432pt, on the reasoning that a full-width line of this
+ * type runs past ninety characters and the eye loses its place coming back.
+ * The measure was the right instinct and the wrong number: at 432pt the longest
+ * line of a normal paragraph here is still 115 characters, so the narrowing
+ * bought no readability at all — it only left every paragraph ending short of
+ * the section rule above it, which reads as a layout fault rather than a
+ * decision.
+ *
+ * Genuinely fixing the measure would mean about 265pt, less than half the page,
+ * which suits an essay and not a two-line finding under a full-width heading.
+ * So the column wins: paragraphs align with the rules, the charts and the
+ * tables, and stay the two or three lines they already are.
  */
-const PROSE_WIDTH = 432
+const PROSE_WIDTH = CONTENT_WIDTH
 
 const BODY = 8.6
 
@@ -1149,11 +1157,11 @@ export function reportBlocks(data: ReportData, meta: ReportMeta): PdfBlock[] {
     blocks: [
       ...heading(5, "Reports filed from the field", VIZ.attendance),
       ...prose(
-        `Every PMS and service report the crew filed against a time-out inside this period. Each is stored under the client, branch and month it belongs to and can be found or downloaded from the Documents tab. ${
-          headline.reportsFiled === 0
-            ? "None were filed in this period."
-            : `${headline.reportsFiled} were filed in total.`
-        }`
+        headline.reportsFiled === 0
+          ? headline.jobsCompleted > 0
+            ? `No PMS or service reports were filed from the field in ${data.range.label}, although ${headline.jobsCompleted} ${plural(headline.jobsCompleted, "job was", "jobs were")} completed. A report is raised against the time-out that closes a visit, so the paperwork evidencing that work has not yet reached the office.`
+            : `No PMS or service reports were filed from the field in ${data.range.label}. A report is raised against the time-out that closes a visit, and no visits were completed in the period for one to be raised against.`
+          : `${headline.reportsFiled} PMS and service ${plural(headline.reportsFiled, "report was", "reports were")} filed from the field in ${data.range.label}, ${plural(headline.reportsFiled, "raised", "each raised")} against the time-out that closed the visit it documents. Filed copies are held against the client, branch and month they belong to.`
       ),
       ...(data.reportTypes.length > 0
         ? [
