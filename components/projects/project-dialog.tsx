@@ -575,15 +575,17 @@ export function ProjectDialog({
                   </p>
                   <div className="mt-1 flex flex-col divide-y">
                     {/* First, because it is the one that surprises people:
-                        COGS used to be a box on this form and is now the sum
-                        of what the crew liquidated against this job. */}
+                        COGS used to be a box on this form and is now derived —
+                        what the crew liquidated against this job, what the
+                        office paid for it directly, and the wages of the hours
+                        they were scheduled on it. */}
                     <DerivedRow
                       label="COGS"
                       value={figures.cogs}
                       formula={
                         editing
-                          ? "Approved liquidations against this S.O."
-                          : "Fills in as expenses are filed against this S.O."
+                          ? "Liquidations, office expenses and crew wages on this S.O."
+                          : "Fills in from expenses and scheduled hours on this S.O."
                       }
                     />
                     <DerivedRow

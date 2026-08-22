@@ -840,10 +840,13 @@ model Project {
   // The three figures anybody types. Decimal, not Float: these are pesos, and
   // binary floating point cannot hold 0.1 exactly — a column of them drifts.
   //
-  // COGS is deliberately NOT among them. What a job cost is the sum of the
-  // expenses liquidated against its sales order number — see lib/projects and
-  // the roll-up in the tracker page. Storing it too would leave a second
-  // answer that disagrees with the receipts the moment a claim is approved.
+  // COGS is deliberately NOT among them. What a job cost is worked out from
+  // three things that already exist — the expenses liquidated against its sales
+  // order number, the expenses the office paid for it directly, and the wages
+  // of the crews for the hours they were scheduled on it (lib/labour-cost). See
+  // the roll-up in the tracker page. Storing it too would leave a second answer
+  // that disagrees with the receipts the moment a claim is approved, or with
+  // the punches the moment an attendance record is corrected.
   projectAmount  Decimal
   cashCollection Decimal
   accrualRevenue Decimal
@@ -886,11 +889,11 @@ model ProjectEditLog {
 // Expenses the office records itself
 //
 // The two cost figures on the project tracker are otherwise derived from other
-// people's work: COGS from the expenses employees liquidate against a sales
-// order, OPEX from what payroll would pay the admin side. Neither can hold a
-// supplier invoice the office paid directly, a permit fee, or the electricity
-// bill — money the company plainly spent with no punch and no receipt from a
-// crew behind it.
+// people's work: COGS from what employees liquidate against a sales order and
+// what the crews were paid for the hours scheduled on it, OPEX from what
+// payroll would pay the admin side. Neither can hold a supplier invoice the
+// office paid directly, a permit fee, or the electricity bill — money the
+// company plainly spent with no punch and no receipt from a crew behind it.
 //
 // So this is the third source, and the only one anybody types. A row is either
 // overhead or the cost of one job, and which it is decides whether it needs a

@@ -125,10 +125,12 @@ export type ProjectFigures = ProjectInputs & {
 }
 
 /**
- * @param cogs What the job actually cost — the total of the expenses employees
- * liquidated against its sales order number. A separate argument rather than
- * one of `inputs` because nobody types it: it comes from the receipts, and the
- * only place it is worked out is the roll-up on the tracker page.
+ * @param cogs What the job actually cost: the expenses employees liquidated
+ * against its sales order number, the expenses the office paid directly, and
+ * the wages of the crews for the hours they were scheduled on it. A separate
+ * argument rather than one of `inputs` because nobody types it — every part of
+ * it is derived, and the only place it is added up is the roll-up on the
+ * tracker page.
  */
 export function deriveProjectFigures(
   inputs: ProjectInputs,

@@ -65,9 +65,31 @@ export type LabourPerson = {
 
 export type LabourBreakdown = LabourCost & {
   people: LabourPerson[]
+  /**
+   * The unallocated wage, split by the calendar month it fell in, keyed
+   * "YYYY-MM".
+   *
+   * Overhead is reported a month at a time, and the tracker shows twelve of
+   * them at once. Without this the caller would have to ask twelve separate
+   * questions to fill in one column — or, worse, use the whole-year figure for
+   * every month and be wrong twelve times.
+   *
+   * A cutoff never straddles a month, so nothing has to be apportioned to get
+   * from one to the other.
+   */
+  unallocatedByMonth: Record<string, number>
 }
 
-const NO_BREAKDOWN: LabourBreakdown = { ...NO_LABOUR_COST, people: [] }
+const NO_BREAKDOWN: LabourBreakdown = {
+  ...NO_LABOUR_COST,
+  people: [],
+  unallocatedByMonth: {},
+}
+
+/** "2026-06" — the month a cutoff belongs to. */
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+}
 
 /**
  * What every job cost in wages over a span of time.
@@ -218,6 +240,7 @@ async function computeLabourCost({
   // 4. A cutoff at a time, because that is the unit payroll pays in.
   let total = NO_LABOUR_COST
   const people: LabourPerson[] = []
+  const unallocatedByMonth: Record<string, number> = {}
 
   for (const person of staff) {
     let mine = NO_LABOUR_COST
@@ -260,9 +283,7 @@ async function computeLabourCost({
         continue
       }
 
-      mine = mergeLabourCost(
-        mine,
-        labourCostForCutoff({
+      const forCutoff = labourCostForCutoff({
           hourlyRate,
           days: inCutoff,
           daysBeforeCutoff: before,
@@ -272,8 +293,17 @@ async function computeLabourCost({
             amount: Number(row.amount),
           })),
           scheduleByDay,
-        })
-      )
+      })
+
+      if (forCutoff.unallocated > 0) {
+        const key = monthKey(cutoff.start)
+        unallocatedByMonth[key] =
+          Math.round(
+            ((unallocatedByMonth[key] ?? 0) + forCutoff.unallocated) * 100
+          ) / 100
+      }
+
+      mine = mergeLabourCost(mine, forCutoff)
     }
 
     if (mine.gross === 0) continue
@@ -289,7 +319,7 @@ async function computeLabourCost({
   // is looking for.
   people.sort((a, b) => b.cost.gross - a.cost.gross)
 
-  return { ...total, people }
+  return { ...total, people, unallocatedByMonth }
 }
 
 // ---------------------------------------------------------------------------

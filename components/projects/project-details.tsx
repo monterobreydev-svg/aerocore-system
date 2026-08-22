@@ -222,8 +222,10 @@ function ProjectCostBreakdown({
         </p>
       ) : costs.lines.length === 0 ? (
         <p className="px-3 py-4 text-xs text-muted-foreground">
-          Nothing has been liquidated against this job yet. COGS fills in as the
-          crew files expenses against this S.O. number.
+          Nothing has been charged to this job yet. COGS fills in as the crew
+          files expenses against this S.O. number, as the office records what it
+          paid directly, and as crews are scheduled on it — their wages for
+          those hours are part of what the job cost.
         </p>
       ) : (
         <>

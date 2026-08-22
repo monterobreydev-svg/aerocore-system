@@ -138,10 +138,12 @@ export default async function AdminProjectsPage({
   // ---------------------------------------------------------------------
   // What each job cost
   //
-  // Not a column on the project — the sum of the expense shares employees
-  // liquidated against its sales order number. One grouped read for every job
-  // on screen rather than a query per project, and scoped to the numbers in
-  // view so it stays the size of the page.
+  // Not a column on the project — three things added together: the expense
+  // shares employees liquidated against its sales order number, the rows the
+  // office typed against it directly, and the crews' wages for the hours they
+  // were scheduled on it. The first two are grouped reads for every job on
+  // screen rather than a query per project; the third cannot be a grouped read
+  // at all, because no row holds it — see lib/labour-cost.
   //
   // APPROVED only. A claim still in the queue is a request, not a cost, and a
   // rejected one never was; letting either into the figure would move a gross
@@ -166,14 +168,20 @@ export default async function AdminProjectsPage({
       where: { kind: "COGS", salesOrderNo: { in: salesOrderNos } },
       _sum: { amount: true },
     }),
-    // The crews' own wages, split across the jobs they were scheduled on. Not a
-    // grouped read like the two above — it can't be, because no row anywhere
-    // holds the answer: payroll is worked out from punches, and only the
-    // schedule knows which job those hours were for. See lib/labour-cost.
+    // The crews' own wages. Not a grouped read like the two above — it can't
+    // be, because no row anywhere holds the answer: payroll is worked out from
+    // punches, and only the schedule knows which job those hours were for. See
+    // lib/labour-cost.
+    //
+    // One call answers both columns of this page. `includeUnscheduled` widens it
+    // past the jobs on screen deliberately: the same pass has to find the wage
+    // that belongs to no job at all, which is overhead and is added to OPEX
+    // below. Asking twice would compute the same payslips twice and, worse,
+    // let the two answers drift.
     labourCostBetween({
       from: windowStart,
       to: windowEnd,
-      salesOrderNos,
+      includeUnscheduled: true,
     }),
   ])
 
@@ -287,6 +295,20 @@ export default async function AdminProjectsPage({
         Math.round(((opexByMonthTotal.get(month) ?? 0) + figures.pay) * 100) / 100
       )
     }
+  }
+
+  // Field crews' wages that no job could be charged for. They are overhead for
+  // the same reason the admin side is — nobody is billed for them — and this is
+  // the same figure listMonthlyOpex shows when a month is opened. Added here so
+  // the column and the panel behind it can never disagree.
+  for (const [key, wages] of Object.entries(labour.unallocatedByMonth)) {
+    const [monthYear, monthNumber] = key.split("-").map(Number)
+    if (monthYear !== year) continue
+    const month = monthNumber - 1
+    opexByMonthTotal.set(
+      month,
+      Math.round(((opexByMonthTotal.get(month) ?? 0) + wages) * 100) / 100
+    )
   }
 
   const projects: ProjectRow[] = records.map((record) => ({
