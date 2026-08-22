@@ -135,6 +135,10 @@ export function ScheduleMonthView({
                       onClick={() => onSelect(schedule)}
                       title={`${schedule.client.name}${
                         schedule.branch ? ` · ${schedule.branch.name}` : ""
+                      }${
+                        schedule.salesOrderNo
+                          ? ` · SO ${schedule.salesOrderNo}`
+                          : ""
                       }\n${formatTime(schedule.startTime)}\n${schedule.workTypes
                         .map((t) => WORK_TYPE_LABELS[t])
                         .join(", ")} · ${SCHEDULE_STATUS_LABELS[schedule.status]}`}

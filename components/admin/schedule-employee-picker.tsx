@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Check, Search, Sparkles, X } from "lucide-react"
 import type { WorkType } from "@/app/generated/prisma/client"
 import { Input } from "@/components/ui/input"
@@ -38,24 +38,37 @@ function busyLabel(block: EmployeeBusyBlock) {
   return `${formatTimeRange(block.start, block.end)}${overnight ? " +1d" : ""}`
 }
 
+/** One block of time a crew would be taken for. */
+export type PickerRange = { start: Date | null; end: Date | null }
+
 export function ScheduleEmployeePicker({
   employees,
   busy,
   workTypes,
-  start,
-  end,
+  ranges,
   excludeScheduleId,
   defaultSelectedIds = [],
   disabled,
+  onSelectionChange,
 }: {
   employees: EmployeeOption[]
   busy: EmployeeBusyBlock[]
   workTypes: WorkType[]
-  start: Date | null
-  end: Date | null
+  /**
+   * Every block the crew is being booked for. One when editing a job, as many
+   * as the batch has rows when creating. Somebody busy during *any* of them is
+   * busy, because the whole batch shares one crew.
+   */
+  ranges: PickerRange[]
   excludeScheduleId?: string
   defaultSelectedIds?: string[]
   disabled?: boolean
+  /**
+   * Lifted so a wizard step can gate on the crew and a review step can name
+   * them. The checkboxes below still carry the ids themselves, so a plain
+   * server-action form needs none of this.
+   */
+  onSelectionChange?: (employeeIds: string[]) => void
 }) {
   const [search, setSearch] = useState("")
   const [matchingOnly, setMatchingOnly] = useState(false)
@@ -63,20 +76,30 @@ export function ScheduleEmployeePicker({
     Object.fromEntries(defaultSelectedIds.map((id) => [id, true]))
   )
 
+  // Deduped by schedule: a crew booked across three days of one batch would
+  // otherwise report the same existing job as three separate clashes.
   const conflictsById = useMemo(() => {
     const map: Record<string, EmployeeBusyBlock[]> = {}
     for (const employee of employees) {
-      const hits = findBusyConflicts(
-        busy,
-        employee.id,
-        start,
-        end,
-        excludeScheduleId
-      )
+      const seen = new Set<string>()
+      const hits: EmployeeBusyBlock[] = []
+      for (const range of ranges) {
+        for (const block of findBusyConflicts(
+          busy,
+          employee.id,
+          range.start,
+          range.end,
+          excludeScheduleId
+        )) {
+          if (seen.has(block.scheduleId)) continue
+          seen.add(block.scheduleId)
+          hits.push(block)
+        }
+      }
       if (hits.length > 0) map[employee.id] = hits
     }
     return map
-  }, [employees, busy, start, end, excludeScheduleId])
+  }, [employees, busy, ranges, excludeScheduleId])
 
   // How many of the job's work types each person is qualified for.
   const matchById = useMemo(() => {
@@ -91,6 +114,14 @@ export function ScheduleEmployeePicker({
     () => Object.keys(checked).filter((id) => checked[id]),
     [checked]
   )
+
+  // Reported up rather than derived up there: the checkbox state lives here,
+  // and a parent that needed it would otherwise have to mirror every toggle.
+  useEffect(() => {
+    onSelectionChange?.(selectedIds)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds])
+
   const clashingSelected = selectedIds.filter((id) => conflictsById[id])
   const query = search.trim().toLowerCase()
   const hasWorkTypes = workTypes.length > 0
@@ -122,6 +153,8 @@ export function ScheduleEmployeePicker({
   })
 
   const availableCount = employees.length - Object.keys(conflictsById).length
+  // Whether any range is complete enough to say anything about availability.
+  const timed = ranges.some((range) => range.start && range.end)
 
   return (
     <div className="flex flex-col gap-2">
@@ -155,7 +188,7 @@ export function ScheduleEmployeePicker({
             {hasWorkTypes && ` (${qualifiedCount})`}
           </span>
         </label>
-        {start && end && (
+        {timed && (
           <span className="text-xs text-muted-foreground">
             {availableCount} of {employees.length} free
           </span>
@@ -220,8 +253,8 @@ export function ScheduleEmployeePicker({
             {clashingSelected.length === 1
               ? "One assigned employee is"
               : `${clashingSelected.length} assigned employees are`}{" "}
-            already assigned in this time slot. Saving is blocked until you change
-            the time or drop them.
+            already assigned during this work. Saving is blocked until you change
+            the times or drop them.
           </span>
         </div>
       )}
@@ -328,7 +361,7 @@ export function ScheduleEmployeePicker({
                       badge honest about showing only the first. */}
                   {clashes.length > 1 && ` +${clashes.length - 1} more`}
                 </Badge>
-              ) : start && end ? (
+              ) : timed ? (
                 <span className="shrink-0 text-xs text-emerald-700 dark:text-emerald-400">
                   Free
                 </span>

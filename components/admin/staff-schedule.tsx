@@ -97,8 +97,17 @@ function JobEntry({ job }: { job: StaffScheduleJob }) {
           )}
         </div>
 
+        {/* The client under the branch, then the sales order — the expense
+            from this day gets filed against that number, so it is worth
+            carrying from the office's booking to the person doing the work. */}
         {job.branchName && (
           <p className="text-sm text-muted-foreground">{job.clientName}</p>
+        )}
+
+        {job.salesOrderNo && (
+          <p className="font-mono text-sm text-muted-foreground">
+            SO {job.salesOrderNo}
+          </p>
         )}
 
         {job.workTypes.length > 0 && (

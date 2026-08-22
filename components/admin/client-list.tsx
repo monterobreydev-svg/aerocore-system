@@ -37,6 +37,8 @@ export type ClientServiceJob = {
   status: ScheduleStatus
   workTypes: WorkType[]
   branchName: string | null
+  /** The job this visit belongs to. Null on schedules booked before SO numbers. */
+  salesOrderNo: string | null
   contactPerson: string | null
   employees: string[]
   createdByName: string | null

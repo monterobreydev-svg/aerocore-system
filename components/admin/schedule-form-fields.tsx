@@ -1,9 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { CalendarClock, MapPin, MoonStar } from "lucide-react"
+import { useMemo, useState } from "react"
+import { CalendarClock, MoonStar } from "lucide-react"
 import type { ScheduleStatus, WorkType } from "@/app/generated/prisma/client"
-import { listBranches } from "@/app/actions/schedules"
 import { REST_DAY_RATE, isRestDay } from "@/lib/employee"
 import {
   SCHEDULE_STATUSES,
@@ -33,26 +32,27 @@ import {
 import { cn } from "@/lib/utils"
 import { SearchSelect } from "@/components/ui/search-select"
 import { ScheduleEmployeePicker } from "@/components/admin/schedule-employee-picker"
+import {
+  ScheduleBranchPicker,
+  ScheduleSalesOrderPicker,
+  useClientSiteData,
+} from "@/components/admin/schedule-site-pickers"
 import { ScheduleWorkTypePicker } from "@/components/admin/schedule-worktype-picker"
 import type {
-  BranchOption,
   ClientOption,
   EmployeeOption,
 } from "@/components/admin/schedule-types"
 
-// The five fields worth carrying over when creating schedule after schedule —
-// employees usually work one client's sites across a day, so re-picking them
-// is the single biggest time sink in bulk entry.
+// The parts of a job the edit sheet keeps in the parent's state, so a client
+// change can clear the branch and sales order that belonged to the old one.
 export type ScheduleContext = {
   clientId: string
   branchId: string
+  salesOrderNo: string
   date: string
   startTime: string
   endTime: string
 }
-
-// Stable identity so the memo below does not rebuild on every render.
-const NO_BRANCHES: BranchOption[] = []
 
 type FieldErrors = Partial<Record<string, string[]>>
 
@@ -144,36 +144,11 @@ export function ScheduleFormFields({
 
   const selectedClient = clients.find((client) => client.id === context.clientId)
 
-  // Branches arrive on demand rather than with the page — see listBranches().
-  // Held as a cache keyed by client so switching back to one already looked at
-  // costs nothing.
-  //
-  // Both the list and the loading flag are *derived* from that cache rather
-  // than stored separately: there's no state to push, so the effect only ever
-  // fetches, and an empty selection needs no effect at all.
-  const [branchCache, setBranchCache] = useState<
-    Record<string, BranchOption[]>
-  >({})
-  const branches = context.clientId
-    ? (branchCache[context.clientId] ?? NO_BRANCHES)
-    : NO_BRANCHES
-  const loadingBranches =
-    Boolean(context.clientId) && !branchCache[context.clientId]
-
-  useEffect(() => {
-    const clientId = context.clientId
-    if (!clientId || branchCache[clientId]) return
-
-    let cancelled = false
-    listBranches(clientId).then((rows) => {
-      if (!cancelled) {
-        setBranchCache((current) => ({ ...current, [clientId]: rows }))
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [context.clientId, branchCache])
+  // Editing is one job, so one client's branches and sales orders. The array
+  // is memoised because the hook keys off which clients are in it.
+  const siteData = useClientSiteData(
+    useMemo(() => [context.clientId], [context.clientId])
+  )
 
   const clientOptions = useMemo(
     () =>
@@ -185,40 +160,29 @@ export function ScheduleFormFields({
     [clients]
   )
 
-  // A client with a hundred branches is the case this has to survive, hence a
-  // filtering combobox rather than a scrolling list. "Head office" is a real
-  // option, not a blank — scheduling against the main address is common.
-  const branchOptions = useMemo(
-    () => [
-      {
-        value: "",
-        label: "Head office",
-        hint: selectedClient?.address ?? "Main address",
-      },
-      ...branches.map((branch) => ({
-        value: branch.id,
-        label: branch.name,
-        hint: branch.address,
-      })),
-    ],
-    [branches, selectedClient]
-  )
-
-  const address = context.branchId
-    ? branches.find((branch) => branch.id === context.branchId)?.address
-    : selectedClient?.address
-
   // Parsed the same way dateKey writes it, so the browser and the server agree
   // on which day a Sunday is.
   const restDay = /^d{4}-d{2}-d{2}$/.test(context.date)
     ? isRestDay(new Date(`${context.date}T00:00:00`))
     : false
 
-  const start = combineDateTime(context.date, context.startTime)
-  // The employee picker checks for clashes against this, so it has to be the
-  // real end — a night shift's end is on the next day, not eleven hours before
-  // its own start.
-  const end = scheduleEndsAt(context.date, context.startTime, context.endTime)
+  // Editing is one job, so one range. Memoised on the three inputs that
+  // actually decide it: the picker takes this array as a dependency, and a
+  // fresh array every render would rebuild every clash lookup on every
+  // keystroke elsewhere in the form.
+  //
+  // The end is the *real* end — a night shift finishes on the next day, not
+  // eleven hours before its own start.
+  const ranges = useMemo(
+    () => [
+      {
+        start: combineDateTime(context.date, context.startTime),
+        end: scheduleEndsAt(context.date, context.startTime, context.endTime),
+      },
+    ],
+    [context.date, context.startTime, context.endTime]
+  )
+  const end = ranges[0].end
 
   const overnight =
     Boolean(context.startTime && context.endTime) &&
@@ -233,9 +197,9 @@ export function ScheduleFormFields({
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="Site">
+      <Section title="Job">
         <FieldGroup className="gap-3">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Field data-invalid={!!errors?.clientId}>
               <FieldLabel htmlFor={`${idPrefix}-clientId`}>Client</FieldLabel>
               <SearchSelect
@@ -243,8 +207,15 @@ export function ScheduleFormFields({
                 name="clientId"
                 options={clientOptions}
                 value={context.clientId}
+                // Both belonged to the old client, so both go with it —
+                // leaving them set would send the crew to another customer's
+                // address and bill the work to their project.
                 onValueChange={(value) =>
-                  onContextChange({ clientId: value, branchId: "" })
+                  onContextChange({
+                    clientId: value,
+                    branchId: "",
+                    salesOrderNo: "",
+                  })
                 }
                 placeholder="Select a client"
                 searchPlaceholder="Search clients…"
@@ -257,43 +228,42 @@ export function ScheduleFormFields({
             </Field>
 
             <Field data-invalid={!!errors?.branchId}>
-              <FieldLabel htmlFor={`${idPrefix}-branchId`}>
-                Branch
-                {branches.length > 0 && (
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {branches.length} available
-                  </span>
-                )}
-              </FieldLabel>
-              <SearchSelect
+              <FieldLabel htmlFor={`${idPrefix}-branchId`}>Branch</FieldLabel>
+              <ScheduleBranchPicker
                 id={`${idPrefix}-branchId`}
                 name="branchId"
-                options={branchOptions}
+                data={siteData}
+                clientId={context.clientId}
+                clientAddress={selectedClient?.address}
                 value={context.branchId}
                 onValueChange={(value) => onContextChange({ branchId: value })}
-                placeholder={
-                  !context.clientId
-                    ? "Pick a client first"
-                    : loadingBranches
-                      ? "Loading branches…"
-                      : "Head office"
-                }
-                searchPlaceholder="Search branches…"
-                emptyMessage="No branch matches that."
-                disabled={pending || !context.clientId}
+                disabled={pending}
               />
               <FieldError
                 errors={errors?.branchId?.map((message) => ({ message }))}
               />
             </Field>
-          </div>
 
-          {address && (
-            <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-              <MapPin className="mt-0.5 size-3 shrink-0" />
-              <span className="min-w-0">{address}</span>
-            </p>
-          )}
+            <Field data-invalid={!!errors?.salesOrderNo}>
+              <FieldLabel htmlFor={`${idPrefix}-salesOrderNo`}>
+                SO number
+              </FieldLabel>
+              <ScheduleSalesOrderPicker
+                id={`${idPrefix}-salesOrderNo`}
+                name="salesOrderNo"
+                data={siteData}
+                clientId={context.clientId}
+                value={context.salesOrderNo}
+                onValueChange={(value) =>
+                  onContextChange({ salesOrderNo: value })
+                }
+                disabled={pending}
+              />
+              <FieldError
+                errors={errors?.salesOrderNo?.map((message) => ({ message }))}
+              />
+            </Field>
+          </div>
         </FieldGroup>
       </Section>
 
@@ -469,8 +439,7 @@ export function ScheduleFormFields({
             employees={employees}
             busy={busy}
             workTypes={workTypes}
-            start={start}
-            end={end}
+            ranges={ranges}
             excludeScheduleId={scheduleId}
             defaultSelectedIds={defaultEmployeeIds}
             disabled={pending}

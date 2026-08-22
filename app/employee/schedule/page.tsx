@@ -38,6 +38,7 @@ export default async function EmployeeSchedulePage({
 
   const schedules: ScheduleRecord[] = scheduleRecords.map((schedule) => ({
     id: schedule.id,
+    salesOrderNo: schedule.salesOrderNo,
     date: schedule.date.toISOString(),
     startTime: schedule.startTime.toISOString(),
     endTime: schedule.endTime.toISOString(),

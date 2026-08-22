@@ -37,8 +37,9 @@ export default async function SchedulesPage({
       },
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
     }),
-    // Name and address only. Branches are fetched per client when one is
-    // picked (listBranches) rather than shipping every branch of every client.
+    // Name and address only. A client's branches and sales orders are fetched
+    // when that client is picked (listBranches, listClientProjects) rather than
+    // shipping every branch and project of every client.
     prisma.client.findMany({
       select: { id: true, name: true, address: true },
       orderBy: { name: "asc" },
@@ -58,6 +59,7 @@ export default async function SchedulesPage({
 
   const schedules: ScheduleRecord[] = scheduleRecords.map((schedule) => ({
     id: schedule.id,
+    salesOrderNo: schedule.salesOrderNo,
     date: schedule.date.toISOString(),
     startTime: schedule.startTime.toISOString(),
     endTime: schedule.endTime.toISOString(),

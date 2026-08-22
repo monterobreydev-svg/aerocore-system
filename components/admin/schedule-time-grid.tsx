@@ -72,9 +72,13 @@ function JobBlock({
 }) {
   const primaryType = schedule.workTypes[0]
   const width = 100 / columns
-  const site = schedule.branch
-    ? `${schedule.client.name} · ${schedule.branch.name}`
-    : schedule.client.name
+  const site = [
+    schedule.client.name,
+    schedule.branch?.name,
+    schedule.salesOrderNo && `SO ${schedule.salesOrderNo}`,
+  ]
+    .filter(Boolean)
+    .join(" · ")
 
   return (
     <button

@@ -305,12 +305,29 @@ enum ScheduleStatus {
 // One row per job/booking. Contact person/number are captured here (not on
 // Branch) since a job's on-site contact can differ from branch to branch —
 // and Branch itself doesn't store contact info.
+//
+// A job carries three separate facts about *what* and *where*, and they answer
+// different questions:
+//
+//   client       who is being billed
+//   branch       which of their sites the crew drives to — null means head
+//                office, and this is the only thing that decides the address
+//   salesOrderNo which job it delivers, and so which project's books the
+//                labour lands on
+//
+// The sales order is a number rather than a relation to Project, matching
+// CompanyExpense and ReimbursementItemClient: it is the key the COGS roll-up
+// already groups by, it is unique, and a row can still name the job it was for
+// if the project is ever deleted. Nullable only because schedules booked before
+// sales orders reached this model have none — every new one is required to
+// carry one.
 model Schedule {
   id            String         @id @default(uuid())
   clientId      String
   client        Client         @relation(fields: [clientId], references: [id])
   branchId      String?
   branch        Branch?        @relation(fields: [branchId], references: [id])
+  salesOrderNo  String?
   date          DateTime
   startTime     DateTime
   endTime       DateTime
@@ -338,6 +355,9 @@ model Schedule {
   // The dashboard counts jobs still to run; status alone is low-cardinality, so
   // it is paired with the date that always accompanies it.
   @@index([status, date])
+  // "Every visit booked against this sales order" — the same key the COGS
+  // roll-up and the employees' liquidations already group by.
+  @@index([salesOrderNo])
 }
 
 // Who changed what on a job after it was booked.

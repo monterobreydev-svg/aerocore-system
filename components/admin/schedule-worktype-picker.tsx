@@ -10,10 +10,18 @@ export function ScheduleWorkTypePicker({
   selected,
   onChange,
   disabled,
+  name = "workTypes",
 }: {
   selected: WorkType[]
   onChange: (next: WorkType[]) => void
   disabled?: boolean
+  /**
+   * Left unset by the batch form, which has one of these per row and carries
+   * the whole list in a JSON field instead. An unnamed input is not submitted,
+   * so twenty rows of these add nothing to the request rather than twenty
+   * indistinguishable `workTypes` keys the server could not tell apart.
+   */
+  name?: string
 }) {
   function toggle(type: WorkType) {
     onChange(
@@ -44,7 +52,7 @@ export function ScheduleWorkTypePicker({
           >
             <input
               type="checkbox"
-              name="workTypes"
+              name={name || undefined}
               value={type}
               checked={checked}
               onChange={() => toggle(type)}

@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react"
 import {
   Building2,
   ChevronLeft,
+  Hash,
   Mail,
   MapPin,
   Pencil,
@@ -1318,10 +1319,16 @@ export function ClientDetailView({
                       </div>
                     )}
 
-                    <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                      <MapPin className="mt-0.5 size-3.5 shrink-0" />
-                      <span className="min-w-0">
+                    <p className="flex flex-wrap items-start gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span className="inline-flex items-start gap-1.5">
+                        <MapPin className="mt-0.5 size-3.5 shrink-0" />
                         {job.branchName ?? "Head office"}
+                      </span>
+                      <span className="inline-flex items-start gap-1.5">
+                        <Hash className="mt-0.5 size-3.5 shrink-0" />
+                        <span className="font-mono">
+                          {job.salesOrderNo ?? "No SO number"}
+                        </span>
                       </span>
                     </p>
 
@@ -1344,6 +1351,7 @@ export function ClientDetailView({
                       </TableHead>
                       <TableHead>Service rendered</TableHead>
                       <TableHead>Branch</TableHead>
+                      <TableHead>SO number</TableHead>
                       <TableHead>Assigned</TableHead>
                       <TableHead className="whitespace-nowrap">
                         Created by
@@ -1385,6 +1393,19 @@ export function ClientDetailView({
                           ) : (
                             <span className="text-sm text-muted-foreground">
                               Head office
+                            </span>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="align-top">
+                          {job.salesOrderNo ? (
+                            <span className="inline-flex items-start gap-1.5 font-mono text-sm">
+                              <Hash className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                              {job.salesOrderNo}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">
+                              &mdash;
                             </span>
                           )}
                         </TableCell>

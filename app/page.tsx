@@ -48,6 +48,7 @@ export default async function Home() {
       contactNumber: true,
       remarks: true,
       client: { select: { name: true, address: true } },
+      salesOrderNo: true,
       branch: { select: { name: true, address: true } },
       assignments: {
         select: {
@@ -90,6 +91,7 @@ export default async function Home() {
       workTypes: job.workTypes,
       clientName: job.client.name,
       branchName: job.branch?.name ?? null,
+      salesOrderNo: job.salesOrderNo,
       // The branch's own address when it has one — that is where the crew is
       // actually going, not the client's head office.
       address: job.branch?.address ?? job.client.address,

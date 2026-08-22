@@ -133,9 +133,17 @@ export function ScheduleTable({
                 </TableCell>
                 <TableCell>
                   <div>{schedule.client.name}</div>
-                  {schedule.branch && (
+                  {/* Where the crew goes, then which job it is — the two
+                      questions asked of this column, in that order. */}
+                  {(schedule.branch || schedule.salesOrderNo) && (
                     <div className="text-xs text-muted-foreground">
-                      {schedule.branch.name}
+                      {schedule.branch?.name}
+                      {schedule.branch && schedule.salesOrderNo && " · "}
+                      {schedule.salesOrderNo && (
+                        <span className="font-mono">
+                          SO {schedule.salesOrderNo}
+                        </span>
+                      )}
                     </div>
                   )}
                 </TableCell>
@@ -186,6 +194,7 @@ export function ScheduleTable({
             <p className="mt-1 text-sm text-muted-foreground">
               {schedule.client.name}
               {schedule.branch ? ` · ${schedule.branch.name}` : ""}
+              {schedule.salesOrderNo ? ` · SO ${schedule.salesOrderNo}` : ""}
             </p>
             <div className="mt-2 flex items-center justify-between">
               <WorkTypeChips workTypes={schedule.workTypes} />

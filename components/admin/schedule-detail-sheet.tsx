@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ChevronDown,
   Clock,
+  Hash,
   History,
   MapPin,
   Pencil,
@@ -86,6 +87,7 @@ function DetailRow({
 const FIELD_LABELS: Record<string, string> = {
   client: "the client",
   branch: "the branch",
+  salesOrderNo: "the SO number",
   date: "the date",
   startTime: "the start time",
   endTime: "the end time",
@@ -280,7 +282,16 @@ function ScheduleSummary({
           <DetailRow icon={Clock}>
             {formatTimeRange(schedule.startTime, schedule.endTime)}
           </DetailRow>
+          <DetailRow icon={Hash}>
+            {/* The job this visit belongs to. Blank on schedules booked before
+                sales orders reached the model — said as a dash rather than
+                left as an empty row nobody can read anything into. */}
+            <p className="font-mono">{schedule.salesOrderNo ?? "—"}</p>
+            <p className="text-xs text-muted-foreground">SO number</p>
+          </DetailRow>
           <DetailRow icon={MapPin}>
+            {/* The branch decides the address — head office is what no branch
+                means, and the client's own address is where that lands. */}
             <p>{schedule.branch?.name ?? "Head office"}</p>
             <p className="text-xs text-muted-foreground">
               {schedule.branch?.address ?? schedule.client.address}
@@ -413,6 +424,7 @@ function ScheduleEditForm({
   const [context, setContext] = useState<ScheduleContext>(() => ({
     clientId: schedule.client.id,
     branchId: schedule.branch?.id ?? "",
+    salesOrderNo: schedule.salesOrderNo ?? "",
     date: toDateInputValue(schedule.date),
     startTime: toTimeInputValue(schedule.startTime),
     endTime: toTimeInputValue(schedule.endTime),

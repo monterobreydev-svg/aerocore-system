@@ -111,9 +111,18 @@ function JobEntry({
           )}
         </div>
 
+        {/* The client under the branch, then the sales order — the expense
+            from this job gets liquidated against that number, so it is worth
+            carrying from the office's booking to the person doing the work. */}
         {schedule.branch && (
           <p className="text-sm text-muted-foreground">
             {schedule.client.name}
+          </p>
+        )}
+
+        {schedule.salesOrderNo && (
+          <p className="font-mono text-sm text-muted-foreground">
+            SO {schedule.salesOrderNo}
           </p>
         )}
 

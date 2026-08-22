@@ -40,6 +40,7 @@ export async function listPublicMonth(
       contactPerson: true,
       contactNumber: true,
       remarks: true,
+      salesOrderNo: true,
       client: { select: { name: true, address: true } },
       branch: { select: { name: true, address: true } },
       assignments: {
@@ -65,6 +66,7 @@ export async function listPublicMonth(
       workTypes: job.workTypes,
       clientName: job.client.name,
       branchName: job.branch?.name ?? null,
+      salesOrderNo: job.salesOrderNo,
       address: job.branch?.address ?? job.client.address,
       contactPerson: job.contactPerson,
       contactNumber: job.contactNumber,

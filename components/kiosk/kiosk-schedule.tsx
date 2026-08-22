@@ -41,6 +41,9 @@ export type KioskJob = {
   workTypes: WorkType[]
   clientName: string
   branchName: string | null
+  /** The job this visit belongs to. Null on schedules booked before SO numbers. */
+  salesOrderNo: string | null
+  /** The branch's own address when there is one — that's where the crew goes. */
   address: string
   contactPerson: string | null
   contactNumber: string | null
@@ -73,6 +76,11 @@ function JobCard({ job }: { job: KioskJob }) {
           {job.branchName && (
             <p className="truncate text-xs text-muted-foreground">
               {job.branchName}
+            </p>
+          )}
+          {job.salesOrderNo && (
+            <p className="truncate font-mono text-xs text-muted-foreground">
+              SO {job.salesOrderNo}
             </p>
           )}
         </div>

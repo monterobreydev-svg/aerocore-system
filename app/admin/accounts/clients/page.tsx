@@ -68,6 +68,7 @@ export default async function ClientsPage() {
       status: schedule.status,
       workTypes: schedule.workTypes,
       branchName: schedule.branch?.name ?? null,
+      salesOrderNo: schedule.salesOrderNo,
       contactPerson: schedule.contactPerson,
       employees: schedule.assignments.map(
         (assignment) =>
