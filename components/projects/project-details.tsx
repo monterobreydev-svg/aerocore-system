@@ -394,27 +394,11 @@ function ProjectOverview({ project }: { project: ProjectRow }) {
     (column) => column.derived && column.key !== "cogs"
   )
 
+  // No name, status or client here: the panel already says which project this
+  // is, once, above the tabs. Repeating it made the first screenful of the
+  // Overview a copy of the two lines directly above it.
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-base leading-tight font-semibold">
-            {project.name}
-          </h3>
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-              PROJECT_STATUS_CHIP[project.status]
-            )}
-          >
-            {PROJECT_STATUS_LABELS[project.status]}
-          </span>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {project.clientName}
-        </p>
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2">
         <section className="rounded-xl border p-3">
           <p className="text-[0.6875rem] font-medium tracking-wide text-muted-foreground uppercase">

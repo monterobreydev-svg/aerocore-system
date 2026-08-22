@@ -296,7 +296,12 @@ export function ProjectDialog({
               {salesOrderNo}
             </span>
           </DialogTitle>
-          <DialogDescription>
+          {/* Read out but not shown when viewing. The panel underneath already
+              names the project, its status and the client, so a line of prose
+              above it was only pushing the actual record further down the
+              screen — but the dialog still needs something to point
+              aria-describedby at. Same treatment as the liquidation form. */}
+          <DialogDescription className={mode === "view" ? "sr-only" : undefined}>
             {mode === "view"
               ? "Everything on record for this project, and who has changed it."
               : editing
