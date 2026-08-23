@@ -31,6 +31,7 @@ import { Spinner } from "@/components/ui/spinner"
 const FIELD_LABELS: Record<string, string> = {
   name: "the project name",
   client: "the client",
+  branch: "the site",
   status: "the status",
   startDate: "the start date",
   endDate: "the end date",
@@ -405,6 +406,17 @@ function ProjectOverview({ project }: { project: ProjectRow }) {
             The job
           </p>
           <div className="mt-1 flex flex-col divide-y">
+            {/* Head office when there is no branch, spelled out rather than left
+                blank — "no site recorded" and "the client's own address" are
+                different answers and the row has to pick one. */}
+            <Row
+              label="Site"
+              value={
+                project.branchName ?? (
+                  <span className="text-muted-foreground">Head office</span>
+                )
+              }
+            />
             <Row label="Starts" value={dayLabel(project.startDate)} />
             <Row
               label="Ends"

@@ -52,7 +52,7 @@ const ExpensesDialog = dynamic(() =>
   import("@/components/projects/expenses-dialog").then((m) => m.ExpensesDialog)
 )
 
-export type ClientOption = { id: string; name: string }
+export type ClientOption = { id: string; name: string; address: string }
 
 type Filters = {
   clientId: string

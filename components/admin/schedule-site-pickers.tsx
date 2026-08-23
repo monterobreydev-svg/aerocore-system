@@ -51,7 +51,18 @@ const NO_PROJECTS: ClientProjectOption[] = []
  * change while a dialog is open, and re-fetching on every keystroke is exactly
  * the round trip this is here to avoid.
  */
-export function useClientSiteData(clientIds: string[]): SiteData {
+export function useClientSiteData(
+  clientIds: string[],
+  /**
+   * Skip the sales orders when the caller only needs branches.
+   *
+   * The project form is the case: it asks which site the job is at, and asking
+   * the same breath for the client's existing sales orders would be a wasted
+   * round trip — and an odd one, since the thing being created *is* a sales
+   * order.
+   */
+  { withProjects = true }: { withProjects?: boolean } = {}
+): SiteData {
   const [branches, setBranches] = useState<Record<string, BranchOption[]>>({})
   const [projects, setProjects] = useState<Record<string, ClientProjectOption[]>>(
     {}
@@ -102,7 +113,7 @@ export function useClientSiteData(clientIds: string[]): SiteData {
           // Forget it failed, so picking the client again can try once more.
           .catch(() => requested.current.delete(`b:${id}`))
       }
-      if (!requested.current.has(`p:${id}`)) {
+      if (withProjects && !requested.current.has(`p:${id}`)) {
         requested.current.add(`p:${id}`)
         listClientProjects(id)
           .then((rows) => {
@@ -113,7 +124,7 @@ export function useClientSiteData(clientIds: string[]): SiteData {
           .catch(() => requested.current.delete(`p:${id}`))
       }
     }
-  }, [key])
+  }, [key, withProjects])
 
   return { branches, projects }
 }

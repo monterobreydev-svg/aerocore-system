@@ -274,6 +274,7 @@ model Branch {
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   schedules         Schedule[]
+  projects          Project[]          @relation("BranchProjects")
   attendanceReports AttendanceReport[] @relation("BranchAttendanceReports")
 }
 
@@ -835,6 +836,18 @@ model Project {
   name     String
   clientId String
   client   Client       @relation("ClientProjects", fields: [clientId], references: [id])
+  /**
+   * Which of the client's sites the job is at. Null means head office, the
+   * same as everywhere else a branch is optional.
+   *
+   * On the project rather than only on each visit because the site is a fact
+   * about the job: a chiller replacement at Tower B is at Tower B whoever is
+   * sent and whenever they go. The schedules underneath still carry their own
+   * branch — a survey may be at head office while the work is on site — so this
+   * is where the job *is*, not a constraint on where anyone is sent.
+   */
+  branchId String?
+  branch   Branch?      @relation("BranchProjects", fields: [branchId], references: [id])
   terms    PaymentTerms
 
   // The three figures anybody types. Decimal, not Float: these are pesos, and

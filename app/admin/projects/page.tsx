@@ -118,11 +118,15 @@ export default async function AdminProjectsPage({
         accrualRevenue: true,
         clientId: true,
         client: { select: { name: true } },
+        branchId: true,
+        branch: { select: { name: true } },
       },
       orderBy: [{ startDate: "asc" }, { salesOrderNo: "asc" }],
     }),
     prisma.client.findMany({
-      select: { id: true, name: true },
+      // The address is here because the site picker shows it as the head-office
+      // hint — one short column against a list this page already loads whole.
+      select: { id: true, name: true, address: true },
       orderBy: { name: "asc" },
     }),
     // The number the next project will get, so the form can show it rather
@@ -321,6 +325,8 @@ export default async function AdminProjectsPage({
     name: record.name,
     clientId: record.clientId,
     clientName: record.client.name,
+    branchId: record.branchId,
+    branchName: record.branch?.name ?? null,
     terms: record.terms,
     // Decimal doesn't survive the trip to a client component, and the derived
     // figures are computed from the same numbers the browser will display.

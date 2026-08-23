@@ -73,6 +73,9 @@ const ProjectSchema = z
       .min(1, "Give the project a name.")
       .max(200, "That's too long — put the detail in the name field."),
     clientId: z.string().min(1, "Choose a client."),
+    // Optional: no branch means head office, which is a real answer to "where"
+    // and the common one.
+    branchId: z.string().trim().optional(),
     terms: z.enum([
       "TWO_WEEKS",
       "UPON_COMPLETION",
@@ -109,6 +112,7 @@ function parse(formData: FormData) {
     siNo: formData.get("siNo") ?? "",
     name: formData.get("name"),
     clientId: formData.get("clientId"),
+    branchId: formData.get("branchId") || undefined,
     terms: formData.get("terms"),
     projectAmount: formData.get("projectAmount") ?? "",
     cashCollection: formData.get("cashCollection") ?? "",
@@ -119,6 +123,24 @@ function parse(formData: FormData) {
 /** Local midnight, the same way every other date in this app is written. */
 function localDay(value: string) {
   return new Date(`${value}T00:00:00`)
+}
+
+/**
+ * Is that branch actually this client's?
+ *
+ * The picker only offers the chosen client's own, but an action takes its
+ * arguments from whoever calls it — and a job filed against another customer's
+ * site is wrong in the one field the crew reads to find the place.
+ *
+ * Null branch is head office, which is always the client's own.
+ */
+async function branchBelongsTo(clientId: string, branchId?: string) {
+  if (!branchId) return true
+  const branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+    select: { clientId: true },
+  })
+  return branch?.clientId === clientId
 }
 
 /**
@@ -151,6 +173,10 @@ export async function createProject(
 
   const data = validated.data
 
+  if (!(await branchBelongsTo(data.clientId, data.branchId))) {
+    return { errors: { branchId: ["That branch isn't one of this client's."] } }
+  }
+
   // Two people adding a project in the same second both read the same "latest"
   // and both try to write the same number. The unique column is what makes
   // that a failed insert rather than two projects sharing an order number, and
@@ -168,6 +194,7 @@ export async function createProject(
           siNo: data.siNo || null,
           name: data.name,
           clientId: data.clientId,
+          branchId: data.branchId || null,
           terms: data.terms,
           projectAmount: data.projectAmount,
           cashCollection: data.cashCollection,
@@ -207,6 +234,10 @@ export async function updateProject(
 
   const data = validated.data
 
+  if (!(await branchBelongsTo(data.clientId, data.branchId))) {
+    return { errors: { branchId: ["That branch isn't one of this client's."] } }
+  }
+
   // What it was, in the words the history will use. Read before the write so
   // the two sides of every change come from the same request.
   const before = await prisma.project.findUnique({
@@ -222,6 +253,7 @@ export async function updateProject(
       cashCollection: true,
       accrualRevenue: true,
       client: { select: { name: true } },
+      branch: { select: { name: true } },
     },
   })
   if (!before) return { message: "That project no longer exists." }
@@ -234,9 +266,19 @@ export async function updateProject(
   })
   if (!after) return { errors: { clientId: ["Choose a client."] } }
 
+  // The branch by name too, for the same reason. Already proven to be this
+  // client's by the check above, so this only resolves the wording.
+  const afterBranch = data.branchId
+    ? await prisma.branch.findUnique({
+        where: { id: data.branchId },
+        select: { name: true },
+      })
+    : null
+
   const changes = diffProject(
     {
       client: before.client.name,
+      branch: before.branch?.name ?? "Head office",
       name: before.name,
       status: before.status,
       terms: before.terms,
@@ -249,6 +291,7 @@ export async function updateProject(
     },
     {
       client: after.name,
+      branch: afterBranch?.name ?? "Head office",
       name: data.name,
       status: data.status,
       terms: data.terms,
@@ -275,6 +318,7 @@ export async function updateProject(
         siNo: data.siNo || null,
         name: data.name,
         clientId: data.clientId,
+        branchId: data.branchId || null,
         terms: data.terms,
         projectAmount: data.projectAmount,
         cashCollection: data.cashCollection,
@@ -306,6 +350,8 @@ export async function updateProject(
 
 type ProjectSnapshot = {
   client: string
+  /** Already resolved to "Head office" when there is none. */
+  branch: string
   name: string
   status: ProjectStatus
   terms: PaymentTerms
@@ -327,6 +373,7 @@ function diffProject(before: ProjectSnapshot, after: ProjectSnapshot) {
 
   put("name", before.name, after.name)
   put("client", before.client, after.client)
+  put("branch", before.branch, after.branch)
   put(
     "status",
     PROJECT_STATUS_LABELS[before.status],

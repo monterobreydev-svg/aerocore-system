@@ -264,6 +264,9 @@ export type ProjectRow = ProjectFigures & {
   name: string
   clientId: string
   clientName: string
+  /** Which of the client's sites the job is at. Null means head office. */
+  branchId: string | null
+  branchName: string | null
   terms: PaymentTerms
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useActionState, useEffect, useState } from "react"
+import { useActionState, useEffect, useMemo, useState } from "react"
 import {
   Building2,
   CalendarRange,
@@ -27,6 +27,7 @@ import {
 } from "@/lib/projects"
 import { todayKey } from "@/lib/schedule"
 import { cn } from "@/lib/utils"
+import { ScheduleBranchPicker, useClientSiteData } from "@/components/admin/schedule-site-pickers"
 import type { ClientOption } from "@/components/projects/projects-view"
 import { ProjectDetails } from "@/components/projects/project-details"
 import { Button } from "@/components/ui/button"
@@ -227,6 +228,7 @@ export function ProjectDialog({
   const [status, setStatus] = useState(project?.status ?? "IN_PROGRESS")
   const [terms, setTerms] = useState(project?.terms ?? "UPON_COMPLETION")
   const [clientId, setClientId] = useState(project?.clientId ?? "")
+  const [branchId, setBranchId] = useState(project?.branchId ?? "")
 
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -254,6 +256,14 @@ export function ProjectDialog({
     value: client.id,
     label: client.name,
   }))
+
+  // Branches only. The sales orders this client already has are no use to a
+  // form whose whole job is to issue another one.
+  const siteData = useClientSiteData(
+    useMemo(() => [clientId], [clientId]),
+    { withProjects: false }
+  )
+  const selectedClient = clients.find((client) => client.id === clientId)
 
   async function handleDelete() {
     if (!project) return
@@ -388,7 +398,13 @@ export function ProjectDialog({
                       name="clientId"
                       options={clientOptions}
                       value={clientId}
-                      onValueChange={setClientId}
+                      // The branch belonged to the old client, so it goes with
+                      // it — leaving it set would put the job at another
+                      // customer's address.
+                      onValueChange={(value) => {
+                        setClientId(value)
+                        setBranchId("")
+                      }}
                       placeholder="Choose a client"
                       searchPlaceholder="Search clients…"
                       emptyMessage="No client by that name."
@@ -396,6 +412,30 @@ export function ProjectDialog({
                     />
                     <FieldError
                       errors={state?.errors?.clientId?.map((message) => ({
+                        message,
+                      }))}
+                    />
+                  </Field>
+
+                  <Field data-invalid={!!state?.errors?.branchId}>
+                    <FieldLabel htmlFor="branchId">Site</FieldLabel>
+                    {/* Where the job is, as a fact about the job rather than
+                        about any one visit. The schedules underneath still
+                        carry their own branch — a survey can be at head office
+                        while the work is on site — so this constrains nothing;
+                        it answers "where is this project". */}
+                    <ScheduleBranchPicker
+                      id="branchId"
+                      name="branchId"
+                      data={siteData}
+                      clientId={clientId}
+                      clientAddress={selectedClient?.address}
+                      value={branchId}
+                      onValueChange={(value: string) => setBranchId(value)}
+                      disabled={busy}
+                    />
+                    <FieldError
+                      errors={state?.errors?.branchId?.map((message) => ({
                         message,
                       }))}
                     />
