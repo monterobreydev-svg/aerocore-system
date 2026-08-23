@@ -722,3 +722,184 @@ export function clip(text: string, room: number, font: PdfFont, size: number) {
   }
   return `${cut}…`
 }
+
+// ---------------------------------------------------------------------------
+// One quantity, divided — as a ring
+// ---------------------------------------------------------------------------
+//
+// compositionBar above is still the right default, and the reasons given there
+// still hold: parts compared along one axis, horizontal labels, survives being
+// eight points tall.
+//
+// This is for the other case — a headline split into a few large parts, given a
+// third of a page in a document somebody reads rather than scans. A ring is
+// what a reader expects of "where the money went" at that size, the hole in the
+// middle carries the total, and with four or five segments the angles are far
+// enough apart to compare honestly. Past about six it stops being readable and
+// compositionBar is the better answer again.
+
+/** Where the ring's own total is written. */
+export type DonutCentre = { value: string; label: string }
+
+function polar(cx: number, cy: number, radius: number, radians: number) {
+  return [cx + radius * Math.cos(radians), cy + radius * Math.sin(radians)]
+}
+
+/**
+ * One arc of a ring, as a filled path between two radii.
+ *
+ * Bezier curves cannot describe a circle exactly, so the arc is cut into spans
+ * of at most a quarter turn and each is approximated with the standard kappa
+ * constant — the same trick the rounded bar corners above use, and accurate to
+ * well under a printer's dot at these sizes.
+ */
+function ringSlice(
+  cx: number,
+  cy: number,
+  outer: number,
+  inner: number,
+  from: number,
+  to: number,
+  color: string
+) {
+  const span = to - from
+  if (span <= 0) return []
+
+  const steps = Math.max(1, Math.ceil(span / (Math.PI / 2)))
+  const step = span / steps
+  // Kappa is defined for a quarter turn; any shorter span scales it the same way.
+  const lift = (K * step) / (Math.PI / 2)
+
+  const path: string[] = []
+  const [sx, sy] = polar(cx, cy, outer, from)
+  path.push(`${sx.toFixed(2)} ${sy.toFixed(2)} m`)
+
+  for (let i = 0; i < steps; i += 1) {
+    const a = from + step * i
+    const b = a + step
+    const [x1, y1] = polar(cx, cy, outer, a)
+    const [x2, y2] = polar(cx, cy, outer, b)
+    path.push(
+      curve(
+        x1 - outer * lift * Math.sin(a),
+        y1 + outer * lift * Math.cos(a),
+        x2 + outer * lift * Math.sin(b),
+        y2 - outer * lift * Math.cos(b),
+        x2,
+        y2
+      )
+    )
+  }
+
+  const [ix, iy] = polar(cx, cy, inner, to)
+  path.push(`${ix.toFixed(2)} ${iy.toFixed(2)} l`)
+
+  for (let i = steps; i > 0; i -= 1) {
+    const a = from + step * i
+    const b = a - step
+    const [x1, y1] = polar(cx, cy, inner, a)
+    const [x2, y2] = polar(cx, cy, inner, b)
+    path.push(
+      curve(
+        x1 + inner * lift * Math.sin(a),
+        y1 - inner * lift * Math.cos(a),
+        x2 - inner * lift * Math.sin(b),
+        y2 + inner * lift * Math.cos(b),
+        x2,
+        y2
+      )
+    )
+  }
+
+  return [fill(color), ...path, "h f", "0 g"]
+}
+
+export function donut({
+  box,
+  segments,
+  ink,
+  diameter = 116,
+  thickness = 26,
+  centre,
+  format,
+}: {
+  box: PdfBox
+  segments: Segment[]
+  ink: ChartInk
+  diameter?: number
+  /** How wide the ring is. The hole is what is left. */
+  thickness?: number
+  /** The total, written in the hole. */
+  centre?: DonutCentre
+  format?: (value: number) => string
+}): string[] {
+  const drawable = segments.filter((segment) => segment.value > 0)
+  const total = drawable.reduce((sum, segment) => sum + segment.value, 0)
+  if (total <= 0) return []
+
+  const outer = diameter / 2
+  const inner = Math.max(4, outer - thickness)
+  const cx = box.x + outer
+  const cy = box.y - outer
+
+  const out: string[] = []
+
+  // From twelve o'clock, clockwise — the direction a reader's eye starts and
+  // travels, and the one every other ring they have seen uses.
+  let angle = Math.PI / 2
+  for (const segment of drawable) {
+    const sweep = (segment.value / total) * Math.PI * 2
+    out.push(
+      ...ringSlice(cx, cy, outer, inner, angle - sweep, angle, segment.color)
+    )
+    angle -= sweep
+  }
+
+  if (centre) {
+    out.push(
+      ...drawText(centre.value, {
+        x: cx,
+        y: cy + 1,
+        font: "sans-bold",
+        size: 12,
+        align: "center",
+        color: ink.ink,
+      }),
+      ...drawText(centre.label, {
+        x: cx,
+        y: cy - 10,
+        size: 6.5,
+        align: "center",
+        color: ink.muted,
+      })
+    )
+  }
+
+  // The key sits beside the ring rather than under it: a ring is as tall as it
+  // is wide and leaves a column of empty page to its right that the labels
+  // exactly fill.
+  const keyLeft = box.x + diameter + 18
+  const keyWidth = box.width - diameter - 18
+  if (keyWidth > 60) {
+    out.push(
+      ...key({
+        box: { x: keyLeft, y: box.y - 6, width: keyWidth },
+        series: drawable.map((segment) => ({
+          label: segment.label,
+          color: segment.color,
+          note: `${format ? format(segment.value) : Math.round(segment.value)}  ${Math.round(
+            (segment.value / total) * 100
+          )}%`,
+        })),
+        ink,
+        columns: 1,
+      })
+    )
+  }
+
+  return out
+}
+
+export function donutHeight(diameter = 116) {
+  return diameter + 6
+}

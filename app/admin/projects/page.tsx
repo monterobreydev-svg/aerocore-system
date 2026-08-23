@@ -11,6 +11,7 @@ import {
 import { OPEX_LOOKBACK_DAYS, OPEX_STAFF, opexForMonth } from "@/lib/opex"
 import { labourCostBetween } from "@/lib/labour-cost/query"
 import { dateKey } from "@/lib/schedule"
+import { ProjectsDownloadMenu } from "@/components/projects/download-menu"
 import { ProjectsView } from "@/components/projects/projects-view"
 
 // ---------------------------------------------------------------------------
@@ -363,12 +364,24 @@ export default async function AdminProjectsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-semibold">Projects</h2>
-        <p className="text-sm text-muted-foreground">
-          Every job sold, by the month it starts — what it&apos;s worth, what it
-          cost, and what has come in.
-        </p>
+      {/* The download sits with the title rather than with Add project and
+          Record expenses: those two write something, this one takes a copy of
+          what is already on screen. */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">Projects</h2>
+          <p className="text-sm text-muted-foreground">
+            Every job sold, by the month it starts — what it&apos;s worth, what
+            it cost, and what has come in.
+          </p>
+        </div>
+        <ProjectsDownloadMenu
+          year={year}
+          from={from ?? ""}
+          to={to ?? ""}
+          clientId={clientId}
+          query={query}
+        />
       </div>
 
       <ProjectsView

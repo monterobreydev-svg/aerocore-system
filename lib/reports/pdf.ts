@@ -3,17 +3,12 @@ import "server-only"
 import {
   CONTENT_WIDTH,
   MARGIN,
-  PAGE_HEIGHT,
-  PAGE_WIDTH,
   drawText,
   renderPdf,
   wrapText,
   type PdfBlock,
-  type PdfBox,
 } from "@/lib/formats/pdf"
 import {
-  barList,
-  barListHeight,
   clip,
   columns,
   compositionBar,
@@ -23,10 +18,64 @@ import {
   keyHeight,
   rect,
   stackedColumns,
-  type ChartInk,
   type Series,
 } from "@/lib/formats/chart"
 import type { ReportData, Slice } from "@/lib/reports"
+import {
+  COMPANY,
+  CYAN_RAMP,
+  FOOTER,
+  INK,
+  LETTERHEAD,
+  NAME_COLUMN,
+  PAPER,
+  RUNNING_HEAD,
+  STATUS_RAMP,
+  VIZ,
+  caption,
+  figure,
+  footer,
+  heading,
+  letterhead,
+  prose,
+  ranking as rankingBars,
+  runningHead,
+  stamp,
+  subheading,
+  table,
+  upper,
+  type PaperHead,
+  type PaperMeta,
+} from "@/lib/reports/paper"
+
+/** What the letterhead and running head say this document is. */
+const DOCUMENT = "Operations Report"
+
+function paperHead(data: ReportData): PaperHead {
+  return {
+    document: DOCUMENT,
+    periodLabel: data.range.label,
+    periodNote: `${data.range.days} ${plural(data.range.days, "day")} · ${data.headline.staff} on the payroll`,
+  }
+}
+
+/** A ranking of report slices, which carry a label and a value. */
+function ranking(
+  rows: Slice[],
+  color: string | string[],
+  display: (row: Slice) => string,
+  labelWidth = 118
+) {
+  return rankingBars(
+    rows.map((row) => ({
+      label: row.label,
+      value: row.value,
+      display: display(row),
+    })),
+    color,
+    labelWidth
+  )
+}
 
 // ---------------------------------------------------------------------------
 // The operations report, as a document
@@ -48,97 +97,6 @@ import type { ReportData, Slice } from "@/lib/reports"
 // The tables that are a *record* rather than a finding — every day's hours —
 // are moved to an appendix at the back. A section that opens with ninety rows
 // of figures is one nobody reads to the end of.
-
-// ---------------------------------------------------------------------------
-// The palette
-// ---------------------------------------------------------------------------
-//
-// The same values the reports page draws with, as hexes rather than as CSS
-// custom properties: four categorical slots assigned by entity and never by
-// rank, and two five-step ordinal ramps for the quantities that are one thing
-// divided up. They were computed and put through the validator there — worst
-// adjacent CVD ΔE 19.4 against a target of 8, every slot inside the lightness
-// band and over 3:1 on its surface — and paper is the white surface they were
-// validated against, so they transfer exactly.
-//
-// Screen and print agreeing matters more here than it usually does: somebody
-// reads the period on the page, downloads it, and puts the two side by side.
-
-const VIZ = {
-  attendance: "#0092b7",
-  payroll: "#dc631e",
-  scheduling: "#7935c6",
-  claims: "#0e9254",
-} as const
-
-/** A lifecycle, so one hue in graded steps rather than five unrelated colours. */
-const STATUS_RAMP = ["#6213ab", "#7a3dc5", "#9260da", "#aa83ea", "#bfa4f0"]
-
-/** The cyan ramp, darkest first — for anything split by kind rather than state. */
-const CYAN_RAMP = ["#005b7b", "#00769b", "#0092b7", "#19adcc", "#6cc2da"]
-
-const PAPER = {
-  /** The letterhead, and the same navy as the application's navigation rail. */
-  navy: "#132134",
-  navyLift: "#1d3049",
-  /** Legible on the navy, and the brand's own hue. */
-  navyText: "#a9bed2",
-  accent: "#3aa9cd",
-
-  ink: "#0e141e",
-  muted: "#626d78",
-  hair: "#d9e1e7",
-  grid: "#e6ecf1",
-  tint: "#f2f6fa",
-  track: "#eaf0f5",
-
-  warnInk: "#9a4a06",
-  warnTint: "#fdf4e7",
-  warnRule: "#e08c2c",
-} as const
-
-const INK: ChartInk = {
-  grid: PAPER.grid,
-  muted: PAPER.muted,
-  ink: PAPER.ink,
-  track: PAPER.track,
-}
-
-const COMPANY = "Aerocoole Airconditioning Services"
-const DOCUMENT = "Operations Report"
-
-// ---------------------------------------------------------------------------
-// Measurements
-// ---------------------------------------------------------------------------
-
-/** The navy band on page one. */
-const LETTERHEAD = 104
-
-/** The running header on every page after it. */
-const RUNNING_HEAD = 34
-
-/** The footer, on all of them. */
-const FOOTER = 32
-
-/**
- * Prose runs the full column, like everything else on the page.
- *
- * It used to stop at 432pt, on the reasoning that a full-width line of this
- * type runs past ninety characters and the eye loses its place coming back.
- * The measure was the right instinct and the wrong number: at 432pt the longest
- * line of a normal paragraph here is still 115 characters, so the narrowing
- * bought no readability at all — it only left every paragraph ending short of
- * the section rule above it, which reads as a layout fault rather than a
- * decision.
- *
- * Genuinely fixing the measure would mean about 265pt, less than half the page,
- * which suits an essay and not a two-line finding under a full-width heading.
- * So the column wins: paragraphs align with the rules, the charts and the
- * tables, and stay the two or three lines they already are.
- */
-const PROSE_WIDTH = CONTENT_WIDTH
-
-const BODY = 8.6
 
 // ---------------------------------------------------------------------------
 // Words and numbers
@@ -171,10 +129,6 @@ function plural(count: number, one: string, many = `${one}s`) {
   return count === 1 ? one : many
 }
 
-function upper(text: string) {
-  return text.toUpperCase()
-}
-
 /** "1 Aug", for an axis tick. */
 function shortDay(key: string) {
   const date = new Date(`${key}T00:00:00`)
@@ -200,229 +154,13 @@ function weekday(key: string) {
 // The furniture
 // ---------------------------------------------------------------------------
 
-export type ReportMeta = {
-  /** Whose name goes on it. */
-  generatedBy: string
-  /** Their role, so a reader knows what the signature is worth. */
-  role: string
-  generatedAt: Date
-}
-
-function stamp(at: Date) {
-  return at.toLocaleString("en-PH", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
-
 /**
- * The letterhead: a full-bleed navy band with the company's name in it.
+ * Who ran the report, and when.
  *
- * Drawn as page furniture rather than as a block in the flow so it can run to
- * the paper's edge — a band that stops at the margin reads as a box somebody
- * put on the page, and a masthead should read as the page itself.
+ * The same stamp every document in this system carries — see PaperMeta. Kept
+ * under this name because the route and the page both already speak it.
  */
-function letterhead(data: ReportData) {
-  const top = PAGE_HEIGHT
-  const bottom = PAGE_HEIGHT - LETTERHEAD
-
-  return [
-    ...rect(0, bottom, PAGE_WIDTH, LETTERHEAD, PAPER.navy),
-
-    // A lighter wedge under the right-hand corner. The band is a large flat
-    // area and one shade of relief across it is the difference between a
-    // printed letterhead and a filled rectangle.
-    ...rect(PAGE_WIDTH - 190, bottom, 190, LETTERHEAD, PAPER.navyLift),
-    ...rect(PAGE_WIDTH - 190, bottom, 2, LETTERHEAD, PAPER.accent),
-
-    // The rule the whole document hangs off.
-    ...rect(0, bottom - 3, PAGE_WIDTH, 3, PAPER.accent),
-
-    ...drawText("Aerocoole", {
-      x: MARGIN,
-      y: top - 46,
-      font: "sans-bold",
-      size: 21,
-      color: "#ffffff",
-    }),
-    ...drawText("Airconditioning Services", {
-      x: MARGIN,
-      y: top - 61,
-      size: 9.5,
-      color: PAPER.navyText,
-    }),
-    ...hairline(MARGIN, top - 72, MARGIN + 132, top - 72, PAPER.accent, {
-      weight: 1.2,
-    }),
-    ...drawText(upper(DOCUMENT), {
-      x: MARGIN,
-      y: top - 86,
-      font: "sans-bold",
-      size: 8,
-      color: PAPER.accent,
-    }),
-
-    ...drawText(upper("Period covered"), {
-      x: PAGE_WIDTH - MARGIN,
-      y: top - 44,
-      size: 6.5,
-      align: "right",
-      color: PAPER.navyText,
-    }),
-    ...drawText(data.range.label, {
-      x: PAGE_WIDTH - MARGIN,
-      y: top - 60,
-      font: "sans-bold",
-      size: 12,
-      align: "right",
-      color: "#ffffff",
-    }),
-    ...drawText(
-      `${data.range.days} ${plural(data.range.days, "day")} · ${data.headline.staff} on the payroll`,
-      {
-        x: PAGE_WIDTH - MARGIN,
-        y: top - 74,
-        size: 7.5,
-        align: "right",
-        color: PAPER.navyText,
-      }
-    ),
-  ]
-}
-
-/** Pages two onward: who this is and what period, in one quiet line. */
-function runningHead(data: ReportData) {
-  const y = PAGE_HEIGHT - MARGIN + 6
-
-  return [
-    ...drawText(COMPANY, {
-      x: MARGIN,
-      y,
-      font: "sans-bold",
-      size: 7.5,
-      color: PAPER.ink,
-    }),
-    ...drawText(`${DOCUMENT} · ${data.range.label}`, {
-      x: PAGE_WIDTH - MARGIN,
-      y,
-      size: 7.5,
-      align: "right",
-      color: PAPER.muted,
-    }),
-    ...hairline(MARGIN, y - 6, PAGE_WIDTH - MARGIN, y - 6, PAPER.hair),
-  ]
-}
-
-/**
- * The footer, on every page.
- *
- * It carries the generation stamp rather than leaving it on page one, because a
- * page of a report is photocopied, forwarded and pinned to a wall on its own,
- * and a figure whose date and author stayed behind on the cover is a figure
- * somebody will quote out of date.
- */
-function footer(data: ReportData, meta: ReportMeta, page: number, total: number) {
-  const y = MARGIN - 8
-
-  return [
-    ...hairline(MARGIN, y + 16, PAGE_WIDTH - MARGIN, y + 16, PAPER.hair),
-    ...drawText(
-      `Generated ${stamp(meta.generatedAt)} by ${meta.generatedBy} · ${meta.role}`,
-      { x: MARGIN, y, size: 6.8, color: PAPER.muted }
-    ),
-    ...drawText(`Page ${page} of ${total}`, {
-      x: PAGE_WIDTH - MARGIN,
-      y,
-      font: "sans-bold",
-      size: 6.8,
-      align: "right",
-      color: PAPER.muted,
-    }),
-  ]
-}
-
-// ---------------------------------------------------------------------------
-// The blocks a section is built from
-// ---------------------------------------------------------------------------
-
-/** A section heading: its number, its name, and the rule in its own colour. */
-function heading(index: number, title: string, accent: string): PdfBlock[] {
-  return [
-    { kind: "space", height: 20 },
-    {
-      kind: "draw",
-      height: 26,
-      render: (box) => [
-        ...rect(box.x, box.y - 15, 15, 15, accent),
-        ...drawText(String(index), {
-          x: box.x + 7.5,
-          y: box.y - 11,
-          font: "sans-bold",
-          size: 8.5,
-          align: "center",
-          color: "#ffffff",
-        }),
-        ...drawText(title, {
-          x: box.x + 22,
-          y: box.y - 11.5,
-          font: "sans-bold",
-          size: 12,
-          color: PAPER.ink,
-        }),
-        ...rect(box.x, box.y - 21, box.width, 1.4, accent),
-      ],
-    },
-    { kind: "space", height: 2 },
-  ]
-}
-
-/** A smaller heading inside a section. */
-function subheading(text: string): PdfBlock[] {
-  return [
-    { kind: "space", height: 10 },
-    {
-      kind: "text",
-      text: upper(text),
-      font: "sans-bold",
-      size: 7.4,
-      color: PAPER.muted,
-      leading: 1.7,
-    },
-  ]
-}
-
-/** A paragraph, measured against the type rather than guessed at by character. */
-function prose(text: string, width = PROSE_WIDTH): PdfBlock[] {
-  return wrapText(text, "sans", BODY, width).map((line) => ({
-    kind: "text" as const,
-    text: line,
-    size: BODY,
-    color: PAPER.ink,
-    leading: 1.62,
-  }))
-}
-
-/** A note in the margin voice — smaller, greyer, for a caveat under a chart. */
-function caption(text: string): PdfBlock[] {
-  return [
-    { kind: "space", height: 3 },
-    ...wrapText(text, "sans", 7.2, PROSE_WIDTH).map((line) => ({
-      kind: "text" as const,
-      text: line,
-      size: 7.2,
-      color: PAPER.muted,
-      leading: 1.5,
-    })),
-  ]
-}
-
-/** A chart, given the height it asked for. */
-function figure(height: number, render: (box: PdfBox) => string[]): PdfBlock {
-  return { kind: "draw", height, render }
-}
+export type ReportMeta = PaperMeta
 
 /**
  * A tinted panel with lines of text in it — used for the things that are not
@@ -656,73 +394,6 @@ function attentionLines(data: ReportData) {
 // ---------------------------------------------------------------------------
 
 /** A ruled table in the document's own dress: open, shaded head, no box. */
-function table(
-  widths: number[],
-  head: string[],
-  rows: { cells: (string | number)[]; strong?: boolean }[],
-  aligns: ("left" | "right" | "center")[]
-): PdfBlock {
-  return {
-    kind: "table",
-    widths,
-    size: 8,
-    open: true,
-    repeatHead: true,
-    grid: PAPER.hair,
-    shade: PAPER.tint,
-    rows: [
-      {
-        fill: true,
-        height: 20,
-        cells: head.map((text, index) => ({
-          text: upper(text),
-          font: "sans-bold" as const,
-          size: 6.8,
-          align: aligns[index],
-          color: PAPER.muted,
-        })),
-      },
-      ...rows.map((row) => ({
-        height: 17,
-        cells: row.cells.map((text, index) => ({
-          text: String(text),
-          align: aligns[index],
-          font: (row.strong ? "sans-bold" : "sans") as "sans" | "sans-bold",
-          size: 8,
-          color: PAPER.ink,
-        })),
-        ...(row.strong ? { fill: true } : {}),
-      })),
-    ],
-  }
-}
-
-/** A ranking, drawn as bars. */
-function ranking(
-  rows: Slice[],
-  color: string | string[],
-  display: (row: Slice) => string,
-  /** Wider where the labels are company names rather than one word. */
-  labelWidth = 118
-): PdfBlock {
-  return figure(barListHeight(rows.length) + 4, (box) =>
-    barList({
-      box,
-      rows: rows.map((row) => ({
-        label: row.label,
-        value: row.value,
-        display: display(row),
-      })),
-      color,
-      ink: INK,
-      labelWidth,
-      valueWidth: 68,
-    })
-  )
-}
-
-/** Room enough for a client's full registered name. */
-const NAME_COLUMN = 158
 
 /**
  * Past this, the day-by-day appendix is dropped for a line saying why.
@@ -1316,8 +987,10 @@ export function reportPdf(data: ReportData, meta: ReportMeta) {
     pageInset: RUNNING_HEAD,
     footerInset: FOOTER,
     decorate: (page, total) => [
-      ...(page === 1 ? letterhead(data) : runningHead(data)),
-      ...footer(data, meta, page, total),
+      ...(page === 1
+        ? letterhead(paperHead(data))
+        : runningHead(paperHead(data))),
+      ...footer(meta, page, total),
     ],
   })
 }

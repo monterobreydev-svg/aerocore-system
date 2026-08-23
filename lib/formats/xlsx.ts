@@ -91,15 +91,26 @@ export function columnName(index: number) {
   return name
 }
 
-const CONTENT_TYPES =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-  '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-  '<Default Extension="xml" ContentType="application/xml"/>' +
-  '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-  '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
-  '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
-  "</Types>"
+function contentTypes(count: number) {
+  const sheets = Array.from(
+    { length: count },
+    (_, index) =>
+      '<Override PartName="/xl/worksheets/sheet' +
+      (index + 1) +
+      '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+  ).join("")
+
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    sheets +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    "</Types>"
+  )
+}
 
 const ROOT_RELS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -107,21 +118,69 @@ const ROOT_RELS =
   '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
   "</Relationships>"
 
-const WORKBOOK_RELS =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
-  '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
-  "</Relationships>"
+// Sheets take rId1..rIdN and the stylesheet the one after. The numbering has to
+// match workbook() below exactly — a relationship pointing at nothing is one of
+// the ways Excel declines to open a file without saying which part is wrong.
+function workbookRels(count: number) {
+  const sheets = Array.from(
+    { length: count },
+    (_, index) =>
+      '<Relationship Id="rId' +
+      (index + 1) +
+      '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' +
+      (index + 1) +
+      '.xml"/>'
+  ).join("")
 
-function workbook(sheetName: string) {
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    sheets +
+    '<Relationship Id="rId' +
+    (count + 1) +
+    '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    "</Relationships>"
+  )
+}
+
+/**
+ * Characters Excel refuses in a tab name, and the length it truncates at.
+ *
+ * It does not report a bad name — it declines to open the workbook — so the
+ * name is corrected here rather than trusted from the caller.
+ */
+const FORBIDDEN_IN_TAB_NAME = [":", "\\", "/", "?", "*", "[", "]"]
+const MAX_TAB_NAME = 31
+
+function sheetTabName(name: string) {
+  let cleaned = name
+  for (const character of FORBIDDEN_IN_TAB_NAME) {
+    cleaned = cleaned.split(character).join(" ")
+  }
+  return (cleaned.trim() || "Sheet").slice(0, MAX_TAB_NAME)
+}
+
+function workbook(names: string[]) {
+  const sheets = names
+    .map(
+      (name, index) =>
+        '<sheet name="' +
+        xml(sheetTabName(name)) +
+        '" sheetId="' +
+        (index + 1) +
+        '" r:id="rId' +
+        (index + 1) +
+        '"/>'
+    )
+    .join("")
+
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-    '<sheets><sheet name="' +
-    xml(sheetName) +
-    '" sheetId="1" r:id="rId1"/></sheets>' +
+    "<sheets>" +
+    sheets +
+    "</sheets>" +
     "</workbook>"
   )
 }
@@ -262,16 +321,37 @@ function sheetXml(sheet: Sheet) {
   )
 }
 
-/** The workbook as a stream, ready to be a Response body. */
-export function xlsxStream(sheet: Sheet) {
+/**
+ * The workbook as a stream, ready to be a Response body.
+ *
+ * One sheet or several. A list is what the projects export needs: the ledger on
+ * one tab and the expenses behind it on another, so an accountant filtering one
+ * does not disturb the other.
+ */
+export function xlsxStream(input: Sheet | Sheet[]) {
+  const sheets = Array.isArray(input) ? input : [input]
+  if (sheets.length === 0) throw new Error("A workbook needs at least one sheet.")
+
   const encoder = new TextEncoder()
   const parts: ZipEntry[] = [
-    { name: "[Content_Types].xml", bytes: encoder.encode(CONTENT_TYPES) },
+    {
+      name: "[Content_Types].xml",
+      bytes: encoder.encode(contentTypes(sheets.length)),
+    },
     { name: "_rels/.rels", bytes: encoder.encode(ROOT_RELS) },
-    { name: "xl/workbook.xml", bytes: encoder.encode(workbook(sheet.name)) },
-    { name: "xl/_rels/workbook.xml.rels", bytes: encoder.encode(WORKBOOK_RELS) },
+    {
+      name: "xl/workbook.xml",
+      bytes: encoder.encode(workbook(sheets.map((sheet) => sheet.name))),
+    },
+    {
+      name: "xl/_rels/workbook.xml.rels",
+      bytes: encoder.encode(workbookRels(sheets.length)),
+    },
     { name: "xl/styles.xml", bytes: encoder.encode(styles()) },
-    { name: "xl/worksheets/sheet1.xml", bytes: encoder.encode(sheetXml(sheet)) },
+    ...sheets.map((sheet, index) => ({
+      name: "xl/worksheets/sheet" + (index + 1) + ".xml",
+      bytes: encoder.encode(sheetXml(sheet)),
+    })),
   ]
 
   async function* source() {
