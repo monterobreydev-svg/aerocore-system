@@ -429,9 +429,19 @@ model Reimbursement {
   // receipt scan live here rather than on each line. The breakdown below says
   // where the money went; this says when, and holds the proof.
   expenseDate DateTime
+  /**
+   * Null once the scan has been purged — see lib/reimbursement/purge-files.
+   * The name and type are kept, so the record still says what was attached and
+   * a reader can tell "deleted after a month" from "never sent one".
+   */
   receiptKey  String?
   receiptName String?
   receiptType String?
+  /**
+   * When the scan was deleted from storage. Null means it was never purged —
+   * either it is still there, or none was ever attached.
+   */
+  filesPurgedAt DateTime?
   // Frozen at submission: whether the day being liquidated was already outside
   // the filing window. Recomputing later would flip as time passes.
   isLate      Boolean             @default(false)
@@ -451,6 +461,8 @@ model Reimbursement {
   // time; the admin queue reads every pending claim in that order too.
   @@index([employeeId, submittedAt])
   @@index([status, submittedAt])
+  // The purge sweep's only question, for the same reason as FundRelease's.
+  @@index([submittedAt, filesPurgedAt])
 }
 
 // One receipt: what was bought, for which client, on which S.O., how much,
@@ -507,14 +519,19 @@ model FundRelease {
   method       String?
   reference    String?
   note         String?
-  proofKey     String?
-  proofName    String?
-  proofType    String?
+  /** Null once purged. Same treatment as a liquidation's receipt. */
+  proofKey      String?
+  proofName     String?
+  proofType     String?
+  proofPurgedAt DateTime?
   releasedById String
   releasedBy   UserAccount @relation("FundReleasedBy", fields: [releasedById], references: [id])
   releasedAt   DateTime    @default(now())
 
   @@index([employeeId])
+  // "Which releases still hold a file old enough to let go" — the purge sweep's
+  // only question, and it must not walk the table to answer it.
+  @@index([releasedAt, proofPurgedAt])
 }
 
 // ---------------------------------------------------------------------------

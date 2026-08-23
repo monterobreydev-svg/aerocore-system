@@ -1,9 +1,11 @@
+import { after } from "next/server"
 import { AlertTriangle, Clock, ReceiptText, Wallet } from "lucide-react"
 import { requireManager } from "@/lib/auth"
 import { prisma } from "@/lib/db/prisma"
 import { isR2Configured } from "@/lib/storage/r2"
 import { buildFundContexts, peso } from "@/lib/reimbursement"
 import { CLAIM_DETAIL_SELECT, loadFunders, toAdminClaim } from "@/lib/reimbursement/query"
+import { purgeReimbursementFiles } from "@/lib/reimbursement/purge-files"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { AdminReimbursementsView } from "@/components/reimbursement/admin-reimbursements-view"
@@ -36,6 +38,11 @@ export default async function AdminReimbursementsPage({
   searchParams,
 }: PageProps<"/admin/reimbursements">) {
   await requireManager()
+
+  // Receipts and vouchers old enough to have served their purpose. After the
+  // response, so nobody waits on housekeeping, and one indexed lookup that
+  // finds nothing on most loads.
+  after(purgeReimbursementFiles)
 
   // Every release and every claim, but only the columns the running balance is
   // made of — the arithmetic has to see the whole ledger to be right, and none

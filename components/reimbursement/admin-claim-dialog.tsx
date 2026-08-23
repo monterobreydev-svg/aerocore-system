@@ -443,6 +443,22 @@ export function AdminClaimDialog({
                         One compiled scan for {shortDate(claim.expenseDate)}.
                       </p>
                     </div>
+                  ) : claim.receiptPurgedAt ? (
+                    // Attached, reviewed, and since deleted for retention.
+                    // Saying "none was attached" here would accuse the employee
+                    // of filing a claim without one.
+                    <p className="rounded-xl border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
+                      {claim.receiptName ? (
+                        <span className="font-medium text-foreground">
+                          {claim.receiptName}
+                        </span>
+                      ) : (
+                        "The scan"
+                      )}{" "}
+                      was filed, then deleted on{" "}
+                      {shortDate(claim.receiptPurgedAt)} under the one-month
+                      retention.
+                    </p>
                   ) : (
                     <p className="flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />

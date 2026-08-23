@@ -49,6 +49,14 @@ export type AdminClaim = {
   expenseDate: string
   receiptKey: string | null
   receiptName: string | null
+  /**
+   * When the scan was deleted for retention, or null.
+   *
+   * Carried so the panel can tell "deleted after a month" from "never
+   * attached" — with only the key to go on, both look like nothing was ever
+   * sent, and one of those is an accusation.
+   */
+  receiptPurgedAt: string | null
   isLate: boolean
   lateReason: string | null
   note: string | null

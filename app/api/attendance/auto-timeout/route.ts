@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server"
 
 import { closeAbandonedPunches } from "@/lib/attendance/auto-timeout"
 import { purgePunchPhotos } from "@/lib/attendance/purge-photos"
+import { purgeReimbursementFiles } from "@/lib/reimbursement/purge-files"
 
 // Closing abandoned punches on a timer, for whoever wants to run one.
 //
@@ -38,6 +39,9 @@ async function sweep(request: NextRequest) {
   // anyone having to open a page for the record to be tidy.
   const closed = await closeAbandonedPunches()
   const purged = await purgePunchPhotos()
+  // The receipts and payout vouchers age on the same clock, for the same
+  // reasons. Same timer too — one sweep, everything it should tidy.
+  const files = await purgeReimbursementFiles()
 
   return Response.json({
     closed: closed.length,
@@ -47,6 +51,7 @@ async function sweep(request: NextRequest) {
       timeOut: punch.timeOut.toISOString(),
     })),
     photosPurged: purged,
+    reimbursementFilesPurged: files,
   })
 }
 

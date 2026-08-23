@@ -10,6 +10,7 @@ import { isAdminSideRole } from "@/lib/auth/roles"
 // The same two numbers payroll pays by, so an implied shift is the ordinary
 // day and not a second opinion about how long one is.
 import { HOURS_PER_DAY } from "@/lib/employee"
+import { attachmentRetentionCutoff } from "@/lib/storage/retention"
 import { UNPAID_BREAK_HOURS } from "@/lib/payroll"
 
 /**
@@ -140,7 +141,10 @@ export function autoTimeOut({
  * photograph was only ever the proof that the person was standing there.
  */
 export function photoRetentionCutoff(now: Date = new Date()) {
-  return new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  // The rule itself lives in lib/storage/retention, shared with the receipts
+  // and payout vouchers on the reimbursement side. One rule in one place: two
+  // copies of a date calculation is two answers waiting to disagree.
+  return attachmentRetentionCutoff(now)
 }
 
 /**
