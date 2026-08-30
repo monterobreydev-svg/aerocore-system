@@ -380,6 +380,7 @@ export function StaffDetailView({
   onBack,
   readOnly = false,
   canChangeRole = false,
+  canSetStatus = false,
 }: {
   staff: StaffMember
   onBack: () => void
@@ -390,6 +391,14 @@ export function StaffDetailView({
    * whether the control is worth showing.
    */
   canChangeRole?: boolean
+  /**
+   * Whether this viewer may switch the account on or off.
+   *
+   * A Director, and never on their own account. `updateStaffAccount` enforces
+   * the same rule — this only keeps the form from offering something that
+   * would be refused, and from posting a field the server would reject.
+   */
+  canSetStatus?: boolean
 }) {
   const [state, action, pending] = useActionState<UpdateStaffState, FormData>(
     updateStaffAccount,
@@ -404,6 +413,9 @@ export function StaffDetailView({
   // unmounts it, and changing defaultValue on an already-initialised
   // uncontrolled field is what Base UI warns about.
   const [initial] = useState(staff)
+  // Controlled so the warning below can appear as Inactive is chosen, not
+  // after the save has already taken them off four jobs.
+  const [nextActive, setNextActive] = useState(String(initial.isActive))
 
   useEffect(() => {
     if (state?.success) {
@@ -833,27 +845,84 @@ export function StaffDetailView({
                             />
                           </Field>
                         )}
+                        {/* Read-only for everyone but a Director. Shown
+                            rather than hidden: whether somebody still works
+                            here belongs on their record, and an Administrator
+                            looking at a deactivated account needs to know that
+                            is why the person is off every roster. No input is
+                            rendered, so nothing is posted and the server has
+                            nothing to refuse. */}
                         <Field>
                           <FieldLabel htmlFor={`isActive-${staff.id}`}>
                             Status
                           </FieldLabel>
-                          <Select
-                            name="isActive"
-                            defaultValue={String(initial.isActive)}
-                            disabled={pending}
-                            items={{ true: "Active", false: "Inactive" }}
-                          >
-                            <SelectTrigger
+                          {!canSetStatus ? (
+                            <div
                               id={`isActive-${staff.id}`}
-                              className="w-full"
+                              className="flex h-9 items-center gap-2 rounded-md border border-dashed px-3"
                             >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="true">Active</SelectItem>
-                              <SelectItem value="false">Inactive</SelectItem>
-                            </SelectContent>
-                          </Select>
+                              <span
+                                className={cn(
+                                  "size-1.5 shrink-0 rounded-full",
+                                  initial.isActive
+                                    ? "bg-emerald-600"
+                                    : "bg-muted-foreground"
+                                )}
+                              />
+                              <span className="text-sm">
+                                {initial.isActive ? "Active" : "Inactive"}
+                              </span>
+                              <span className="ml-auto truncate text-xs text-muted-foreground">
+                                Directors only
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <Select
+                                name="isActive"
+                                value={nextActive}
+                                onValueChange={(value) =>
+                                  setNextActive(value as string)
+                                }
+                                disabled={pending}
+                                items={{ true: "Active", false: "Inactive" }}
+                              >
+                                <SelectTrigger
+                                  id={`isActive-${staff.id}`}
+                                  className="w-full"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="true">Active</SelectItem>
+                                  <SelectItem value="false">Inactive</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {/* Said here, at the control that causes it, and
+                                  before the save rather than after: switching
+                                  somebody off is the office recording that they
+                                  have left, and everything that follows from that
+                                  happens at once. */}
+                              {initial.isActive && nextActive === "false" && (
+                                <p className="text-xs text-muted-foreground">
+                                  They won&rsquo;t be able to sign in, and they
+                                  drop off payroll, attendance and the crew picker.
+                                  {staff.upcomingJobs > 0 && (
+                                    <>
+                                      {" "}
+                                      <span className="text-amber-700 dark:text-amber-400">
+                                        Saving also takes them off{" "}
+                                        {staff.upcomingJobs} upcoming job
+                                        {staff.upcomingJobs === 1 ? "" : "s"} —
+                                        those visits will need redeploying.
+                                      </span>
+                                    </>
+                                  )}{" "}
+                                  Past work, payslips and history are untouched.
+                                </p>
+                              )}
+                            </>
+                          )}
                         </Field>
                       </div>
                     </FieldGroup>

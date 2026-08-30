@@ -518,3 +518,97 @@ export async function deleteClientContact(
 
   return { success: true }
 }
+
+// ---------------------------------------------------------------------------
+// Removing a client
+// ---------------------------------------------------------------------------
+//
+// Only ever a customer entered by mistake — a duplicate, a typo, somebody who
+// was never billed. A client the company has actually worked for is a customer
+// with a history, and history is not something a delete button gets to take.
+//
+// So this refuses rather than cascades. The schema already draws the line: a
+// client's branches and contacts are `onDelete: Cascade` because they describe
+// the client and mean nothing without it, while schedules, projects,
+// liquidations, reports and expenses carry no rule at all — which makes
+// Postgres refuse the delete outright.
+//
+// Leaning on that alone would surface as an unreadable foreign-key error, so
+// the same question is asked here first and answered in words: what is still
+// attached, and how much of it. The office can then decide whether it really
+// wants that customer gone, rather than being told "23503".
+
+export type DeleteClientState =
+  | { message?: string; blockers?: string[]; success?: boolean }
+  | undefined
+
+/** Plural only when it needs to be — "1 schedule", "4 schedules". */
+function countLabel(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`
+}
+
+export async function deleteClient(
+  _state: DeleteClientState,
+  formData: FormData
+): Promise<DeleteClientState> {
+  const session = await requireClientAccess()
+  if (!session) {
+    return { message: "You don't have permission to manage clients." }
+  }
+
+  const clientId = formData.get("clientId")
+  if (typeof clientId !== "string" || clientId === "") {
+    return { message: "Client not found." }
+  }
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      name: true,
+      // Counts, not rows: the answer is a number in a sentence, and reading
+      // every schedule a ten-year customer ever had to find out whether there
+      // is at least one is the payload AGENTS.md rules out.
+      _count: {
+        select: {
+          schedules: true,
+          projects: true,
+          reimbursementItems: true,
+          attendanceReports: true,
+          companyExpenses: true,
+          branches: true,
+          contacts: true,
+        },
+      },
+    },
+  })
+
+  if (!client) return { message: "Client not found." }
+
+  // Everything that makes this customer part of the record. Named in the order
+  // the office would think of them, and only the ones that actually stand.
+  const blockers = [
+    [client._count.schedules, "schedule"],
+    [client._count.projects, "project"],
+    [client._count.reimbursementItems, "liquidated receipt"],
+    [client._count.attendanceReports, "service report"],
+    [client._count.companyExpenses, "recorded expense"],
+  ]
+    .filter(([count]) => (count as number) > 0)
+    .map(([count, noun]) => countLabel(count as number, noun as string))
+
+  if (blockers.length > 0) {
+    return {
+      blockers,
+      message: `${client.name} can't be deleted — the company's records still refer to it.`,
+    }
+  }
+
+  // Branches and contacts go with it, by the cascade the schema declares. They
+  // are this client's own address book and describe nothing else.
+  await prisma.client.delete({ where: { id: clientId } })
+
+  revalidatePath("/admin/accounts/clients")
+  revalidatePath("/admin/schedules")
+
+  return { success: true }
+}

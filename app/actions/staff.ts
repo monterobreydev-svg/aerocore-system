@@ -312,7 +312,6 @@ const UpdateStaffSchema = z.object({
   sssNo: optionalGovId,
   philhealthNo: optionalGovId,
   pagibigNo: optionalGovId,
-  isActive: z.enum(["true", "false"]),
 })
 
 export type UpdateStaffState =
@@ -343,6 +342,15 @@ export type UpdateStaffState =
       }
       message?: string
       success?: boolean
+      /**
+       * Future jobs this save took them off, when it switched them off.
+       *
+       * Reported so the form can say it happened. Somebody deactivating a
+       * resigned crew member has no reason to expect the calendar to change
+       * underneath them, and four jobs quietly losing a body is the kind of
+       * thing that is discovered by a client ringing on the day.
+       */
+      droppedJobs?: number
     }
   | undefined
 
@@ -385,7 +393,6 @@ export async function updateStaffAccount(
     sssNo: formData.get("sssNo"),
     philhealthNo: formData.get("philhealthNo"),
     pagibigNo: formData.get("pagibigNo"),
-    isActive: formData.get("isActive"),
   })
 
   if (!validatedFields.success) {
@@ -445,6 +452,7 @@ export async function updateStaffAccount(
     nextRole = parsed.data
   }
 
+
   const {
     employeeId,
     firstName,
@@ -468,9 +476,7 @@ export async function updateStaffAccount(
     sssNo,
     philhealthNo,
     pagibigNo,
-    isActive,
   } = validatedFields.data
-  const nextIsActive = isActive === "true"
 
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
@@ -479,6 +485,44 @@ export async function updateStaffAccount(
 
   if (!employee || !employee.account) {
     return { message: "Staff account not found." }
+  }
+
+  // Whether somebody still works here is the same class of decision as what
+  // they can reach, so it is gated the same way and for the same reason: it
+  // ends a person's access to the whole system, and an Administrator editing
+  // a colleague's phone number has no business ending it.
+  //
+  // Absent means "leave it as it is" — a form that never rendered the control
+  // posts nothing, and that must read as no change rather than as a default.
+  const requestedActive = formData.get("isActive")
+  let nextIsActive = employee.account.isActive
+
+  if (requestedActive != null && requestedActive !== "") {
+    if (session.role !== "DIRECTOR") {
+      return { message: "Only a Director can activate or deactivate an account." }
+    }
+
+    const parsed = z.enum(["true", "false"]).safeParse(requestedActive)
+    if (!parsed.success) {
+      return { message: "That isn't a status." }
+    }
+
+    // The same exclusion the access level carries, and for a sharper reason.
+    // Switching yourself off signs you out on the next request and locks you
+    // out of the login that would undo it — and if you were the last Director,
+    // nobody left can turn anybody back on. Somebody leaving is recorded by
+    // whoever remains.
+    if (
+      parsed.data === "false" &&
+      validatedFields.data.employeeId === session.employeeId
+    ) {
+      return {
+        message:
+          "You can't deactivate your own account — ask another Director.",
+      }
+    }
+
+    nextIsActive = parsed.data === "true"
   }
 
   if (employeeNo && employeeNo !== employee.employeeNo) {
@@ -548,6 +592,13 @@ export async function updateStaffAccount(
   diff("sssNo", employee.sssNo, normalize(sssNo))
   diff("philhealthNo", employee.philhealthNo, normalize(philhealthNo))
   diff("pagibigNo", employee.pagibigNo, normalize(pagibigNo))
+  // True only on the switch off, not on every save of an already-off account:
+  // re-saving a resigned employee's phone number must not go hunting through
+  // the calendar again.
+  const deactivating = employee.account.isActive && !nextIsActive
+  // How many future jobs lost them, so the form can say what it just did.
+  let droppedJobs: { count: number } | undefined
+
   if (employee.account.isActive !== nextIsActive) {
     changes.push({
       field: "isActive",
@@ -630,12 +681,51 @@ export async function updateStaffAccount(
           newValue: change.newValue,
         })),
       })
+
+      // Switching somebody off is the office saying they have left, and
+      // somebody who has left is not turning up to a job next Tuesday. Every
+      // roster already refuses to offer them — the payroll run, the attendance
+      // sheet, the crew picker — but a job they were put on *before* today
+      // kept their name on the calendar, and the crew going to that site would
+      // have been one short with nothing on screen saying so.
+      //
+      // Only work that has not happened yet. Past assignments are evidence:
+      // they are what attendance was recorded against, and they are the
+      // weights that split a day's wage across the projects it was worked on
+      // (see lib/labour-cost). Deleting those would silently rewrite what
+      // finished jobs cost — a resignation today changing last quarter's
+      // margins. So the cut is today's date, and history is left alone.
+      //
+      // The job itself stays. A visit with nobody on it is a real state the
+      // schedules page already counts and shows, and it is exactly the
+      // prompt the office needs: this one needs redeploying.
+      if (deactivating) {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+
+        droppedJobs = await tx.scheduleAssignment.deleteMany({
+          where: {
+            employeeId,
+            schedule: {
+              date: { gte: today },
+              // A cancelled job is not work anybody was going to do, so
+              // removing them from it says nothing and would only make the
+              // count below overstate what actually changed.
+              status: { notIn: ["CANCELLED", "RESCHEDULED"] },
+            },
+          },
+        })
+      }
     })
   }
 
   revalidatePath("/admin/accounts/staff")
+  if (deactivating) {
+    revalidatePath("/admin/schedules")
+    revalidatePath("/employee/schedule")
+  }
   // The hourly rate is the multiplier under every wage figure on a project.
   revalidateLabourCost()
 
-  return { success: true }
+  return { success: true, droppedJobs: droppedJobs?.count ?? 0 }
 }

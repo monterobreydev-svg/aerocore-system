@@ -30,7 +30,14 @@ export default async function StaffPage() {
   // filed whatever its state, and every day they've clocked. The rows
   // themselves are fetched only when the tab is opened, by
   // listEmployeeReimbursements and listEmployeeAttendance.
-  const [claimCounts, attendanceCounts] = await Promise.all([
+  //
+  // Upcoming jobs are counted the same way, and for a different reason: they
+  // are what switching somebody off will take them off, and the form has to be
+  // able to say so before it happens rather than after.
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const [claimCounts, attendanceCounts, upcomingCounts] = await Promise.all([
     prisma.reimbursement.groupBy({
       by: ["employeeId"],
       _count: { _all: true },
@@ -39,12 +46,25 @@ export default async function StaffPage() {
       by: ["employeeId"],
       _count: { _all: true },
     }),
+    prisma.scheduleAssignment.groupBy({
+      by: ["employeeId"],
+      where: {
+        schedule: {
+          date: { gte: today },
+          status: { notIn: ["CANCELLED", "RESCHEDULED"] },
+        },
+      },
+      _count: { _all: true },
+    }),
   ])
   const claimsByEmployee = new Map(
     claimCounts.map((row) => [row.employeeId, row._count._all])
   )
   const daysByEmployee = new Map(
     attendanceCounts.map((row) => [row.employeeId, row._count._all])
+  )
+  const upcomingByEmployee = new Map(
+    upcomingCounts.map((row) => [row.employeeId, row._count._all])
   )
 
   // Named field by field rather than `include`d.
@@ -125,6 +145,7 @@ export default async function StaffPage() {
     isActive: account.isActive,
     claimCount: claimsByEmployee.get(account.employee.id) ?? 0,
     attendanceCount: daysByEmployee.get(account.employee.id) ?? 0,
+    upcomingJobs: upcomingByEmployee.get(account.employee.id) ?? 0,
     employee: {
       id: account.employee.id,
       firstName: account.employee.firstName,

@@ -18,7 +18,9 @@ import {
 import {
   createBranch,
   createClientContact,
+  deleteClient,
   deleteClientContact,
+  type DeleteClientState,
   updateBranch,
   updateClient,
   updateClientContact,
@@ -64,6 +66,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -99,6 +102,24 @@ import {
   type ClientRecord,
 } from "@/components/admin/client-list"
 
+/**
+ * What a delete takes with it, said before it happens.
+ *
+ * Only branches and contacts: they cascade because they describe this client
+ * and nothing else. Anything the company actually did for them stops the
+ * delete rather than going with it, which is what the refusal explains.
+ */
+function branchAndContactCount(client: ClientRecord) {
+  const parts: string[] = []
+  const branches = client.branches.length
+  const contacts = client.contacts.length
+  if (branches > 0) parts.push(`${branches} branch${branches === 1 ? "" : "es"}`)
+  if (contacts > 0) parts.push(`${contacts} contact${contacts === 1 ? "" : "s"}`)
+  return parts.length === 0
+    ? "Nothing else is filed against it, so nothing else"
+    : parts.join(" and ")
+}
+
 function EditClientDialog({ client }: { client: ClientRecord }) {
   const [open, setOpen] = useState(false)
   const [state, action, pending] = useActionState<ClientState, FormData>(
@@ -112,226 +133,291 @@ function EditClientDialog({ client }: { client: ClientRecord }) {
   // already-initialized uncontrolled field is what Base UI warns about.
   const [initial] = useState(client)
 
+  // Deleting lives behind the edit dialog rather than on the record's
+  // masthead: it is the rarest thing anybody does to a client and the only
+  // irreversible one, so it should take a deliberate trip to find.
+  const [removeState, removeAction, removing] = useActionState<
+    DeleteClientState,
+    FormData
+  >(deleteClient, undefined)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+
   useEffect(() => {
-    if (state?.success) setOpen(false)
-  }, [state])
+    if (state?.success || removeState?.success) setDialogOpen(false)
+  }, [state, removeState])
+
+  const busy = pending || removing
+
+  // A refusal is about the client, not about this dialog session — reopening
+  // to read it again should start from the question, not from the answer.
+  // Done here rather than in an effect on `open`: closing is an event, and
+  // there is nothing to synchronise with.
+  function setDialogOpen(next: boolean) {
+    setOpen(next)
+    if (!next) setConfirmRemove(false)
+  }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button type="button" variant="outline">
-            <Pencil />
-            Edit client
-          </Button>
-        }
-      />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit client</DialogTitle>
-          <DialogDescription>
-            Company details used across schedules and reports.
-          </DialogDescription>
-        </DialogHeader>
-        <form action={action} id={`client-edit-form-${client.id}`}>
-          <input type="hidden" name="clientId" value={client.id} />
-          <FieldGroup>
-            <Field data-invalid={!!state?.errors?.name}>
-              <FieldLabel htmlFor={`client-name-${client.id}`}>
-                Registered name
-              </FieldLabel>
-              <Input
-                id={`client-name-${client.id}`}
-                name="name"
-                defaultValue={initial.name}
-                disabled={pending}
-                required
-              />
-              <FieldError
-                errors={state?.errors?.name?.map((message) => ({ message }))}
-              />
-            </Field>
-            {/* Sits directly under the registered name, because that is what
-                it is short for and the placeholder shows what the name would
-                derive to on its own. */}
-            <Field data-invalid={!!state?.errors?.acronym}>
-              <FieldLabel htmlFor={`client-acronym-${client.id}`}>
-                Acronym
-                <span className="text-xs font-normal text-muted-foreground">
-                  Optional
-                </span>
-              </FieldLabel>
-              <Input
-                id={`client-acronym-${client.id}`}
-                name="acronym"
-                placeholder={clientAcronym(initial.name)}
-                defaultValue={initial.acronym ?? ""}
-                maxLength={ACRONYM_MAX_LENGTH}
-                disabled={pending}
-                className="font-mono uppercase"
-              />
-              <FieldDescription>
-                The short form used on report filenames. Leave it blank to keep
-                using{" "}
-                <span className="font-mono">{clientAcronym(initial.name)}</span>
-                , worked out from the name.
-              </FieldDescription>
-              <FieldError
-                errors={state?.errors?.acronym?.map((message) => ({ message }))}
-              />
-            </Field>
-            {/* Theirs, not ours: this is the code the customer files us under
-                and quotes on their paperwork. Unique across clients, so the
-                action checks before saving rather than letting the database
-                reject it with nothing marked. */}
-            <Field data-invalid={!!state?.errors?.customerCode}>
-              <FieldLabel htmlFor={`client-customer-code-${client.id}`}>
-                Customer code
-                <span className="text-xs font-normal text-muted-foreground">
-                  Optional
-                </span>
-              </FieldLabel>
-              <Input
-                id={`client-customer-code-${client.id}`}
-                name="customerCode"
-                placeholder="AC-1042"
-                defaultValue={initial.customerCode ?? ""}
-                maxLength={CUSTOMER_CODE_MAX_LENGTH}
-                disabled={pending}
-                className="font-mono uppercase"
-              />
-              <FieldDescription>
-                The customer’s own reference for this account. No two clients
-                can share one.
-              </FieldDescription>
-              <FieldError
-                errors={state?.errors?.customerCode?.map((message) => ({
-                  message,
-                }))}
-              />
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={!!state?.errors?.tin}>
-                <FieldLabel htmlFor={`client-tin-${client.id}`}>TIN</FieldLabel>
+    <>
+      <Dialog open={open} onOpenChange={setDialogOpen}>
+        <DialogTrigger
+          render={
+            <Button type="button" variant="outline">
+              <Pencil />
+              Edit client
+            </Button>
+          }
+        />
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit client</DialogTitle>
+            <DialogDescription>
+              Company details used across schedules and reports.
+            </DialogDescription>
+          </DialogHeader>
+          <form action={action} id={`client-edit-form-${client.id}`}>
+            <input type="hidden" name="clientId" value={client.id} />
+            <FieldGroup>
+              <Field data-invalid={!!state?.errors?.name}>
+                <FieldLabel htmlFor={`client-name-${client.id}`}>
+                  Registered name
+                </FieldLabel>
                 <Input
-                  id={`client-tin-${client.id}`}
-                  name="tin"
-                  placeholder="123-456-789-000"
-                  defaultValue={initial.tin ?? ""}
+                  id={`client-name-${client.id}`}
+                  name="name"
+                  defaultValue={initial.name}
                   disabled={pending}
-                  className="font-mono"
+                  required
                 />
                 <FieldError
-                  errors={state?.errors?.tin?.map((message) => ({ message }))}
+                  errors={state?.errors?.name?.map((message) => ({ message }))}
                 />
               </Field>
-              <Field data-invalid={!!state?.errors?.taxStatus}>
-                <FieldLabel htmlFor={`client-tax-${client.id}`}>
-                  Tax status
+              {/* Sits directly under the registered name, because that is what
+                  it is short for and the placeholder shows what the name would
+                  derive to on its own. */}
+              <Field data-invalid={!!state?.errors?.acronym}>
+                <FieldLabel htmlFor={`client-acronym-${client.id}`}>
+                  Acronym
+                  <span className="text-xs font-normal text-muted-foreground">
+                    Optional
+                  </span>
                 </FieldLabel>
-                <Select
-                  name="taxStatus"
-                  defaultValue={initial.taxStatus ?? ""}
+                <Input
+                  id={`client-acronym-${client.id}`}
+                  name="acronym"
+                  placeholder={clientAcronym(initial.name)}
+                  defaultValue={initial.acronym ?? ""}
+                  maxLength={ACRONYM_MAX_LENGTH}
                   disabled={pending}
-                  items={Object.fromEntries(
-                    TAX_STATUS_OPTIONS.map((status) => [
-                      status,
-                      taxStatusLabel(status),
-                    ])
-                  )}
-                >
-                  <SelectTrigger
-                    id={`client-tax-${client.id}`}
-                    className="w-full"
+                  className="font-mono uppercase"
+                />
+                <FieldDescription>
+                  The short form used on report filenames. Leave it blank to keep
+                  using{" "}
+                  <span className="font-mono">{clientAcronym(initial.name)}</span>
+                  , worked out from the name.
+                </FieldDescription>
+                <FieldError
+                  errors={state?.errors?.acronym?.map((message) => ({ message }))}
+                />
+              </Field>
+              {/* Theirs, not ours: this is the code the customer files us under
+                  and quotes on their paperwork. Unique across clients, so the
+                  action checks before saving rather than letting the database
+                  reject it with nothing marked. */}
+              <Field data-invalid={!!state?.errors?.customerCode}>
+                <FieldLabel htmlFor={`client-customer-code-${client.id}`}>
+                  Customer code
+                  <span className="text-xs font-normal text-muted-foreground">
+                    Optional
+                  </span>
+                </FieldLabel>
+                <Input
+                  id={`client-customer-code-${client.id}`}
+                  name="customerCode"
+                  placeholder="AC-1042"
+                  defaultValue={initial.customerCode ?? ""}
+                  maxLength={CUSTOMER_CODE_MAX_LENGTH}
+                  disabled={pending}
+                  className="font-mono uppercase"
+                />
+                <FieldDescription>
+                  The customer’s own reference for this account. No two clients
+                  can share one.
+                </FieldDescription>
+                <FieldError
+                  errors={state?.errors?.customerCode?.map((message) => ({
+                    message,
+                  }))}
+                />
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field data-invalid={!!state?.errors?.tin}>
+                  <FieldLabel htmlFor={`client-tin-${client.id}`}>TIN</FieldLabel>
+                  <Input
+                    id={`client-tin-${client.id}`}
+                    name="tin"
+                    placeholder="123-456-789-000"
+                    defaultValue={initial.tin ?? ""}
+                    disabled={pending}
+                    className="font-mono"
+                  />
+                  <FieldError
+                    errors={state?.errors?.tin?.map((message) => ({ message }))}
+                  />
+                </Field>
+                <Field data-invalid={!!state?.errors?.taxStatus}>
+                  <FieldLabel htmlFor={`client-tax-${client.id}`}>
+                    Tax status
+                  </FieldLabel>
+                  <Select
+                    name="taxStatus"
+                    defaultValue={initial.taxStatus ?? ""}
+                    disabled={pending}
+                    items={Object.fromEntries(
+                      TAX_STATUS_OPTIONS.map((status) => [
+                        status,
+                        taxStatusLabel(status),
+                      ])
+                    )}
                   >
-                    <SelectValue placeholder="Select tax status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TAX_STATUS_OPTIONS.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {taxStatusLabel(status)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
-            <Field data-invalid={!!state?.errors?.address}>
-              <FieldLabel htmlFor={`client-address-${client.id}`}>
-                Head office address
-              </FieldLabel>
-              <Input
-                id={`client-address-${client.id}`}
-                name="address"
-                defaultValue={initial.address}
-                disabled={pending}
-                required
-              />
-              <FieldError
-                errors={state?.errors?.address?.map((message) => ({ message }))}
-              />
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={!!state?.errors?.phoneNo}>
-                <FieldLabel htmlFor={`client-phone-${client.id}`}>
-                  Head office phone
+                    <SelectTrigger
+                      id={`client-tax-${client.id}`}
+                      className="w-full"
+                    >
+                      <SelectValue placeholder="Select tax status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TAX_STATUS_OPTIONS.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {taxStatusLabel(status)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+              <Field data-invalid={!!state?.errors?.address}>
+                <FieldLabel htmlFor={`client-address-${client.id}`}>
+                  Head office address
                 </FieldLabel>
                 <Input
-                  id={`client-phone-${client.id}`}
-                  name="phoneNo"
-                  placeholder="(02) 8888 1234"
-                  defaultValue={initial.phoneNo ?? ""}
+                  id={`client-address-${client.id}`}
+                  name="address"
+                  defaultValue={initial.address}
                   disabled={pending}
+                  required
                 />
                 <FieldError
-                  errors={state?.errors?.phoneNo?.map((message) => ({
-                    message,
-                  }))}
+                  errors={state?.errors?.address?.map((message) => ({ message }))}
                 />
               </Field>
-              <Field data-invalid={!!state?.errors?.email}>
-                <FieldLabel htmlFor={`client-email-${client.id}`}>
-                  Head office email
-                </FieldLabel>
-                <Input
-                  id={`client-email-${client.id}`}
-                  name="email"
-                  type="email"
-                  placeholder="admin@company.ph"
-                  defaultValue={initial.email ?? ""}
-                  disabled={pending}
-                />
-                <FieldError
-                  errors={state?.errors?.email?.map((message) => ({
-                    message,
-                  }))}
-                />
-              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field data-invalid={!!state?.errors?.phoneNo}>
+                  <FieldLabel htmlFor={`client-phone-${client.id}`}>
+                    Head office phone
+                  </FieldLabel>
+                  <Input
+                    id={`client-phone-${client.id}`}
+                    name="phoneNo"
+                    placeholder="(02) 8888 1234"
+                    defaultValue={initial.phoneNo ?? ""}
+                    disabled={pending}
+                  />
+                  <FieldError
+                    errors={state?.errors?.phoneNo?.map((message) => ({
+                      message,
+                    }))}
+                  />
+                </Field>
+                <Field data-invalid={!!state?.errors?.email}>
+                  <FieldLabel htmlFor={`client-email-${client.id}`}>
+                    Head office email
+                  </FieldLabel>
+                  <Input
+                    id={`client-email-${client.id}`}
+                    name="email"
+                    type="email"
+                    placeholder="admin@company.ph"
+                    defaultValue={initial.email ?? ""}
+                    disabled={pending}
+                  />
+                  <FieldError
+                    errors={state?.errors?.email?.map((message) => ({
+                      message,
+                    }))}
+                  />
+                </Field>
+              </div>
+              {state?.message && (
+                <p className="text-sm text-destructive">{state.message}</p>
+              )}
+            </FieldGroup>
+          </form>
+
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmRemove(true)}
+              disabled={busy}
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 />
+              Delete client
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+                disabled={busy}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form={`client-edit-form-${client.id}`}
+                disabled={busy}
+              >
+                {pending ? "Saving..." : "Save"}
+              </Button>
             </div>
-            {state?.message && (
-              <p className="text-sm text-destructive">{state.message}</p>
-            )}
-          </FieldGroup>
-        </form>
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form={`client-edit-form-${client.id}`}
-            disabled={pending}
-          >
-            {pending ? "Saving..." : "Save"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* A popup of its own rather than a panel inside the form above: the
+          question is the only thing on screen while it is being asked, and
+          nothing in the edit dialog shifts under the pointer to make room for
+          it. Rendered beside that dialog, not within it — the dialog root owns
+          a trigger and a content, and a second popup among them is not a
+          child it knows what to do with. */}
+      <ConfirmDeleteDialog
+        open={confirmRemove}
+        onOpenChange={setConfirmRemove}
+        title={`Delete ${client.name}?`}
+        blockers={removeState?.blockers}
+        pending={removing}
+        onConfirm={() => {
+          const data = new FormData()
+          data.set("clientId", client.id)
+          removeAction(data)
+        }}
+      >
+        {removeState?.blockers ? (
+          <p>
+            A client the company has worked for stays on the record. Clear what
+            still refers to it, or leave it in place.
+          </p>
+        ) : (
+          <p>
+            {branchAndContactCount(client)} go with it. This cannot be undone.
+          </p>
+        )}
+      </ConfirmDeleteDialog>
+    </>
   )
 }
 

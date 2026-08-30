@@ -54,6 +54,14 @@ export type StaffMember = {
   claimCount: number
   /** Days clocked. Same reasoning: the rows come when the tab is opened. */
   attendanceCount: number
+  /**
+   * Jobs from today onward that this person is on the crew for.
+   *
+   * Here so the edit form can warn before switching them off — deactivating
+   * takes them off every one of them, and the office should see the number
+   * before it presses save, not hear it from a client on the day.
+   */
+  upcomingJobs: number
   employee: {
     id: string
     firstName: string
@@ -189,6 +197,12 @@ export function StaffCards({
         // updateStaffAccount for why that single exclusion is what keeps the
         // company from ending up without a Director.
         canChangeRole={
+          currentRole === "DIRECTOR" && selected.id !== currentAccountId
+        }
+        // Ending somebody's employment is a Director's call. Their own account
+        // is excluded for the same reason a Director cannot demote themselves —
+        // switching yourself off locks you out of the login that would undo it.
+        canSetStatus={
           currentRole === "DIRECTOR" && selected.id !== currentAccountId
         }
       />
