@@ -18,7 +18,9 @@ import {
   durationLabel,
   overtimeGate,
   OVERTIME_WINDOW_MINUTES,
+  grantedOvertimeHours,
   shiftEndFor,
+  shiftEndWithOvertime,
 } from "@/lib/attendance"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -147,15 +149,25 @@ export function AttendanceView({
   const done = Boolean(punch?.timeOut)
 
   // When this shift ends: the roster if there is one, otherwise the nine hours
-  // implied by the punch. Admin-side staff work office hours nobody schedules,
-  // and without this their overtime button could never open.
+  // implied by the punch, and then however much overtime the office granted.
+  // Admin-side staff work office hours nobody schedules, and without the
+  // implied day their overtime button could never open.
+  //
+  // The granted hours matter here as much as the roster does. Three hours
+  // approved on an 11:00–17:00 shift means the day ends at 20:00 — that is
+  // when the punch will be stamped if it is abandoned, so it is what this card
+  // has to say. Showing 17:00 to somebody approved until 20:00 is the card
+  // contradicting the sweep.
   const scheduledEnd = shift?.endsAt ?? null
   const timedInAt = punch?.timeIn ?? null
+  const granted = grantedOvertimeHours(punch?.overtime)
   const shiftEndsAt = useMemo(() => {
     const scheduled = scheduledEnd ? new Date(scheduledEnd) : null
-    if (!timedInAt) return scheduled
-    return shiftEndFor(new Date(timedInAt), scheduled)
-  }, [scheduledEnd, timedInAt])
+    const rostered = timedInAt
+      ? shiftEndFor(new Date(timedInAt), scheduled)
+      : scheduled
+    return rostered ? shiftEndWithOvertime(rostered, granted) : null
+  }, [scheduledEnd, timedInAt, granted])
 
   const gate = useMemo(
     () =>

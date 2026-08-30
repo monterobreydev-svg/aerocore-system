@@ -32,7 +32,9 @@ import {
   MAX_SHIFT_HOURS,
   nextDay,
   overtimeGate,
+  grantedOvertimeHours,
   shiftEndFor,
+  shiftEndWithOvertime,
   workedMinutes,
   type OvertimeGate,
 } from "@/lib/attendance"
@@ -960,11 +962,23 @@ export async function kioskWhoIs(username: string): Promise<KioskWho> {
         timeIn: { gte: new Date(now.getTime() - MAX_SHIFT_HOURS * 3_600_000) },
       },
       orderBy: { timeIn: "desc" },
-      select: { timeIn: true, date: true, overtime: { select: { id: true } } },
+      select: {
+        timeIn: true,
+        date: true,
+        overtime: {
+          select: { id: true, status: true, hours: true, approvedHours: true },
+        },
+      },
     }),
     prisma.attendance.findUnique({
       where: { employeeId_date: { employeeId: who.employeeId, date: day } },
-      select: { timeIn: true, timeOut: true, overtime: { select: { id: true } } },
+      select: {
+        timeIn: true,
+        timeOut: true,
+        overtime: {
+          select: { id: true, status: true, hours: true, approvedHours: true },
+        },
+      },
     }),
     shiftForDay(who.employeeId, day),
     // Their last request, whichever punch it hangs off — a decision made this
@@ -994,7 +1008,17 @@ export async function kioskWhoIs(username: string): Promise<KioskWho> {
   // measured from when they timed in — that is what opens their overtime
   // window and what eventually closes the punch. Off the clock there is no
   // time-in to measure from, so there is nothing to imply.
-  const shiftEnd = open ? shiftEndFor(open.timeIn, scheduledEnd) : scheduledEnd
+  const rostered = open ? shiftEndFor(open.timeIn, scheduledEnd) : scheduledEnd
+  // Approved overtime moves the end of the shift, so it moves what the kiosk
+  // says. Granted from *this* punch's request rather than `lastOvertime`,
+  // which is the most recent one in three days and may belong to another day
+  // entirely. Nothing is added while a request is still pending or refused.
+  const shiftEnd = rostered
+    ? shiftEndWithOvertime(
+        rostered,
+        grantedOvertimeHours(open?.overtime ?? todayRow?.overtime)
+      )
+    : null
   const requested = Boolean(open?.overtime ?? todayRow?.overtime)
 
   return {

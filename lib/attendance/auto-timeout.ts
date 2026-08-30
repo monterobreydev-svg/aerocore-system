@@ -1,7 +1,12 @@
 import "server-only"
 
 import { prisma } from "@/lib/db/prisma"
-import { autoTimeOut, dayParam, shiftEndFor } from "@/lib/attendance"
+import {
+  autoTimeOut,
+  dayParam,
+  grantedOvertimeHours,
+  shiftEndFor,
+} from "@/lib/attendance"
 
 // ---------------------------------------------------------------------------
 // Closing the punches nobody closed
@@ -117,10 +122,7 @@ export async function closeAbandonedPunches(
 
     // Only overtime the office actually granted extends the shift. A request
     // still pending, or refused, moves nothing.
-    const approvedOvertimeHours =
-      row.overtime?.status === "APPROVED"
-        ? Number(row.overtime.approvedHours ?? row.overtime.hours)
-        : 0
+    const approvedOvertimeHours = grantedOvertimeHours(row.overtime)
 
     const { closesAt, dueAt } = autoTimeOut({
       shiftEndsAt,

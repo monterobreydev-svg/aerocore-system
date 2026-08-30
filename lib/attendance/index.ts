@@ -112,9 +112,7 @@ export function autoTimeOut({
   /** Hours the office granted. Unapproved overtime does not extend anything. */
   approvedOvertimeHours?: number
 }) {
-  const closesAt = new Date(
-    shiftEndsAt.getTime() + Math.max(0, approvedOvertimeHours) * 3_600_000
-  )
+  const closesAt = shiftEndWithOvertime(shiftEndsAt, approvedOvertimeHours)
 
   return {
     closesAt,
@@ -145,6 +143,48 @@ export function photoRetentionCutoff(now: Date = new Date()) {
   // and payout vouchers on the reimbursement side. One rule in one place: two
   // copies of a date calculation is two answers waiting to disagree.
   return attachmentRetentionCutoff(now)
+}
+
+/** A number, or a database decimal that stringifies to one. */
+type NumberLike = { toString(): string }
+
+/**
+ * Hours the office actually granted on a request, in whatever state it is in.
+ *
+ * Nothing until it is approved: asking is not permission, and a refusal grants
+ * nothing either. `approvedHours` is null when the request stood as filed —
+ * the office only writes it when it trims one — so it falls back to what was
+ * asked, the same rule payroll reads these two columns by.
+ */
+export function grantedOvertimeHours(
+  overtime:
+    | { status: string; hours: NumberLike; approvedHours: NumberLike | null }
+    | null
+    | undefined
+) {
+  if (!overtime || overtime.status !== "APPROVED") return 0
+  const granted = Number(overtime.approvedHours ?? overtime.hours)
+  return Number.isFinite(granted) ? Math.max(0, granted) : 0
+}
+
+/**
+ * Where the end of the shift moves once overtime is granted.
+ *
+ * An 11:00–17:00 shift with three hours approved ends at 20:00. That is when
+ * the person is expected to stop, when an abandoned punch is stamped, and what
+ * every screen saying "shift ends" has to show.
+ *
+ * One definition for all three, because they used to disagree: only the sweep
+ * added the granted hours, so the kiosk went on telling somebody approved
+ * until 20:00 that their shift ended at 17:00.
+ */
+export function shiftEndWithOvertime(
+  shiftEndsAt: Date,
+  approvedOvertimeHours: number
+) {
+  return new Date(
+    shiftEndsAt.getTime() + Math.max(0, approvedOvertimeHours) * 3_600_000
+  )
 }
 
 /**
