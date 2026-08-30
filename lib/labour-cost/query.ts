@@ -1,7 +1,7 @@
 import "server-only"
 import { unstable_cache, revalidateTag } from "next/cache"
 import { prisma } from "@/lib/db/prisma"
-import { Prisma } from "@/app/generated/prisma/client"
+import { Prisma, type ScheduleStatus } from "@/app/generated/prisma/client"
 import { cutoffEnd, cutoffStart } from "@/lib/attendance"
 import {
   holidaysBetween,
@@ -38,6 +38,23 @@ import {
 export const FIELD_STAFF: Prisma.EmployeeWhereInput = {
   NOT: { account: { is: { role: { in: OPEX_ROLES } } } },
 }
+
+/**
+ * Statuses that hold no claim on a day's wage.
+ *
+ * A cancelled visit didn't happen. A rescheduled one didn't happen *that day* —
+ * it was moved, and the day it moved to carries its own schedule and its own
+ * share of that day's pay. Leaving either in the weights would charge a project
+ * for hours nobody spent on it, and — because the split is proportional — would
+ * take that money off the jobs the crew was actually on.
+ *
+ * NEED_TO_RETURN is deliberately not here: the crew went, the work is just
+ * unfinished. Those hours are real and belong to the job.
+ */
+export const UNWORKED_STATUSES = [
+  "CANCELLED",
+  "RESCHEDULED",
+] as const satisfies readonly ScheduleStatus[]
 
 /** Every cutoff touching the range, oldest first. */
 function cutoffsBetween(from: Date, to: Date) {
@@ -143,7 +160,7 @@ async function computeLabourCost({
         where: {
           employee: FIELD_STAFF,
           schedule: {
-            status: { not: "CANCELLED" },
+            status: { notIn: [...UNWORKED_STATUSES] },
             salesOrderNo: salesOrderNos ? { in: salesOrderNos } : { not: null },
             date: { gte: windowStart, lte: windowEnd },
           },
@@ -178,7 +195,7 @@ async function computeLabourCost({
       FROM "ScheduleAssignment" sa
       JOIN "Schedule" s ON s."id" = sa."scheduleId"
       WHERE sa."employeeId" IN (${Prisma.join(employeeIds)})
-        AND s."status" <> 'CANCELLED'
+        AND s."status"::text NOT IN (${Prisma.join([...UNWORKED_STATUSES])})
         AND s."salesOrderNo" IS NOT NULL
         AND s."date" >= ${windowStart}
         AND s."date" <= ${windowEnd}
