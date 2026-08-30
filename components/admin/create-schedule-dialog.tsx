@@ -139,13 +139,41 @@ function formatShiftLength(minutes: number) {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`
 }
 
-function addMinutesToTime(time: string, minutes: number) {
+const MINUTES_IN_DAY = 24 * 60
+
+function timeToMinutes(time: string) {
   const [hours, mins] = time.split(":").map(Number)
-  if (!Number.isFinite(hours) || !Number.isFinite(mins)) return ""
-  const total = Math.min(hours * 60 + mins + minutes, 23 * 60 + 59)
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
-    total % 60
+  if (!Number.isFinite(hours) || !Number.isFinite(mins)) return null
+  return hours * 60 + mins
+}
+
+function minutesToTime(minutes: number) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(
+    minutes % 60
   ).padStart(2, "0")}`
+}
+
+function addMinutesToTime(time: string, minutes: number) {
+  const from = timeToMinutes(time)
+  if (from === null) return ""
+  return minutesToTime(Math.min(from + minutes, MINUTES_IN_DAY - 1))
+}
+
+/**
+ * The hours of the crew's next stop that day: it starts when this job ends and
+ * runs for as long. 08:00–12:00 begets 12:00–16:00.
+ *
+ * Null when the day cannot hold it — an overnight job, or one whose repeat
+ * would spill past midnight. The caller leaves the hours as they were rather
+ * than inventing a pair that has to be corrected anyway.
+ */
+function nextShift(row: Row) {
+  const start = timeToMinutes(row.startTime)
+  const end = timeToMinutes(row.endTime)
+  if (start === null || end === null || end <= start) return null
+  const finish = end + (end - start)
+  if (finish >= MINUTES_IN_DAY) return null
+  return { startTime: row.endTime, endTime: minutesToTime(finish) }
 }
 
 /** "Tue, 4 Mar" — enough to recognise a day in a list of them. */
@@ -638,22 +666,45 @@ export function CreateScheduleDialog({
     )
   }
 
-  // A new row copies the one it came from and moves a day on — the client, the
-  // hours and the contact rarely change between visits to the same job, and
-  // when the next job is a different client the only field to clear is the one
-  // you were going to change anyway.
-  function addRow(source?: Row) {
-    setRows((current) => {
-      if (current.length >= MAX_ROWS) return current
-      const from = source ?? current[current.length - 1]
-      const parsed = parseDateKey(from.date)
-      const next = newRow({
-        ...from,
-        date: parsed ? dateKey(addDays(parsed, 1)) : from.date,
+  function pushRow(build: (from: Row) => Row) {
+    if (rows.length >= MAX_ROWS) return
+    const next = build(rows[rows.length - 1])
+    setRows((current) => [...current, next])
+    setOpenRow(next.key)
+  }
+
+  // "Add another job" is the crew's next stop on the same day, so the day
+  // stands and the hours pick up where the last job finished.
+  //
+  // The client is dropped on purpose: you add a row because the next job is
+  // somebody else's. Everything that hangs off that client goes with it — its
+  // site, its sales order, the person meeting the crew at that gate, and
+  // remarks that describe how to get into a building the crew is no longer
+  // going to. Only the work carries over, because a crew out for the day is
+  // usually out doing the same thing.
+  function addRow() {
+    pushRow((from) =>
+      newRow({
+        date: from.date,
+        ...(nextShift(from) ?? {
+          startTime: from.startTime,
+          endTime: from.endTime,
+        }),
+        workTypes: from.workTypes,
       })
-      setOpenRow(next.key)
-      return [...current, next]
-    })
+    )
+  }
+
+  // Duplicate is the other half: this same job, at this same client, on the
+  // next day — a standing visit, entered once and moved along.
+  function duplicateRow(source: Row) {
+    const parsed = parseDateKey(source.date)
+    pushRow(() =>
+      newRow({
+        ...source,
+        date: parsed ? dateKey(addDays(parsed, 1)) : source.date,
+      })
+    )
   }
 
   // Everything a row needs before it is worth sending. Deliberately shallow —
@@ -809,7 +860,7 @@ export function CreateScheduleDialog({
                     )
                   }
                   onChange={(patch) => patchRow(row.key, patch)}
-                  onDuplicate={() => addRow(row)}
+                  onDuplicate={() => duplicateRow(row)}
                   onRemove={() =>
                     setRows((current) =>
                       current.filter((entry) => entry.key !== row.key)
